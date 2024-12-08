@@ -1,10 +1,13 @@
 <script lang="ts">
   import type { RTCSessionDescriptionOptions } from './Utils'
   import type { BananasRemoteCursorData, SettingsData } from './BananasTypes'
+  import { BananasConnectionState, BananasReadyState } from './BananasTypes'
   import { getConnectionString, ConnectionType } from './Utils'
   import { getRTCPeerConnectionConfig } from './Config'
 
-  export let connectionState: string = 'disconnected'
+  export let connectionState: string = BananasConnectionState.DISCONNECTED
+  export let isStreaming = false
+  export let readyState: BananasReadyState = BananasReadyState.UNINITIALIZED
 
   const errorHander = (e: ErrorEvent): void => {
     console.error(e)
@@ -15,6 +18,7 @@
   let remoteCursorPositionsEnabled = false
   let remoteMouseCursorPositionsChannel: RTCDataChannel | null = null
   let remoteCursorPingChannel: RTCDataChannel | null = null
+  let signalingChannel: RTCDataChannel | null = null
   let audioStream: MediaStream | null = null
   let stream: MediaStream | null = null
   let audioElement: HTMLAudioElement | null = null
@@ -37,7 +41,7 @@
       remoteMouseCursorPositionsChannel = dc
       dc.onmessage = function (e: MessageEvent): void {
         if (!remoteCursorPositionsEnabled) return
-        if (remoteVideo) return
+        if (isStreaming) return
         const data = JSON.parse(e.data)
         window.BananasApi.updateRemoteCursor(data)
       }
@@ -46,8 +50,17 @@
       remoteCursorPingChannel = dc
       dc.onmessage = function (e: MessageEvent): void {
         if (!remoteCursorPositionsEnabled) return
-        if (remoteVideo) return
+        if (isStreaming) return
         window.BananasApi.remoteCursorPing(e.data)
+      }
+    }
+    if (dc.label === 'signaling') {
+      signalingChannel = dc
+      dc.onmessage = function (e: MessageEvent): void {
+        console.log('signaling channel message:', e.data)
+        if (e.data === 'ready') {
+          readyState = BananasReadyState.READY
+        }
       }
     }
   }
@@ -104,9 +117,7 @@
       }
     }
     pc.ontrack = (evt): void => {
-      if (remoteVideo) {
-        remoteVideo.srcObject = evt.streams[0]
-      }
+      remoteVideo.srcObject = evt.streams[0]
       if (audioStream) {
         audioElement.srcObject = evt.streams[0]
       }
@@ -121,6 +132,9 @@
     }
     pc.oniceconnectionstatechange = function (): void {
       connectionState = pc.iceConnectionState
+      if (connectionState === BananasConnectionState.CONNECTED) {
+        signalingChannel.send(JSON.stringify({ type: 'ready' }))
+      }
     }
     try {
       audioStream = await navigator.mediaDevices.getUserMedia({
@@ -130,7 +144,7 @@
     } catch (e) {
       errorHander(e)
     }
-    if (!remoteVideo) {
+    if (isStreaming) {
       try {
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
@@ -176,8 +190,10 @@
   export async function CreateHostUrl(data: { username: string }): Promise<string> {
     remoteMouseCursorPositionsChannel = pc.createDataChannel('remoteMouseCursorPositions')
     remoteCursorPingChannel = pc.createDataChannel('remoteCursorPing')
+    signalingChannel = pc.createDataChannel('signaling')
     setupDataChannel(remoteMouseCursorPositionsChannel)
     setupDataChannel(remoteCursorPingChannel)
+    setupDataChannel(signalingChannel)
     const desc = await pc.createOffer()
     await pc.setLocalDescription(desc)
     return await getConnectionString(ConnectionType.HOST, pc.localDescription, data)
