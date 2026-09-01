@@ -1,11 +1,10 @@
+import { mount } from 'svelte'
 import '@fortawesome/fontawesome-free/css/all.min.css'
-import 'bulma/css/bulma.min.css'
-import '@sweetalert2/theme-bulma/bulma.min.css'
+import './app.css'
 import App from './App.svelte'
-import './overrides.css'
 
-const app = new App({
-  target: document.getElementById('app')
+const app = mount(App, {
+  target: document.getElementById('app')!,
 })
 
 export default app

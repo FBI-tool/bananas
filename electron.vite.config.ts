@@ -1,37 +1,49 @@
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import tailwindcss from '@tailwindcss/vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
+import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
 export default defineConfig({
   main: {
     build: {
       rollupOptions: {
         input: {
-          index: 'src/main/index.ts'
-        }
-      }
+          index: 'src/main/index.ts',
+        },
+      },
     },
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
   },
   preload: {
     build: {
       rollupOptions: {
         input: {
           index: 'src/preload/index.ts',
-          cursors: 'src/preload/cursors.ts'
-        }
-      }
+          cursors: 'src/preload/cursors.ts',
+        },
+      },
     },
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
   },
   renderer: {
     build: {
       rollupOptions: {
         input: {
           index: 'src/renderer/index.html',
-          cursors: 'src/renderer/cursors.html'
-        }
-      }
+          cursors: 'src/renderer/cursors.html',
+        },
+      },
     },
-    plugins: [svelte()]
-  }
+    plugins: [
+      tailwindcss(),
+      svelte({
+        include: /\.svelte($|\?)/,
+        compilerOptions: {
+          runes: true,
+        },
+      }),
+    ],
+    optimizeDeps: {
+      include: ['sdp-compact', 'sdp-transform', 'fflate'],
+    },
+  },
 })

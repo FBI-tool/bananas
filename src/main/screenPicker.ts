@@ -27,7 +27,7 @@ const serializeSource = (source: DesktopCapturerSource): ScreenShareSource => {
     name: source.name,
     thumbnail: nativeImageToDataUrl(source.thumbnail) ?? '',
     appIcon: nativeImageToDataUrl(source.appIcon),
-    isScreen
+    isScreen,
   }
 }
 
@@ -38,7 +38,7 @@ const getDesktopSources = async (): Promise<DesktopCapturerSource[]> => {
   const screenThumbnails = { width: 320, height: 180 }
   const screens = await desktopCapturer.getSources({
     types: ['screen'],
-    thumbnailSize: screenThumbnails
+    thumbnailSize: screenThumbnails,
   })
 
   try {
@@ -46,11 +46,11 @@ const getDesktopSources = async (): Promise<DesktopCapturerSource[]> => {
       desktopCapturer.getSources({
         types: ['window'],
         thumbnailSize: { width: 160, height: 90 },
-        fetchWindowIcons: true
+        fetchWindowIcons: true,
       }),
       new Promise<DesktopCapturerSource[]>((resolve) => {
         setTimeout(() => resolve([]), 5000)
-      })
+      }),
     ])
     return [...screens, ...windows]
   } catch (err) {
@@ -60,7 +60,7 @@ const getDesktopSources = async (): Promise<DesktopCapturerSource[]> => {
 }
 
 const respondOnce = (
-  callback: (streams: { video?: DesktopCapturerSource }) => void
+  callback: (streams: { video?: DesktopCapturerSource }) => void,
 ): ((streams: { video?: DesktopCapturerSource }) => void) => {
   let responded = false
   return (streams): void => {
@@ -76,7 +76,7 @@ const respondOnce = (
 
 const askRendererToPickSource = async (
   win: BrowserWindow,
-  sources: ScreenShareSource[]
+  sources: ScreenShareSource[],
 ): Promise<string | null> => {
   if (win.isMinimized()) win.restore()
   const bounds = win.getBounds()
@@ -105,7 +105,7 @@ const askRendererToPickSource = async (
       }
       const onSelected = (
         _event: Electron.IpcMainEvent,
-        payload: { requestId: number; sourceId: string | null }
+        payload: { requestId: number; sourceId: string | null },
       ): void => {
         if (payload?.requestId !== requestId) return
         finish(payload.sourceId)
@@ -130,7 +130,7 @@ export const installDisplayMediaHandler = (getMainWindow: () => BrowserWindow): 
 
   const handler = async (
     _request: unknown,
-    callback: (streams: { video?: DesktopCapturerSource }) => void
+    callback: (streams: { video?: DesktopCapturerSource }) => void,
   ): Promise<void> => {
     const respond = respondOnce(callback)
     try {

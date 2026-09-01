@@ -1,303 +1,291 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import Swal from 'sweetalert2'
   import { L } from './translations'
   import {
     makeVideoDraggable,
     mayBeConnectionString,
-    getDataFromBananasUrl,
+    getDataFromKiwiUrl,
     ConnectionType,
     getUUIDv4
   } from './Utils'
-  import { useNavigationEnabled, useIsWatching, useParticipantUrl } from './stores'
-  import WebRTC from './WebRTC.svelte'
+  import { appState } from './appState.svelte'
+  import { toast } from './toast.svelte'
+  import { WebRTCSession } from './webrtc.svelte'
   import AudioVisualizer from './AudioVisualizer.svelte'
 
-  const navigationEnabled = useNavigationEnabled()
-  const isWatching = useIsWatching()
+  const webrtc = new WebRTCSession()
+  const UUID = getUUIDv4()
 
-  let connectionState = 'disconnected'
-  let webRTCComponent: WebRTC
-  let connectButton: HTMLButtonElement
-  let copyButton: HTMLButtonElement
-  let remoteScreen: HTMLVideoElement
-  let UUID = getUUIDv4()
-  let zoomFactor = 1
-  let microphoneActive = false
-  let isStreaming = false
-  let isConnected = false
-  let connectionStringIsValid: boolean | null = null
-  let connectToUserName = ''
-  let copyButtonIsLoading = false
-  let connectionString = useParticipantUrl()
-  let visualizerIsActive: boolean = true
+  let remoteScreen: HTMLVideoElement | undefined = $state()
+  let zoomFactor = $state(1)
+  let microphoneActive = $state(false)
+  let isStreaming = $state(false)
+  let isConnected = $state(false)
+  let connectionStringIsValid = $state<boolean | null>(null)
+  let connectToUserName = $state('')
+  let copyButtonIsLoading = $state(false)
+  let visualizerIsActive = $state(true)
+  let username = $state('')
+  let color = $state('#ffffff')
 
-  const onConnectionStringChange = async (): Promise<void> => {
-    if ($connectionString === '') {
-      connectionStringIsValid = null
-      return
-    }
-    connectionStringIsValid = mayBeConnectionString(ConnectionType.HOST, $connectionString)
-    if (connectionStringIsValid) {
-      const bananasData = await getDataFromBananasUrl($connectionString)
-      connectToUserName = bananasData.data.username
-    }
-  }
+  $effect(() => {
+    const value = appState.participantUrl
+    void (async (): Promise<void> => {
+      if (value === '') {
+        connectionStringIsValid = null
+        return
+      }
+      const valid = mayBeConnectionString(ConnectionType.HOST, value)
+      connectionStringIsValid = valid
+      if (valid) {
+        const kiwiData = await getDataFromKiwiUrl(value)
+        connectToUserName = kiwiData.data.username
+      }
+    })()
+  })
 
-  const onConnectionStateChange = (): void => {
-    switch (connectionState) {
+  $effect(() => {
+    switch (webrtc.connectionState) {
       case 'connected':
-        Swal.fire({
-          position: 'top-end',
-          icon: 'success',
-          title: 'Connection established',
-          showConfirmButton: false,
-          timer: 1500
-        })
+        toast.show('success', L.connection_established())
         break
       case 'failed':
-        Swal.fire({
-          position: 'top-end',
-          icon: 'error',
-          title: 'Connection failed',
-          showConfirmButton: false,
-          timer: 1500
-        })
+        toast.show('error', 'Connection failed')
         break
       case 'closed':
-        Swal.fire({
-          position: 'top-end',
-          icon: 'info',
-          title: 'Connection closed',
-          showConfirmButton: false,
-          timer: 1500
-        })
+        toast.show('info', 'Connection closed')
         break
       default:
         break
     }
+  })
+
+  const onConnectClick = async (): Promise<void> => {
+    await webrtc.Setup(remoteScreen)
+    const data = await getDataFromKiwiUrl(appState.participantUrl)
+    await webrtc.Connect(data.rtcSessionDescription)
+    isConnected = true
+    appState.isWatching = true
+    appState.navigationEnabled = false
   }
 
-  $: $connectionString, onConnectionStringChange()
-  $: connectionState, onConnectionStateChange()
+  const onCopyClick = async (): Promise<void> => {
+    copyButtonIsLoading = true
+    const remoteData = await getDataFromKiwiUrl(appState.participantUrl)
+    const data = await webrtc.CreateParticipantUrl(remoteData.rtcSessionDescription, {
+      username
+    })
+    navigator.clipboard.writeText(data)
+    setTimeout(() => {
+      copyButtonIsLoading = false
+    }, 400)
+  }
 
   onMount(async () => {
-    const settings = await window.BananasApi.getSettings()
+    const settings = await window.KiwiApi.getSettings()
     microphoneActive = settings.isMicrophoneEnabledOnConnect
-    makeVideoDraggable(remoteScreen)
-    connectButton.addEventListener('click', async () => {
-      await webRTCComponent.Setup(remoteScreen)
-      const data = await getDataFromBananasUrl($connectionString)
-      await webRTCComponent.Connect(data.rtcSessionDescription)
-      isConnected = true
-      $isWatching = true
-      $navigationEnabled = false
-    })
-    copyButton.addEventListener('click', async () => {
-      copyButtonIsLoading = true
-      const remoteData = await getDataFromBananasUrl($connectionString)
-      const data = await webRTCComponent.CreateParticipantUrl(remoteData.rtcSessionDescription, {
-        username: settings.username
-      })
-      navigator.clipboard.writeText(data)
-      setTimeout(() => {
-        copyButtonIsLoading = false
-      }, 400)
-    })
-    remoteScreen.addEventListener('dblclick', () => {
-      webRTCComponent.PingRemoteCursor('cursor-' + UUID)
-    })
-    remoteScreen.addEventListener('mousemove', (e) => {
-      const { offsetX, offsetY } = e
-      // TODO: Batch cursor updates
-      webRTCComponent.UpdateRemoteCursor({
-        x: offsetX / remoteScreen.clientWidth,
-        y: offsetY / remoteScreen.clientHeight,
-        name: settings.username,
-        id: 'cursor-' + UUID,
-        color: settings.color
-      })
-    })
-    remoteScreen.addEventListener('play', () => {
-      if (!webRTCComponent.IsConnected()) return
-      isStreaming = true
-    })
+    username = settings.username
+    color = settings.color
+    if (remoteScreen) makeVideoDraggable(remoteScreen)
   })
+
+  const onRemoteScreenDblClick = (): void => {
+    webrtc.PingRemoteCursor('cursor-' + UUID)
+  }
+
+  const onRemoteScreenMouseMove = (e: MouseEvent): void => {
+    if (!remoteScreen) return
+    const { offsetX, offsetY } = e
+    webrtc.UpdateRemoteCursor({
+      x: offsetX / remoteScreen.clientWidth,
+      y: offsetY / remoteScreen.clientHeight,
+      name: username,
+      id: 'cursor-' + UUID,
+      color
+    })
+  }
+
+  const onRemoteScreenPlay = (): void => {
+    if (!webrtc.IsConnected()) return
+    isStreaming = true
+  }
+
   const reset = (): void => {
-    $connectionString = ''
+    appState.participantUrl = ''
     connectionStringIsValid = null
     isStreaming = false
     microphoneActive = false
     isConnected = false
-    $navigationEnabled = true
-    $isWatching = false
+    appState.navigationEnabled = true
+    appState.isWatching = false
   }
+
   const onDisconnectClick = async (): Promise<void> => {
-    await webRTCComponent.Disconnect()
+    await webrtc.Disconnect()
     reset()
   }
+
   const onFullscreenClick = (): void => {
-    remoteScreen.requestFullscreen()
+    remoteScreen?.requestFullscreen()
   }
+
   const onZoomInClick = (): void => {
+    if (!remoteScreen) return
     zoomFactor += 0.1
     remoteScreen.style.scale = zoomFactor.toString()
   }
+
   const onZoomOutClick = (): void => {
+    if (!remoteScreen) return
     if (zoomFactor <= 1) return
     zoomFactor -= 0.1
     remoteScreen.style.scale = zoomFactor.toString()
   }
+
   const onMicrophoneToggle = async (): Promise<void> => {
     microphoneActive = !microphoneActive
-    webRTCComponent.ToggleMicrophone()
+    webrtc.ToggleMicrophone()
   }
+
+  const connectionInputClass = $derived(
+    connectionStringIsValid === null
+      ? ''
+      : connectionStringIsValid
+        ? 'input-success'
+        : 'input-error'
+  )
+  const connectButtonClass = $derived(
+    connectionStringIsValid === null
+      ? 'btn-primary'
+      : connectionStringIsValid
+        ? 'btn-success'
+        : 'btn-error'
+  )
 </script>
 
-<WebRTC bind:connectionState bind:this={webRTCComponent} />
-
-<div class="container p-5">
-  <h1 class="title">{!isStreaming ? L.join_a_session() : L.joined_a_session()}</h1>
-  <div class={!isStreaming ? 'is-hidden' : ''}>
-    <div class="fixed-grid">
-      <div class="grid">
-        <div class="cell">
-          <button
-            aria-label="{microphoneActive ? L.microphone_active() : L.microphone_inactive()}}"
-            title={microphoneActive ? L.microphone_active() : L.microphone_inactive()}
-            class="button {microphoneActive ? 'is-success' : 'is-danger'}"
-            on:click={onMicrophoneToggle}
-          >
-            <span class="icon">
-              {#if microphoneActive}
-                <AudioVisualizer
-                  className="icon {!visualizerIsActive ? 'is-hidden' : ''}"
-                  bind:visualizerIsActive
-                  stream={webRTCComponent.GetAudioStream()}
-                />
-                <i class="fas fa-microphone {visualizerIsActive ? 'is-hidden' : ''}"></i>
-              {:else}
-                <i class="fas fa-microphone-slash"></i>
-              {/if}
-            </span>
-          </button>
-        </div>
-        <div class="cell has-text-right">
-          <button class="button is-danger" aria-label={L.disconnect()} on:click={onDisconnectClick}>
-            <span class="icon">
-              <i class="fas fa-unlink"></i>
-            </span>
-            <span>{L.disconnect()}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="fixed-grid has-2-cols">
-    <div class="grid">
-      <div class="cell">
-        <div class="field has-addons {isStreaming || isConnected ? 'is-hidden' : ''}">
-          <div class="control has-icons-left has-icons-right">
-            <input
-              bind:value={$connectionString}
-              placeholder={L.host_connection_string()}
-              class="input {connectionStringIsValid === null
-                ? ''
-                : connectionStringIsValid
-                  ? 'is-success'
-                  : 'is-danger'}"
-              type="text"
+<div class="container mx-auto p-5">
+  <h1 class="text-3xl font-bold mb-4">{!isStreaming ? L.join_a_session() : L.joined_a_session()}</h1>
+  {#if isStreaming}
+    <div class="flex justify-between items-center mb-4">
+      <button
+        aria-label={microphoneActive ? L.microphone_active() : L.microphone_inactive()}
+        title={microphoneActive ? L.microphone_active() : L.microphone_inactive()}
+        class="btn {microphoneActive ? 'btn-success' : 'btn-error'}"
+        onclick={onMicrophoneToggle}
+      >
+        <span class="icon">
+          {#if microphoneActive}
+            <AudioVisualizer
+              className="icon {visualizerIsActive ? '' : 'hidden'}"
+              bind:visualizerIsActive
+              stream={webrtc.GetAudioStream()}
             />
-            <span class="icon is-small is-left">
-              <i class="fas fa-user"></i>
-            </span>
-            <span class="icon is-small is-right">
-              <i
-                class="fas fa-question {connectionStringIsValid === null
-                  ? 'fa-question'
-                  : connectionStringIsValid
-                    ? 'fa-check'
-                    : 'fa-times'}"
-              ></i>
-            </span>
-          </div>
-          <div class="control">
-            <button
-              class="button {connectionStringIsValid === null
-                ? 'is-link'
-                : connectionStringIsValid
-                  ? 'is-success'
-                  : 'is-danger'}"
-              bind:this={connectButton}
-              disabled={connectionStringIsValid ? false : true}
-            >
-              <span class="icon">
-                <i class="fas fa-link"></i>
-              </span>
-              <span>{L.connect()} {connectionStringIsValid ? connectToUserName : ''} </span>
-            </button>
-          </div>
-        </div>
-        <div class="control">
-          <button
-            class="button is-link {!isConnected || isStreaming
-              ? 'is-hidden'
-              : ''} {copyButtonIsLoading ? 'is-loading' : ''}"
-            bind:this={copyButton}
-          >
-            <span class="icon">
-              <i class="fas fa-copy"></i>
-            </span>
-            <span>{L.copy_my_connection_string()}</span>
-          </button>
-        </div>
-      </div>
-      <div class="cell">
-        <button
-          class="button is-danger {isStreaming || !isConnected ? 'is-hidden' : ''}"
-          on:click={onDisconnectClick}
-        >
-          <span class="icon">
-            <i class="fas fa-unlink"></i>
-          </span>
-          <span>{L.cancel()}</span>
-        </button>
-      </div>
+            <i class="fas fa-microphone {visualizerIsActive ? 'hidden' : ''}"></i>
+          {:else}
+            <i class="fas fa-microphone-slash"></i>
+          {/if}
+        </span>
+      </button>
+      <button class="btn btn-error" aria-label={L.disconnect()} onclick={onDisconnectClick}>
+        <span class="icon">
+          <i class="fas fa-unlink"></i>
+        </span>
+        <span>{L.disconnect()}</span>
+      </button>
     </div>
-  </div>
+  {/if}
+
+  {#if !isStreaming && !isConnected}
+    <div class="join w-full mb-4">
+      <label class="input join-item flex-1 {connectionInputClass}">
+        <i class="fas fa-user"></i>
+        <input
+          bind:value={appState.participantUrl}
+          placeholder={L.host_connection_string()}
+          type="text"
+        />
+        <i
+          class="fas {connectionStringIsValid === null
+            ? 'fa-question'
+            : connectionStringIsValid
+              ? 'fa-check'
+              : 'fa-times'}"
+        ></i>
+      </label>
+      <button
+        class="btn join-item {connectButtonClass}"
+        onclick={onConnectClick}
+        disabled={!connectionStringIsValid}
+      >
+        <span class="icon">
+          <i class="fas fa-link"></i>
+        </span>
+        <span>{L.connect()} {connectionStringIsValid ? connectToUserName : ''}</span>
+      </button>
+    </div>
+  {/if}
+
+  {#if isConnected && !isStreaming}
+    <div class="flex gap-2 mb-4">
+      <button
+        class="btn btn-primary {copyButtonIsLoading ? 'pointer-events-none' : ''}"
+        onclick={onCopyClick}
+      >
+        {#if copyButtonIsLoading}
+          <span class="loading loading-spinner"></span>
+        {:else}
+          <span class="icon">
+            <i class="fas fa-copy"></i>
+          </span>
+        {/if}
+        <span>{L.copy_my_connection_string()}</span>
+      </button>
+      <button class="btn btn-error" onclick={onDisconnectClick}>
+        <span class="icon">
+          <i class="fas fa-unlink"></i>
+        </span>
+        <span>{L.cancel()}</span>
+      </button>
+    </div>
+  {/if}
 </div>
 
-<div class={!isStreaming ? 'is-hidden' : ''}>
-  <div class="field">
-    <label class="label" for="remote_screen">{L.remote_screen()}</label>
-    <div class="control">
-      <div class="video-overflow">
-        <video bind:this={remoteScreen} id="remote_screen" class="video" autoplay playsinline muted
-        ></video>
-      </div>
+<div class={isStreaming ? '' : 'hidden'}>
+  <fieldset class="fieldset px-5">
+    <legend class="fieldset-legend">{L.remote_screen()}</legend>
+    <div class="video-overflow">
+      <video
+        bind:this={remoteScreen}
+        id="remote_screen"
+        class="video"
+        autoplay
+        playsinline
+        muted
+        ondblclick={onRemoteScreenDblClick}
+        onmousemove={onRemoteScreenMouseMove}
+        onplay={onRemoteScreenPlay}
+      ></video>
     </div>
-  </div>
-  <div class="field">
-    <div class="control">
-      <button class="button is-info" on:click={onZoomInClick}>
-        <span class="icon">
-          <i class="fas fa-search-plus"></i>
-        </span>
-        <span>{L.zoom_in()}</span>
-      </button>
-      <button class="button is-info" on:click={onZoomOutClick}>
-        <span class="icon">
-          <i class="fas fa-search-minus"></i>
-        </span>
-        <span>{L.zoom_out()}</span>
-      </button>
-      <button class="button is-info" on:click={onFullscreenClick}>
-        <span class="icon">
-          <i class="fas fa-expand"></i>
-        </span>
-        <span>{L.fullscreen()}</span>
-      </button>
-    </div>
+  </fieldset>
+  <div class="flex gap-2 px-5 pb-5">
+    <button class="btn btn-info" onclick={onZoomInClick}>
+      <span class="icon">
+        <i class="fas fa-search-plus"></i>
+      </span>
+      <span>{L.zoom_in()}</span>
+    </button>
+    <button class="btn btn-info" onclick={onZoomOutClick}>
+      <span class="icon">
+        <i class="fas fa-search-minus"></i>
+      </span>
+      <span>{L.zoom_out()}</span>
+    </button>
+    <button class="btn btn-info" onclick={onFullscreenClick}>
+      <span class="icon">
+        <i class="fas fa-expand"></i>
+      </span>
+      <span>{L.fullscreen()}</span>
+    </button>
   </div>
 </div>
 

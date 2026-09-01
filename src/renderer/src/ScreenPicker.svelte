@@ -1,15 +1,15 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import type { ScreenShareSource } from './BananasTypes'
+  import type { ScreenShareSource } from './types'
   import { L } from './translations'
 
-  let visible = false
-  let sources: ScreenShareSource[] = []
-  let selectedId: string | null = null
+  let visible = $state(false)
+  let sources = $state<ScreenShareSource[]>([])
+  let selectedId = $state<string | null>(null)
   let resolvePick: ((sourceId: string | null) => void) | null = null
 
-  $: screens = sources.filter((source) => source.isScreen)
-  $: windows = sources.filter((source) => !source.isScreen)
+  const screens = $derived(sources.filter((source) => source.isScreen))
+  const windows = $derived(sources.filter((source) => !source.isScreen))
 
   const finish = (sourceId: string | null): void => {
     visible = false
@@ -57,86 +57,78 @@
   })
 </script>
 
-<div class="modal {visible ? 'is-active' : ''}">
-  <div
-    class="modal-background"
-    role="button"
-    tabindex="-1"
-    on:click={() => finish(null)}
-    on:keydown={onKeyDown}
-  ></div>
-  <div class="modal-card screen-picker-card">
-    <header class="modal-card-head">
-      <p class="modal-card-title">{L.share_your_screen()}</p>
-      <button class="delete" aria-label={L.cancel()} on:click={() => finish(null)}></button>
-    </header>
-    <section class="modal-card-body">
-      {#if sources.length === 0}
-        <p>{L.no_screens_found()}</p>
-      {:else}
-        {#if screens.length}
-          <h2 class="title is-6 mb-3">{L.screens()}</h2>
-          <div class="screen-picker-grid mb-5">
-            {#each screens as source (source.id)}
-              <button
-                type="button"
-                class="screen-picker-item {selectedId === source.id ? 'is-selected' : ''}"
-                on:click={() => selectSource(source.id)}
-                on:dblclick={() => shareSource(source.id)}
-              >
-                <span class="screen-picker-thumb">
-                  {#if source.thumbnail}
-                    <img src={source.thumbnail} alt={source.name} />
-                  {:else}
-                    <i class="fa-solid fa-display"></i>
-                  {/if}
-                </span>
-                <span class="screen-picker-name">{source.name}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-        {#if windows.length}
-          <h2 class="title is-6 mb-3">{L.windows()}</h2>
-          <div class="screen-picker-grid">
-            {#each windows as source (source.id)}
-              <button
-                type="button"
-                class="screen-picker-item {selectedId === source.id ? 'is-selected' : ''}"
-                on:click={() => selectSource(source.id)}
-                on:dblclick={() => shareSource(source.id)}
-              >
-                <span class="screen-picker-thumb">
-                  {#if source.thumbnail}
-                    <img src={source.thumbnail} alt={source.name} />
-                  {:else}
-                    <i class="fa-solid fa-window-maximize"></i>
-                  {/if}
-                  {#if source.appIcon}
-                    <img class="screen-picker-app-icon" src={source.appIcon} alt="" />
-                  {/if}
-                </span>
-                <span class="screen-picker-name">{source.name}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
+<dialog class="modal" class:modal-open={visible}>
+  <div class="modal-box max-w-3xl">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-lg font-bold">{L.share_your_screen()}</h3>
+      <button class="btn btn-sm btn-circle btn-ghost" aria-label={L.cancel()} onclick={() => finish(null)}>
+        ✕
+      </button>
+    </div>
+    {#if sources.length === 0}
+      <p>{L.no_screens_found()}</p>
+    {:else}
+      {#if screens.length}
+        <h2 class="font-semibold mb-3">{L.screens()}</h2>
+        <div class="screen-picker-grid mb-5">
+          {#each screens as source (source.id)}
+            <button
+              type="button"
+              class="screen-picker-item {selectedId === source.id ? 'is-selected' : ''}"
+              onclick={() => selectSource(source.id)}
+              ondblclick={() => shareSource(source.id)}
+            >
+              <span class="screen-picker-thumb">
+                {#if source.thumbnail}
+                  <img src={source.thumbnail} alt={source.name} />
+                {:else}
+                  <i class="fa-solid fa-display"></i>
+                {/if}
+              </span>
+              <span class="screen-picker-name">{source.name}</span>
+            </button>
+          {/each}
+        </div>
       {/if}
-    </section>
-    <footer class="modal-card-foot">
-      <button class="button is-link" disabled={!selectedId} on:click={() => finish(selectedId)}>
+      {#if windows.length}
+        <h2 class="font-semibold mb-3">{L.windows()}</h2>
+        <div class="screen-picker-grid">
+          {#each windows as source (source.id)}
+            <button
+              type="button"
+              class="screen-picker-item {selectedId === source.id ? 'is-selected' : ''}"
+              onclick={() => selectSource(source.id)}
+              ondblclick={() => shareSource(source.id)}
+            >
+              <span class="screen-picker-thumb">
+                {#if source.thumbnail}
+                  <img src={source.thumbnail} alt={source.name} />
+                {:else}
+                  <i class="fa-solid fa-window-maximize"></i>
+                {/if}
+                {#if source.appIcon}
+                  <img class="screen-picker-app-icon" src={source.appIcon} alt="" />
+                {/if}
+              </span>
+              <span class="screen-picker-name">{source.name}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    {/if}
+    <div class="modal-action">
+      <button class="btn btn-primary" disabled={!selectedId} onclick={() => finish(selectedId)}>
         {L.share()}
       </button>
-      <button class="button" on:click={() => finish(null)}>{L.cancel()}</button>
-    </footer>
+      <button class="btn" onclick={() => finish(null)}>{L.cancel()}</button>
+    </div>
   </div>
-</div>
+  <form method="dialog" class="modal-backdrop">
+    <button onclick={() => finish(null)}>close</button>
+  </form>
+</dialog>
 
 <style>
-  .screen-picker-card {
-    width: min(720px, calc(100vw - 2rem));
-  }
-
   .screen-picker-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -148,17 +140,17 @@
     flex-direction: column;
     gap: 0.4rem;
     padding: 0.5rem;
-    border: 2px solid var(--bulma-border, #dbdbdb);
+    border: 2px solid var(--color-base-300, #d1d5db);
     border-radius: 8px;
-    background: var(--bulma-scheme-main, #fff);
+    background: var(--color-base-100, #fff);
     cursor: pointer;
     text-align: left;
     color: inherit;
   }
 
   .screen-picker-item.is-selected {
-    border-color: var(--bulma-link, #485fc7);
-    box-shadow: 0 0 0 1px var(--bulma-link, #485fc7);
+    border-color: var(--color-primary, #84cc16);
+    box-shadow: 0 0 0 1px var(--color-primary, #84cc16);
   }
 
   .screen-picker-thumb {
@@ -169,8 +161,8 @@
     aspect-ratio: 16 / 9;
     overflow: hidden;
     border-radius: 4px;
-    background: var(--bulma-scheme-main-bis, #f5f5f5);
-    color: var(--bulma-text-weak, #7a7a7a);
+    background: var(--color-base-200, #f5f5f5);
+    color: var(--color-base-content, #7a7a7a);
     font-size: 1.5rem;
   }
 

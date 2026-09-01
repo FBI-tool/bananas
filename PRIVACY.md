@@ -4,7 +4,7 @@ Effective Date: 2024-12-03
 
 Your privacy is important to us.
 This Privacy Policy outlines how we handle and protect your information when you use
-Bananas Screen Sharing (the "App").
+p2p.kiwi Screen Sharing (the "App").
 
 By using the App, you agree to the terms of this Privacy Policy.
 
@@ -58,4 +58,4 @@ your acceptance of the revised terms.
 
 If you have any questions or concerns about this Privacy Policy or the App,
 please contact us via filing an issue on the
-[GitHub repository](https://github.com/mistweaverco/bananas/issues/new).
+[GitHub repository](https://github.com/dont-be-evil-company/p2p.kiwi/issues/new).

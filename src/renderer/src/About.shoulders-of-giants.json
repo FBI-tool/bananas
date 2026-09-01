@@ -35,25 +35,39 @@
     "url": "https://github.com/sveltejs/svelte"
   },
   {
-    "title": "Bulma",
-    "description": "A modern CSS framework based on Flexbox.",
+    "title": "Tailwind CSS",
+    "description": "A utility-first CSS framework for rapidly building custom user interfaces.",
     "usage": "Used for styling the user interface.",
     "license": "MIT",
-    "url": "https://github.com/jgthms/bulma"
+    "url": "https://github.com/tailwindlabs/tailwindcss"
   },
   {
-    "title": "eslint",
-    "description": "Find and fix problems in your JavaScript code.",
+    "title": "daisyUI",
+    "description": "The most popular component library for Tailwind CSS.",
+    "usage": "Used for UI components on top of Tailwind CSS.",
+    "license": "MIT",
+    "url": "https://github.com/saadeghi/daisyui"
+  },
+  {
+    "title": "Oxlint",
+    "description": "A high-performance JavaScript and TypeScript linter.",
     "usage": "Used for linting the application.",
     "license": "MIT",
-    "url": "https://github.com/eslint/eslint"
+    "url": "https://github.com/oxc-project/oxc"
   },
   {
-    "title": "prettier",
-    "description": "An opinionated code formatter.",
+    "title": "Oxfmt",
+    "description": "A high-performance code formatter from the Oxc project.",
     "usage": "Used for formatting the application.",
     "license": "MIT",
-    "url": "https://github.com/prettier/prettier"
+    "url": "https://github.com/oxc-project/oxc"
+  },
+  {
+    "title": "Vite+",
+    "description": "The unified toolchain for the web, combining Vite, Vitest, Oxlint, and Oxfmt.",
+    "usage": "Used for linting, formatting, testing, and the frontend toolchain.",
+    "license": "MIT",
+    "url": "https://github.com/voidzero-dev/vite-plus"
   },
   {
     "title": "Vscode",
@@ -89,12 +103,5 @@
     "usage": "Used for installing and managing dependencies and running scripts.",
     "license": "MIT",
     "url": "https://github.com/oven-sh/bun"
-  },
-  {
-    "title": "SweetAlert2",
-    "description": "A beautiful, responsive, customizable, accessible (WAI-ARIA) replacement for JavaScript's popup boxes.",
-    "usage": "Used for displaying alerts and modals.",
-    "license": "MIT",
-    "url": "https://github.com/sweetalert2/sweetalert2"
   }
 ]

@@ -1,12 +1,13 @@
 ---
-appId: net.getbananas.desktop
-productName: bananas
+appId: kiwi.p2p.desktop
+productName: p2p.kiwi
 directories:
   buildResources: build
 files:
   - '!**/.vscode/*'
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!vite.config.ts'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
@@ -14,10 +15,10 @@ asarUnpack:
   - resources/**
 afterSign: scripts/notarize.js
 win:
-  executableName: bananas
+  executableName: p2p-kiwi
   icon: build/icon.ico
 nsis:
-  artifactName: ${name}-setup_${arch}.${ext}
+  artifactName: p2p-kiwi-setup_${arch}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -39,7 +40,7 @@ mac:
       arch:
         - universal
 dmg:
-  artifactName: ${name}_${arch}.${ext}
+  artifactName: p2p-kiwi_${arch}.${ext}
   icon: build/icon.icns
 linux:
   target:
@@ -47,18 +48,18 @@ linux:
     - snap
     - flatpak
     - deb
-  maintainer: getbananas.net
+  maintainer: p2p.kiwi
   category: Utility
   icon: build/
 appImage:
-  artifactName: ${name}_${arch}.${ext}
+  artifactName: p2p-kiwi_${arch}.${ext}
 snap:
-  artifactName: ${name}_${arch}.${ext}
+  artifactName: p2p-kiwi_${arch}.${ext}
 flatpak:
-  artifactName: ${name}_${arch}.${ext}
+  artifactName: p2p-kiwi_${arch}.${ext}
 deb:
-  artifactName: ${name}_${arch}.${ext}
+  artifactName: p2p-kiwi_${arch}.${ext}
 npmRebuild: false
 publish:
   provider: generic
-  url: https://auto-updates.getbananas.net/
+  url: https://p2p.kiwi/auto-updates/

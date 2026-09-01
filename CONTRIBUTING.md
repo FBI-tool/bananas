@@ -1,6 +1,6 @@
-# Contributing to Bananas Screen Sharing
+# Contributing to p2p.kiwi Screen Sharing
 
-Thanks for checking out Bananas Screen Sharing!
+Thanks for checking out p2p.kiwi Screen Sharing!
 We're excited to hear and learn from you.
 
 We've put together the following guidelines to
@@ -19,7 +19,7 @@ help you figure out where you can best be helpful.
 
 ## Types of contributions we're looking for
 
-There are many ways you can directly contribute to Bananas Screen Sharing:
+There are many ways you can directly contribute to p2p.kiwi Screen Sharing:
 
 - Feature requests
 - Bug reports
@@ -35,7 +35,7 @@ here are a few things we expect from you (and that you should expect from others
   We all come from different backgrounds and projects,
   which means we likely have different perspectives on "how open source is done."
   Try to listen to others rather than convince them that your way is correct.
-- Bananas is released with a [Contributor Code of Conduct](./CODE_OF_CONDUCT.md).
+- p2p.kiwi is released with a [Contributor Code of Conduct](./CODE_OF_CONDUCT.md).
   By participating in this project, you agree to abide by its terms.
 - Please ensure that your contribution passes all tests if you open a pull request.
   If there are test failures, you will need to address them before we can merge your contribution.
@@ -46,7 +46,7 @@ here are a few things we expect from you (and that you should expect from others
 ## How to contribute
 
 If you'd like to contribute,
-start by searching through the [pull requests](https://github.com/mistweaverco/bananas/pulls) to
+start by searching through the [pull requests](https://github.com/dont-be-evil-company/p2p.kiwi/pulls) to
 see whether someone else has raised a similar idea or question.
 
 If you don't see your idea listed, and you think it fits into the goals of this guide, open a pull request.
@@ -64,7 +64,7 @@ help your prose match the rest of the documentation.
 When writing code,
 please follow these configurations:
 
-- [eslint](./eslintrc.cjs)
+- [Vite+](./vite.config.ts) (`vp fmt`, `vp lint`, `vp check`)
 - [EditorConfig](./.editorconfig)
 - [yaml-lint](./.yamllint.yaml)
 
@@ -73,11 +73,11 @@ so you don't need to worry about them.
 
 ## Community
 
-Discussions about the Bananas take place on:
+Discussions about p2p.kiwi take place on:
 
-- This repository's [Issues](https://github.com/mistweaverco/bananas/issues) and
-  [Pull Requests](https://github.com/mistweaverco/bananas/pulls) sections
-- The [Bananas Discord server](https://discord.gg/BeN43eJVWS)
+- This repository's [Issues](https://github.com/dont-be-evil-company/p2p.kiwi/issues) and
+  [Pull Requests](https://github.com/dont-be-evil-company/p2p.kiwi/pulls) sections
+- The [p2p.kiwi Discord server](https://discord.gg/BeN43eJVWS)
 
 Anybody is welcome to join these conversations.
 

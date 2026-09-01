@@ -1,9 +1,9 @@
 # Terms of Service
 
-Terms of Service for Bananas Screen Sharing
+Terms of Service for p2p.kiwi Screen Sharing
 Effective Date: 2024-12-03
 
-These Terms of Service ("Terms") govern your use of the Bananas Screen Sharing (the "App").
+These Terms of Service ("Terms") govern your use of the p2p.kiwi Screen Sharing (the "App").
 
 By using the App, you agree to these Terms.
 If you do not agree to these Terms, you may not use the App.
@@ -72,4 +72,4 @@ the Terms indicates your acceptance of the modified terms.
 
 If you have any questions or concerns about these Terms,
 please contact us via filing an issue on the
-[GitHub repository](https://github.com/mistweaverco/bananas/issues/new).
+[GitHub repository](https://github.com/dont-be-evil-company/p2p.kiwi/issues/new).

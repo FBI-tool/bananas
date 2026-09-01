@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+---
+version: '3'
+
+tasks:
+  default:
+    desc: Lists all available tasks
+    cmds:
+      - task --list
+    silent: true
+  install-dependencies:
+    desc: Installs all dependencies
+    cmds:
+      - bun install
+      - bun install:electron
+    silent: true
+  generate-icons:
+    desc: Generates application icons
+    cmds:
+      - ./scripts/generate-icons.sh
+    silent: true
+  dev:
+    desc: Runs the app in development mode
+    cmds:
+      - bun run dev
+    silent: true
+  build:
+    desc: Builds the app
+    cmds:
+      - bun run build
+    silent: true
+  build-arch:
+    desc: Builds an Arch Linux package (.pkg.tar.zst) from sources or a .deb
+    cmds:
+      - ./scripts/build-arch.sh {{.CLI_ARGS}}
+    silent: true
+  fmt:
+    desc: Formats all files
+    cmds:
+      - bun run format
+    silent: true
+  lint:
+    desc: Runs lint on all files
+    cmds:
+      - bun run lint
+    silent: true
+  check:
+    desc: Formats, lints, and type-checks
+    cmds:
+      - bun run check
+    silent: true
+  test:
+    desc: Runs tests
+    cmds:
+      - bun run test
+    silent: true

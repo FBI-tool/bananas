@@ -35,15 +35,15 @@ type WindowStateKeeper = WindowState & {
 
 export const settingsKeeper = async (): Promise<Settings> => {
   const defaultSettings: SettingsData = {
-    username: 'Banana Joe',
+    username: 'Kiwi',
     color: '#ffffff',
     language: 'en',
     isMicrophoneEnabledOnConnect: true,
     iceServers: [
       {
-        urls: 'stun:stun.l.google.com:19302'
-      }
-    ]
+        urls: 'stun:stun.l.google.com:19302',
+      },
+    ],
   }
   const hasSettings = await settings.has('settings')
   if (hasSettings) {
@@ -52,15 +52,15 @@ export const settingsKeeper = async (): Promise<Settings> => {
       get: (): SettingsData => {
         return {
           ...defaultSettings,
-          ...data
+          ...data,
         }
       },
-      set: (data: SettingsData) => settings.set('settings', data)
+      set: (data: SettingsData) => settings.set('settings', data),
     }
   }
   return {
     get: (): SettingsData => defaultSettings,
-    set: (data: SettingsData) => settings.set('settings', data)
+    set: (data: SettingsData) => settings.set('settings', data),
   }
 }
 
@@ -79,7 +79,7 @@ export const windowStateKeeper = async (windowName: string): Promise<WindowState
     return {
       width: size.width / 2,
       height: size.height / 2,
-      isMaximized: false
+      isMaximized: false,
     }
   }
 
@@ -87,7 +87,7 @@ export const windowStateKeeper = async (windowName: string): Promise<WindowState
     const bounds = window.getBounds()
     windowState = {
       ...bounds,
-      isMaximized: window.isMaximized()
+      isMaximized: window.isMaximized(),
     }
     await settings.set(`windowState.${windowName}`, windowState)
   }
@@ -107,6 +107,6 @@ export const windowStateKeeper = async (windowName: string): Promise<WindowState
     width: windowState.width,
     height: windowState.height,
     isMaximized: windowState.isMaximized,
-    track
+    track,
   }
 }

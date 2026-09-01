@@ -35,7 +35,7 @@ export const ipcMainHandlersInit = (): void => {
     const data = {
       ...state,
       x,
-      y
+      y,
     }
     remoteCursorsWindow.webContents.send('updateRemoteCursor', data)
   })

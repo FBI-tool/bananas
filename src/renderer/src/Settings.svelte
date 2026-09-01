@@ -3,57 +3,39 @@
   import ColorPicker from 'svelte-awesome-color-picker'
   import { L } from './translations'
 
-  let colorPreviewIcon: HTMLElement
-  let usernameValue: string = 'Banana Joe'
-  let colorValue: string = '#ffffff'
-  let language = 'en'
+  let colorPreviewIcon: HTMLElement | undefined = $state()
+  let usernameValue = $state('Kiwi')
+  let colorValue = $state('#ffffff')
+  let language = $state('en')
   const languageOptions = ['en', 'de', 'fr', 'pt-br', 'zh']
-  let iceServersValue: string = '{ "urls": "stun:stun.l.google.com:19302" }'
-  let isUsernameValid = false
-  let isColorValid = false
-  let isIceServersValid = true
-  let modalSuccessIsActive = false
-  let modalFailureIsActive = false
-  let isMicrophoneEnabledOnConnect = true
+  let iceServersValue = $state('{ "urls": "stun:stun.l.google.com:19302" }')
+  let modalSuccessIsActive = $state(false)
+  let modalFailureIsActive = $state(false)
+  let isMicrophoneEnabledOnConnect = $state(true)
 
-  $: colorValue, checkColor()
-  $: usernameValue, checkUsername()
-  $: iceServersValue, checkIceServers()
-  $: isMicrophoneEnabledOnConnect
-
-  const checkIceServers = (): void => {
-    const serversObjects = iceServersValue.split('\n')
-    isIceServersValid = serversObjects.every((serverObject) => {
+  const isUsernameValid = $derived(usernameValue.length > 0 && usernameValue.length < 32)
+  const isColorValid = $derived(/^#[0-9A-F]{6}$/i.test(colorValue))
+  const isIceServersValid = $derived(
+    iceServersValue.split('\n').every((serverObject) => {
       try {
         const srv = JSON.parse(serverObject)
         return srv.urls && srv.urls.length > 0
-      } catch (e) {
+      } catch {
         return false
       }
     })
-  }
-  const checkIsValidHexColor = (color: string): boolean => {
-    return /^#[0-9A-F]{6}$/i.test(color)
-  }
-  function checkColor(): void {
-    if (checkIsValidHexColor(colorValue)) {
-      isColorValid = true
+  )
+
+  $effect(() => {
+    if (isColorValid) {
       colorPreviewIcon?.style.setProperty('--color', colorValue)
-    } else {
-      isColorValid = false
     }
-  }
-  function checkUsername(): void {
-    if (usernameValue.length > 0 && usernameValue.length < 32) {
-      isUsernameValid = true
-    } else {
-      isUsernameValid = false
-    }
-  }
+  })
+
   async function onSubmit(evt: Event): Promise<void> {
     evt.preventDefault()
     if (isUsernameValid && isColorValid && isIceServersValid) {
-      await window.BananasApi.updateSettings({
+      await window.KiwiApi.updateSettings({
         username: usernameValue,
         color: colorValue,
         language,
@@ -72,7 +54,7 @@
     }
   }
   onMount(async () => {
-    const settings = await window.BananasApi.getSettings()
+    const settings = await window.KiwiApi.getSettings()
     usernameValue = settings.username
     colorValue = settings.color
     language = settings.language
@@ -81,121 +63,81 @@
   })
 </script>
 
-<div class="modal {modalSuccessIsActive ? 'is-active' : ''}">
-  <div class="modal-background"></div>
-  <div class="modal-content">
-    <div class="box">
-      <h1 class="title has-text-success">Success</h1>
-      <p>Settings successfully saved.</p>
-    </div>
+<dialog class="modal" class:modal-open={modalSuccessIsActive}>
+  <div class="modal-box">
+    <h3 class="text-lg font-bold text-success">Success</h3>
+    <p>Settings successfully saved.</p>
   </div>
-</div>
+</dialog>
 
-<div class="modal {modalFailureIsActive ? 'is-active' : ''}">
-  <div class="modal-background"></div>
-  <div class="modal-content">
-    <div class="box">
-      <h1 class="title has-text-danger">Failure</h1>
-      <p>Settings could not be saved.</p>
-    </div>
+<dialog class="modal" class:modal-open={modalFailureIsActive}>
+  <div class="modal-box">
+    <h3 class="text-lg font-bold text-error">Failure</h3>
+    <p>Settings could not be saved.</p>
   </div>
-</div>
+</dialog>
 
-<div class="container p-5 content">
-  <h1 class="title">{L.settings()}</h1>
-  <h2>{L.basic()}</h2>
-  <form class="form" on:submit={onSubmit}>
-    <div class="field">
-      <label class="label" for="username">{L.username()}</label>
-      <div class="control has-icons-left has-icons-right">
-        <input
-          bind:value={usernameValue}
-          class="input {isUsernameValid ? 'is-success' : 'is-danger'}"
-          type="text"
-          id="username"
-          placeholder="Banana Joe"
-        />
-        <span class="icon is-small is-left">
-          <i class="fas fa-user"></i>
-        </span>
-      </div>
-    </div>
+<div class="container mx-auto p-5">
+  <h1 class="text-3xl font-bold mb-4">{L.settings()}</h1>
+  <h2 class="text-xl font-semibold mb-2">{L.basic()}</h2>
+  <form class="flex flex-col gap-4 max-w-xl" onsubmit={onSubmit}>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">{L.username()}</legend>
+      <label class="input w-full {isUsernameValid ? 'input-success' : 'input-error'}">
+        <i class="fas fa-user"></i>
+        <input bind:value={usernameValue} type="text" id="username" placeholder="Kiwi" />
+      </label>
+    </fieldset>
 
-    <div class="field">
-      <label class="label" for="color">{L.color()}</label>
-      <div class="control has-icons-left has-icons-right">
-        <input
-          bind:value={colorValue}
-          class="input {isColorValid ? 'is-success' : 'is-danger'}"
-          type="text"
-          id="color"
-          placeholder="#fffff"
-        />
-        <span class="icon is-small is-left">
-          <i bind:this={colorPreviewIcon} class="fas fa-palette"></i>
-        </span>
-        <ColorPicker bind:hex={colorValue} isTextInput={false} isAlpha={false} />
-      </div>
-    </div>
-    <div class="field">
-      <label class="label" for="translation">{L.language()}</label>
-      <div class="control has-icons-left has-icons-right">
-        <div class="select">
-          <select bind:value={language}>
-            {#each languageOptions as lang}
-              <option>{lang}</option>
-            {/each}
-          </select>
-        </div>
-        <span class="icon is-small is-left">
-          <i class="fa fa-language"></i>
-        </span>
-      </div>
-      <p class="help">{L.language_description()}</p>
-    </div>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">{L.color()}</legend>
+      <label class="input w-full {isColorValid ? 'input-success' : 'input-error'}">
+        <i bind:this={colorPreviewIcon} class="fas fa-palette color-preview"></i>
+        <input bind:value={colorValue} type="text" id="color" placeholder="#ffffff" />
+      </label>
+      <ColorPicker bind:hex={colorValue} isTextInput={false} isAlpha={false} />
+    </fieldset>
 
-    <h2>Media</h2>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">{L.language()}</legend>
+      <select class="select w-full" bind:value={language}>
+        {#each languageOptions as lang}
+          <option>{lang}</option>
+        {/each}
+      </select>
+      <p class="label">{L.language_description()}</p>
+    </fieldset>
 
-    <div class="field">
-      <div class="control">
-        <label class="checkbox" for="microphone_active_on_connect">
-          <input
-            bind:checked={isMicrophoneEnabledOnConnect}
-            class="checkbox"
-            type="checkbox"
-            id="microphone_active_on_connect"
-            placeholder="#fffff"
-          />
-          {L.is_microphone_active_on_connect()}
-        </label>
-      </div>
-    </div>
+    <h2 class="text-xl font-semibold mt-2">{L.media()}</h2>
 
-    <h2>{L.advanced()}</h2>
+    <label class="label cursor-pointer justify-start gap-2">
+      <input
+        bind:checked={isMicrophoneEnabledOnConnect}
+        class="checkbox"
+        type="checkbox"
+        id="microphone_active_on_connect"
+      />
+      {L.is_microphone_active_on_connect()}
+    </label>
 
-    <div class="field">
-      <label class="label" for="ice_servers">{L.stun_turn_server_objects()}</label>
-      <div class="control has-icons-left has-icons-right">
-        <textarea
-          bind:value={iceServersValue}
-          class="textarea {isIceServersValid ? 'is-success' : 'is-danger'}"
-          id="ice_servers"
-          placeholder="&lbrace; &quot;urls&quot;: &quot;stun:stun.l.google.com:19302&quot; &rbrace;"
-        ></textarea>
-      </div>
-    </div>
+    <h2 class="text-xl font-semibold mt-2">{L.advanced()}</h2>
 
-    <div class="field">
-      <div class="control">
-        <button class="button is-link">Save</button>
-      </div>
-    </div>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">{L.stun_turn_server_objects()}</legend>
+      <textarea
+        bind:value={iceServersValue}
+        class="textarea w-full {isIceServersValid ? 'textarea-success' : 'textarea-error'}"
+        id="ice_servers"
+        placeholder={'{ "urls": "stun:stun.l.google.com:19302" }'}
+      ></textarea>
+    </fieldset>
+
+    <button class="btn btn-primary w-fit">{L.save()}</button>
   </form>
 </div>
 
 <style>
-  span.icon i.fa-palette:before {
-    color: var(--color);
-    text-shadow: '-1px 0 black, 0 1px black, 1px 0 black, 0 -1px black';
+  :global(.color-preview) {
+    color: var(--color, #ffffff);
   }
 </style>

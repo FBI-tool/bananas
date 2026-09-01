@@ -43,7 +43,7 @@ const pt_br = {
   settings: 'Configurações',
   shoulders_of_giants: 'Nossos Ombros de Gigantes',
   shoulders_of_giants_description:
-    'Bananas Screen Sharing foi construído e desenvolvido em cima desses projetos open-source a seguir (sem ordem específica)',
+    'p2p.kiwi Screen Sharing foi construído e desenvolvido em cima desses projetos open-source a seguir (sem ordem específica)',
   start_a_new_session: 'Iniciar uma sessão',
   streaming_your_display: 'Transmitindo sua tela',
   stun_turn_server_objects: 'Objetos de servidor STUN/TURN (separado por linhas)',
@@ -52,7 +52,7 @@ const pt_br = {
   website: 'Website',
   windows: 'Janelas',
   zoom_in: 'Aumentar o Zoom',
-  zoom_out: 'Diminuir o Zoom'
+  zoom_out: 'Diminuir o Zoom',
 } satisfies BaseTranslation
 
 export default pt_br

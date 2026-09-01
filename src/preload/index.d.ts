@@ -1,4 +1,4 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
+import type { ElectronAPI } from '@electron-toolkit/preload'
 
 type IceServer = {
   urls: string
@@ -17,7 +17,7 @@ type ScreenShareSource = {
 declare global {
   interface Window {
     electron: ElectronAPI
-    BananasApi: {
+    KiwiApi: {
       toggleRemoteCursors: (state: boolean) => Promise<void>
       remoteCursorPing: (cursorId: string) => Promise<void>
       updateRemoteCursor: (state: {
@@ -29,6 +29,7 @@ declare global {
       }) => Promise<void>
       updateSettings: (settings: {
         username: string
+        language: string
         color: string
         isMicrophoneEnabledOnConnect: boolean
         iceServers: IceServer[]
@@ -36,13 +37,16 @@ declare global {
       getSettings: () => Promise<{
         username: string
         color: string
+        language: string
         isMicrophoneEnabledOnConnect: boolean
         iceServers: IceServer[]
       }>
       getAppVersion: () => Promise<string>
       onSelectScreenShareSource: (
-        handler: (sources: ScreenShareSource[]) => Promise<string | null>
+        handler: (sources: ScreenShareSource[]) => Promise<string | null>,
       ) => void
     }
   }
 }
+
+export {}

@@ -42,7 +42,7 @@ const zh = {
   settings: '设置',
   shoulders_of_giants: '巨人的肩膀',
   shoulders_of_giants_description:
-    'Bananas Screen Sharing是建立在以下开源项目之上的（没有特定顺序）',
+    'p2p.kiwi Screen Sharing是建立在以下开源项目之上的（没有特定顺序）',
   start_a_new_session: '开始一个新共享',
   streaming_your_display: '流式传输您的显示器',
   stun_turn_server_objects: 'STUN/TURN服务器对象（用新行分隔）',
@@ -51,7 +51,7 @@ const zh = {
   website: '网站',
   windows: '窗口',
   zoom_in: '放大',
-  zoom_out: '缩小'
+  zoom_out: '缩小',
 } satisfies Translation
 
 export default zh

@@ -376,7 +376,7 @@ export type TranslationFunctions = {
    */
   shoulders_of_giants: () => LocalizedString
   /**
-   * Bananas Screen Sharing is built on top of the following open-source projects (in no particular order)
+   * p2p.kiwi Screen Sharing is built on top of the following open-source projects (in no particular order)
    */
   shoulders_of_giants_description: () => LocalizedString
   /**

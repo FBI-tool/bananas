@@ -20,8 +20,8 @@ export const createCursorsWindow = async (): Promise<BrowserWindow> => {
       preload: join(__dirname, '../preload/cursors.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: true
-    }
+      nodeIntegration: true,
+    },
   })
   loadWindowContents(win, 'cursors.html')
   win.setIgnoreMouseEvents(true)

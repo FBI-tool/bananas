@@ -8,18 +8,23 @@ import { ipcMainHandlersInit } from './ipcMainHandlers'
 import { installDisplayMediaHandler } from './screenPicker'
 import { isInProductionMode } from './utils'
 
-const CUSTOM_PROTOCOL = 'bananas'
+const CUSTOM_PROTOCOL = 'kiwi'
+const LEGACY_PROTOCOL = 'bananas'
 
 let MAIN_WINDOW: BrowserWindow
 
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient(CUSTOM_PROTOCOL, process.execPath, [
-      path.resolve(process.argv[1])
+      path.resolve(process.argv[1]),
+    ])
+    app.setAsDefaultProtocolClient(LEGACY_PROTOCOL, process.execPath, [
+      path.resolve(process.argv[1]),
     ])
   }
 } else {
   app.setAsDefaultProtocolClient(CUSTOM_PROTOCOL)
+  app.setAsDefaultProtocolClient(LEGACY_PROTOCOL)
 }
 
 if (isInProductionMode()) {
@@ -30,8 +35,8 @@ if (isInProductionMode()) {
   }
 }
 
-const sendOpenBananasUrlToRenderer = (url: string): void => {
-  MAIN_WINDOW.webContents.send('openBananasURL', url)
+const sendOpenKiwiUrlToRenderer = (url: string): void => {
+  MAIN_WINDOW.webContents.send('openKiwiURL', url)
 }
 
 app.on('second-instance', (_, commandLine) => {
@@ -40,12 +45,12 @@ app.on('second-instance', (_, commandLine) => {
     MAIN_WINDOW.focus()
   }
   const url = commandLine.pop()
-  if (url) sendOpenBananasUrlToRenderer(url)
+  if (url) sendOpenKiwiUrlToRenderer(url)
 })
 
 app.on('open-url', (evt, url: string) => {
   evt.preventDefault()
-  sendOpenBananasUrlToRenderer(url)
+  sendOpenKiwiUrlToRenderer(url)
 })
 
 async function createWindow(): Promise<void> {
@@ -65,8 +70,8 @@ async function createWindow(): Promise<void> {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: true
-    }
+      nodeIntegration: true,
+    },
   })
 
   mainWindowState.track(MAIN_WINDOW)
@@ -94,7 +99,7 @@ async function createWindow(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('net.getbananas')
+  electronApp.setAppUserModelId('kiwi.p2p.desktop')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -103,9 +108,11 @@ app.whenReady().then(async () => {
   ipcMainHandlersInit()
 
   await createWindow()
-  const coldStartUrl = process.argv.find((arg) => arg.startsWith(CUSTOM_PROTOCOL + '://'))
+  const coldStartUrl = process.argv.find(
+    (arg) => arg.startsWith(CUSTOM_PROTOCOL + '://') || arg.startsWith('bananas://'),
+  )
   if (coldStartUrl) {
-    sendOpenBananasUrlToRenderer(coldStartUrl)
+    sendOpenKiwiUrlToRenderer(coldStartUrl)
   }
 
   app.on('activate', function () {

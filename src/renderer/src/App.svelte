@@ -5,53 +5,44 @@
   import Settings from './Settings.svelte'
   import About from './About.svelte'
   import ScreenPicker from './ScreenPicker.svelte'
-  import {
-    useActiveView,
-    useNavigationEnabled,
-    useIsHosting,
-    useIsWatching,
-    useParticipantUrl,
-    useHostUrl
-  } from './stores'
-  import { getDataFromBananasUrl } from './Utils'
+  import Toast from './Toast.svelte'
+  import { appState } from './appState.svelte'
+  import { getDataFromKiwiUrl } from './Utils'
   import { onMount } from 'svelte'
-  const activeView = useActiveView()
-  const participantUrl = useParticipantUrl()
-  const hostUrl = useHostUrl()
-  const isHosting = useIsHosting()
-  useNavigationEnabled()
-  useIsWatching()
-  let screenPicker: ScreenPicker
+
+  let screenPicker: ScreenPicker | undefined = $state()
 
   onMount(() => {
-    window.BananasApi.onSelectScreenShareSource((sources) => screenPicker.pick(sources))
+    window.KiwiApi.onSelectScreenShareSource((sources) => screenPicker.pick(sources))
   })
+
   window.onmessage = async (evt: MessageEvent): Promise<void> => {
     const { data } = evt
-    if (data.type !== 'openBananasURL') return
-    const urlData = await getDataFromBananasUrl(data.url)
+    if (data.type !== 'openKiwiURL') return
+    const urlData = await getDataFromKiwiUrl(data.url)
     switch (urlData.type) {
       case 'host':
-        $activeView = 'join'
-        $participantUrl = data.url
+        appState.activeView = 'join'
+        appState.participantUrl = data.url
         break
       case 'participant':
-        if ($activeView !== 'host' || !$isHosting) return
-        $hostUrl = data.url
+        if (appState.activeView !== 'host' || !appState.isHosting) return
+        appState.hostUrl = data.url
         break
     }
   }
 </script>
 
 <Navigation />
+<Toast />
 
-{#if $activeView === 'join'}
+{#if appState.activeView === 'join'}
   <Join />
-{:else if $activeView === 'host'}
+{:else if appState.activeView === 'host'}
   <Host />
-{:else if $activeView === 'settings'}
+{:else if appState.activeView === 'settings'}
   <Settings />
-{:else if $activeView === 'about'}
+{:else if appState.activeView === 'about'}
   <About />
 {/if}
 

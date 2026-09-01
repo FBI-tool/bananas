@@ -1,6 +1,6 @@
 /// <reference types="svelte" />
 /// <reference types="vite/client" />
-import { ElectronAPI } from '@electron-toolkit/preload'
+import type { ElectronAPI } from '@electron-toolkit/preload'
 
 type IceServer = {
   urls: string
@@ -19,7 +19,7 @@ type ScreenShareSource = {
 declare global {
   interface Window {
     electron: ElectronAPI
-    BananasApi: {
+    KiwiApi: {
       toggleRemoteCursors: (state: boolean) => Promise<void>
       remoteCursorPing: (cursorId: string) => Promise<void>
       updateRemoteCursor: (state: {
@@ -45,8 +45,10 @@ declare global {
       }>
       getAppVersion: () => Promise<string>
       onSelectScreenShareSource: (
-        handler: (sources: ScreenShareSource[]) => Promise<string | null>
+        handler: (sources: ScreenShareSource[]) => Promise<string | null>,
       ) => void
     }
   }
 }
+
+export {}

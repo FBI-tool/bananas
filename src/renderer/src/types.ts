@@ -1,4 +1,4 @@
-export type BananasRemoteCursorData = {
+export type RemoteCursorData = {
   id: string
   name: string
   color: string
@@ -26,3 +26,5 @@ export type ScreenShareSource = {
   appIcon: string | null
   isScreen: boolean
 }
+
+export type ViewName = 'join' | 'host' | 'settings' | 'about'

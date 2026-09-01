@@ -4,7 +4,7 @@
 import {
   i18n as initI18n,
   i18nObject as initI18nObject,
-  i18nString as initI18nString
+  i18nString as initI18nString,
 } from 'typesafe-i18n'
 import type { LocaleDetector } from 'typesafe-i18n/detectors'
 import type { LocaleTranslationFunctions, TranslateByString } from 'typesafe-i18n'
@@ -31,7 +31,7 @@ export const i18nObject = (locale: Locales): TranslationFunctions =>
   initI18nObject<Locales, Translations, TranslationFunctions, Formatters>(
     locale,
     loadedLocales[locale],
-    loadedFormatters[locale]
+    loadedFormatters[locale],
   )
 
 export const i18n = (): LocaleTranslationFunctions<Locales, Translations, TranslationFunctions> =>

@@ -1,14 +1,74 @@
+import { compact, decompact } from 'sdp-compact'
+
 export const enum ConnectionType {
   HOST = 'host',
-  PARTICIPANT = 'participant'
+  PARTICIPANT = 'participant',
 }
 
 export type RTCSessionDescriptionOptions = RTCSessionDescriptionInit
 
+const CONNECTION_PROTOCOLS = new Set(['kiwi:', 'bananas:'])
+const COMPACT_OPTIONS = { compress: 'base64' as const }
+const PAYLOAD_VERSION = '2'
+
+const SHORT_TYPE: Record<ConnectionType, string> = {
+  [ConnectionType.HOST]: 'h',
+  [ConnectionType.PARTICIPANT]: 'p',
+}
+
+const TYPE_FROM_SHORT: Record<string, ConnectionType> = {
+  h: ConnectionType.HOST,
+  p: ConnectionType.PARTICIPANT,
+  host: ConnectionType.HOST,
+  participant: ConnectionType.PARTICIPANT,
+}
+
+const connectionRoleFromUrl = (url: URL): string => {
+  if (url.hostname) return url.hostname
+  return url.pathname.slice(2).split('/')[0] ?? ''
+}
+
+const toBase64Url = (b64: string): string =>
+  b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+
+const fromBase64Url = (value: string): string => {
+  const b64 = value.replace(/-/g, '+').replace(/_/g, '/')
+  const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4))
+  return b64 + pad
+}
+
+const isTcpCandidateLine = (line: string): boolean => {
+  if (!line.startsWith('a=candidate:')) return false
+  const parts = line.slice('a=candidate:'.length).split(/\s+/)
+  return parts[2]?.toLowerCase() === 'tcp'
+}
+
+const hasUdpCandidate = (lines: string[]): boolean =>
+  lines.some((line) => {
+    if (!line.startsWith('a=candidate:')) return false
+    const parts = line.slice('a=candidate:'.length).split(/\s+/)
+    return parts[2]?.toLowerCase() === 'udp'
+  })
+
+export const dropTcpIceCandidates = (
+  desc: RTCSessionDescriptionInit,
+): RTCSessionDescriptionInit => {
+  if (!desc.sdp) return desc
+  const newline = desc.sdp.includes('\r\n') ? '\r\n' : '\n'
+  const lines = desc.sdp.split(/\r?\n/)
+  if (!hasUdpCandidate(lines)) return desc
+  return {
+    ...desc,
+    sdp: lines.filter((line) => !isTcpCandidateLine(line)).join(newline),
+  }
+}
+
 export const externalLinkClickHandler = (root: HTMLButtonElement, url: string): void => {
-  root.classList.add('is-loading')
+  root.classList.add('btn-disabled')
+  root.setAttribute('aria-busy', 'true')
   setTimeout(() => {
-    root.classList.remove('is-loading')
+    root.classList.remove('btn-disabled')
+    root.removeAttribute('aria-busy')
   }, 3000)
   window.open(url)
 }
@@ -21,10 +81,9 @@ export const getUUIDv4 = (): string => {
   })
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-export const compressJson = async (data: any): Promise<string> => {
+export const compressJson = async (data: unknown): Promise<string> => {
   const stream = new Blob([JSON.stringify(data)], {
-    type: 'application/json'
+    type: 'application/json',
   }).stream()
   const compressedStream = stream.pipeThrough(new CompressionStream('gzip'))
   const compressedResponse = new Response(compressedStream)
@@ -33,15 +92,14 @@ export const compressJson = async (data: any): Promise<string> => {
   return btoa(String.fromCharCode(...new Uint8Array(buffer)))
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-export const decompressJson = async (data: string): Promise<any> => {
+export const decompressJson = async (data: string): Promise<unknown> => {
   const buffer = new Uint8Array(
     atob(data)
       .split('')
-      .map((c) => c.charCodeAt(0))
+      .map((c) => c.charCodeAt(0)),
   )
   const stream = new Blob([buffer], {
-    type: 'application/json'
+    type: 'application/json',
   }).stream()
   const decompressedStream = stream.pipeThrough(new DecompressionStream('gzip'))
   const res = new Response(decompressedStream)
@@ -49,17 +107,66 @@ export const decompressJson = async (data: string): Promise<any> => {
   return JSON.parse(await blob.text())
 }
 
+const encodeCompactPayload = (desc: RTCSessionDescriptionInit): string => {
+  const compacted = compact(dropTcpIceCandidates(desc), COMPACT_OPTIONS)
+  return PAYLOAD_VERSION + compacted[0] + toBase64Url(compacted.slice(1))
+}
+
+const decodeCompactPayload = (payload: string): RTCSessionDescriptionInit => {
+  if (!payload.startsWith(PAYLOAD_VERSION) || payload.length < 3) {
+    throw new Error('unsupported connection payload')
+  }
+  const compacted = payload[1] + fromBase64Url(payload.slice(2))
+  return decompact(compacted, COMPACT_OPTIONS)
+}
+
+const parseConnectionUrl = (
+  str: string,
+): {
+  type: ConnectionType
+  username: string
+  payload: string | null
+  token: string | null
+} => {
+  const url = new URL(str)
+  if (!CONNECTION_PROTOCOLS.has(url.protocol)) {
+    throw new Error('unsupported protocol')
+  }
+  const type = TYPE_FROM_SHORT[connectionRoleFromUrl(url)]
+  if (!type) throw new Error('unsupported connection type')
+
+  const token = url.searchParams.get('token')
+  if (token) {
+    const username = url.searchParams.get('username')
+    if (!username) throw new Error('missing username')
+    return { type, username, payload: null, token }
+  }
+
+  const path = url.pathname.replace(/^\//, '')
+  const slash = path.indexOf('/')
+  if (slash <= 0 || slash === path.length - 1) {
+    throw new Error('invalid compact connection string')
+  }
+  return {
+    type,
+    username: decodeURIComponent(path.slice(0, slash)),
+    payload: path.slice(slash + 1),
+    token: null,
+  }
+}
+
 export const mayBeConnectionString = (ct: ConnectionType, str: string): boolean => {
   try {
-    const url = new URL(str)
-    if (url.protocol !== 'bananas:') return false
-    if (url.pathname.slice(2) !== ct) return false
-    const token = url.searchParams.get('token')
-    const username = url.searchParams.get('username')
-    if (!token || !username) return false
-    decompressJson(token)
-    return true
-  } catch (err) {
+    const parsed = parseConnectionUrl(str)
+    if (parsed.type !== ct) return false
+    if (parsed.token) {
+      if (!parsed.username) return false
+      decompressJson(parsed.token)
+      return true
+    }
+    decodeCompactPayload(parsed.payload ?? '')
+    return parsed.username.length > 0
+  } catch {
     return false
   }
 }
@@ -69,29 +176,30 @@ export const getConnectionString = async (
   offer: RTCSessionDescriptionInit,
   data: {
     username: string
-  }
+  },
 ): Promise<string> => {
   const { username } = data
-  const token = encodeURIComponent(await compressJson(offer))
-  return `bananas://${ct}?username=${encodeURIComponent(username)}&token=${token}`
+  const payload = encodeCompactPayload(offer)
+  return `kiwi://${SHORT_TYPE[ct]}/${encodeURIComponent(username)}/${payload}`
 }
 
-export const getDataFromBananasUrl = async (
-  url: string
+export const getDataFromKiwiUrl = async (
+  url: string,
 ): Promise<{
   type: ConnectionType
   data: { username: string }
   rtcSessionDescription: RTCSessionDescriptionInit
 }> => {
-  const u = new URL(url)
-  const token = u.searchParams.get('token')
-  const username = u.searchParams.get('username')
+  const parsed = parseConnectionUrl(url)
+  const rtcSessionDescription = parsed.token
+    ? ((await decompressJson(parsed.token)) as RTCSessionDescriptionInit)
+    : decodeCompactPayload(parsed.payload ?? '')
   return {
-    type: u.pathname.slice(2) as ConnectionType,
+    type: parsed.type,
     data: {
-      username: username
+      username: parsed.username,
     },
-    rtcSessionDescription: await decompressJson(decodeURIComponent(token))
+    rtcSessionDescription,
   }
 }
 
@@ -138,7 +246,7 @@ export const makeVideoDraggable = (video: HTMLVideoElement): void => {
 
 export const debounce = <T extends (...args: unknown[]) => void>(
   func: T,
-  wait: number
+  wait: number,
 ): ((...args: Parameters<T>) => void) => {
   let timeout: ReturnType<typeof setTimeout>
   return (...args: Parameters<T>): void => {
@@ -151,7 +259,7 @@ export const debounce = <T extends (...args: unknown[]) => void>(
 
 export const throttle = <T extends (...args: unknown[]) => void>(
   func: T,
-  wait: number
+  wait: number,
 ): ((...args: Parameters<T>) => void) => {
   let lastCalled = 0
   return (...args: Parameters<T>): void => {

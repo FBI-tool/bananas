@@ -1,4 +1,4 @@
 ---
 provider: generic
-url: https://auto-updates.getbananas.net
-updaterCacheDirName: bananas-updater
+url: https://p2p.kiwi/auto-updates
+updaterCacheDirName: p2p-kiwi-updater

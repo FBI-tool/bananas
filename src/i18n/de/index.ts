@@ -43,7 +43,7 @@ const en = {
   settings: 'Einstellungen',
   shoulders_of_giants: 'Auf den Schultern von Giganten',
   shoulders_of_giants_description:
-    'Bananas Screen Sharing baut auf den folgenden Open-Source-Projekten auf (in keiner bestimmten Reihenfolge)',
+    'p2p.kiwi Screen Sharing baut auf den folgenden Open-Source-Projekten auf (in keiner bestimmten Reihenfolge)',
   start_a_new_session: 'Eine neue Sitzung starten',
   streaming_your_display: 'Dein Bildschirm wird gestreamt',
   stun_turn_server_objects: 'STUN/TURN Objekte (getrennt durch Zeilenumbruch)',
@@ -52,7 +52,7 @@ const en = {
   website: 'Website',
   windows: 'Fenster',
   zoom_in: 'Hineinzoomen',
-  zoom_out: 'Herauszoomen'
+  zoom_out: 'Herauszoomen',
 } satisfies BaseTranslation
 
 export default en

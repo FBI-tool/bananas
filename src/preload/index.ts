@@ -12,10 +12,10 @@ const onDocumentReady = (callback: () => void): void => {
   }
 }
 
-ipcRenderer.on('openBananasURL', (_, url) => {
+ipcRenderer.on('openKiwiURL', (_, url) => {
   if (!HANDLE_URL_CLICKS) return
   onDocumentReady(() => {
-    window.postMessage({ type: 'openBananasURL', url }, '*')
+    window.postMessage({ type: 'openKiwiURL', url }, '*')
   })
 })
 
@@ -44,10 +44,10 @@ ipcRenderer.on(
       ? await selectScreenShareSourceHandler(payload.sources)
       : (payload.sources.find((source) => source.isScreen)?.id ?? payload.sources[0]?.id ?? null)
     ipcRenderer.send('screenShareSourceSelected', { requestId: payload.requestId, sourceId })
-  }
+  },
 )
 
-const BananasApi = {
+const KiwiApi = {
   getAppVersion: async (): Promise<string> => {
     return await ipcRenderer.invoke('getAppVersion')
   },
@@ -58,6 +58,7 @@ const BananasApi = {
   getSettings: async (): Promise<{
     username: string
     color: string
+    language: string
     isMicrophoneEnabledOnConnect: boolean
     iceServers: IceServer[]
   }> => {
@@ -65,6 +66,7 @@ const BananasApi = {
   },
   updateSettings: async (settings: {
     username: string
+    language: string
     color: string
     isMicrophoneEnabledOnConnect: boolean
     iceServers: IceServer[]
@@ -88,12 +90,12 @@ const BananasApi = {
   },
   onSelectScreenShareSource: (handler: SelectScreenShareSourceHandler): void => {
     selectScreenShareSourceHandler = handler
-  }
+  },
 }
 
 try {
   contextBridge.exposeInMainWorld('electron', electronAPI)
-  contextBridge.exposeInMainWorld('BananasApi', BananasApi)
+  contextBridge.exposeInMainWorld('KiwiApi', KiwiApi)
 } catch (error) {
   console.error(error)
 }
