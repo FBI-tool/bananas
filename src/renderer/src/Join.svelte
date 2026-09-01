@@ -9,7 +9,7 @@
     getUUIDv4
   } from './Utils'
   import { appState } from './appState.svelte'
-  import { toast } from './toast.svelte'
+  import { toast } from './toastState.svelte'
   import { WebRTCSession } from './webrtc.svelte'
   import AudioVisualizer from './AudioVisualizer.svelte'
 

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { L } from './translations'
   import { appState } from './appState.svelte'
-  import { toast } from './toast.svelte'
+  import { toast } from './toastState.svelte'
   import { mayBeConnectionString, getDataFromKiwiUrl, ConnectionType } from './Utils'
   import AudioVisualizer from './AudioVisualizer.svelte'
   import { WebRTCSession } from './webrtc.svelte'

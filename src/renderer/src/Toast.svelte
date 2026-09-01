@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { toast } from './toast.svelte'
+  import { toast } from './toastState.svelte'
 
   const alertClass = $derived(
     toast.type === 'success'
