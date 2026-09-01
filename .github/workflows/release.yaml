@@ -18,7 +18,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "PLATFORM=linux-arm64" >> $GITHUB_ENV
+          echo "TARGET_PLATFORM=linux-arm64" >> $GITHUB_ENV
       - name: Install OS packages
         run: |
           sudo apt-get install -y flatpak flatpak-builder && \
@@ -63,7 +63,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "PLATFORM=linux" >> $GITHUB_ENV
+          echo "TARGET_PLATFORM=linux" >> $GITHUB_ENV
       - name: Install OS packages
         run: |
           sudo apt-get install -y flatpak flatpak-builder && \
@@ -109,7 +109,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "PLATFORM=windows" >> $GITHUB_ENV
+          echo "TARGET_PLATFORM=windows" >> $GITHUB_ENV
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
       - name: Cache Bun
@@ -150,7 +150,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "PLATFORM=macos" >> $GITHUB_ENV
+          echo "TARGET_PLATFORM=macos" >> $GITHUB_ENV
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
       - name: Cache Bun
