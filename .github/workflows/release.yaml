@@ -21,6 +21,7 @@ jobs:
           echo "TARGET_PLATFORM=linux-arm64" >> $GITHUB_ENV
       - name: Install OS packages
         run: |
+          sudo apt update && \
           sudo apt-get install -y flatpak flatpak-builder && \
           sudo snap install snapcraft --classic && \
           flatpak remote-add \
@@ -33,9 +34,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: linux-arm64-bun-${{ hashFiles('**/bun.lockb') }}
+          key: linux-arm64-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
-            linux-arm64-bun-${{ hashFiles('**/bun.lockb') }}
+            linux-arm64-bun-${{ hashFiles('**/bun.lock') }}
       - name: Cache Electron
         uses: actions/cache@v4
         with:
@@ -79,9 +80,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: linux-bun-${{ hashFiles('**/bun.lockb') }}
+          key: linux-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
-            linux-bun-${{ hashFiles('**/bun.lockb') }}
+            linux-bun-${{ hashFiles('**/bun.lock') }}
       - name: Cache Electron
         uses: actions/cache@v4
         with:
@@ -117,9 +118,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: windows-bun-${{ hashFiles('**/bun.lockb') }}
+          key: windows-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
-            windows-bun-${{ hashFiles('**/bun.lockb') }}
+            windows-bun-${{ hashFiles('**/bun.lock') }}
       - name: Cache Electron
         uses: actions/cache@v4
         with:
@@ -158,9 +159,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: macos-bun-${{ hashFiles('**/bun.lockb') }}
+          key: macos-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
-            macos-bun-${{ hashFiles('**/bun.lockb') }}
+            macos-bun-${{ hashFiles('**/bun.lock') }}
       - name: Cache Electron
         uses: actions/cache@v4
         with:
