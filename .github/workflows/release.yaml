@@ -66,6 +66,7 @@ jobs:
           echo "TARGET_PLATFORM=linux" >> $GITHUB_ENV
       - name: Install OS packages
         run: |
+          sudo apt update && \
           sudo apt-get install -y flatpak flatpak-builder && \
           sudo snap install snapcraft --classic && \
           flatpak remote-add \
