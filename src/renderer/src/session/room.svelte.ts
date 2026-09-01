@@ -1,0 +1,1103 @@
+import type { RemoteCursorData, SettingsData } from '../types'
+import type { RTCSessionDescriptionOptions } from '../Utils'
+import { ConnectionType, dropTcpIceCandidates, getConnectionString, getUUIDv4 } from '../Utils'
+import { getRTCPeerConnectionConfig } from '../Config'
+import { appState } from '../appState.svelte'
+import {
+  MAX_PEERS,
+  PENDING_INVITE_TTL_MS,
+  VOTE_COOLDOWN_MS,
+  VOTE_TIMEOUT_MS,
+  ICE_DISCONNECT_GRACE_MS,
+} from './constants'
+import type { ControlMessage, RosterPeer } from './controlProtocol'
+import { PROTOCOL_VERSION } from './controlProtocol'
+import { PeerLink } from './peerLink'
+import {
+  answersMatchOffer,
+  canStartVote,
+  castVote,
+  nextCoordinator,
+  resumeVote,
+  routeMeshSignal,
+  sessionEndedReasonAfterDeparture,
+  startVote,
+  voteOutcome,
+  type SessionEndedReason,
+  type VoteState,
+} from './roomLogic'
+import { playSessionEndedSound } from './sessionEndedSound'
+
+const errorHandler = (e: unknown): void => {
+  console.error(e)
+}
+
+export type RoomPeer = RosterPeer
+
+export class Room {
+  connectionState = $state('disconnected')
+  sessionEndedReason = $state<SessionEndedReason | null>(null)
+  presenterGone = $state(false)
+  isLive = $state(false)
+  localPeerId = $state('')
+  coordinatorId = $state('')
+  presenterId = $state('')
+  peers = $state<RoomPeer[]>([])
+  displayStreamActive = $state(false)
+  microphoneActive = $state(false)
+  cursorsEnabled = $state(false)
+  hasAudioInput = $state(false)
+  activeVote = $state<VoteState | null>(null)
+  localVoteCast = $state<boolean | null>(null)
+
+  private remoteVideo: HTMLVideoElement | null = null
+  private audioStream: MediaStream | null = null
+  private displayStream: MediaStream | null = null
+  private pendingDisplayStream: MediaStream | null = null
+  private userSettings: SettingsData | null = null
+  private username = ''
+  private color = '#ffffff'
+  private links = new Map<string, PeerLink>()
+  private remoteVideoStreams = new Map<string, MediaStream>()
+  private remoteAudioElements = new Map<string, HTMLAudioElement>()
+  private iceGraceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private voteTimer: ReturnType<typeof setTimeout> | null = null
+  private cooldownUntil = 0
+  private closing = new Set<string>()
+  private quietClose = false
+  private handshakeKey: string | null = null
+  private lastCopiedPendingId: string | null = null
+
+  get isCoordinator(): boolean {
+    return this.localPeerId !== '' && this.localPeerId === this.coordinatorId
+  }
+
+  get isPresenter(): boolean {
+    return this.localPeerId !== '' && this.localPeerId === this.presenterId
+  }
+
+  get remotePeerCount(): number {
+    return this.establishedRemoteIds().length
+  }
+
+  setRemoteVideo(video: HTMLVideoElement | null): void {
+    this.remoteVideo = video
+    this.attachPresenterVideo()
+  }
+
+  HasAudioInput(): boolean {
+    return this.audioStream !== null
+  }
+
+  GetAudioStream(): MediaStream | null {
+    return this.audioStream
+  }
+
+  IsMicrophoneActive(): boolean {
+    if (!this.audioStream) return false
+    return this.audioStream.getAudioTracks().some((track) => track.enabled)
+  }
+
+  IsConnected(): boolean {
+    return this.establishedRemoteIds().some((id) => {
+      const link = this.links.get(id)
+      return link?.connectionState === 'connected' || link?.iceConnectionState === 'connected'
+    })
+  }
+
+  ToggleMicrophone(): void {
+    if (!this.audioStream) return
+    for (const track of this.audioStream.getAudioTracks()) {
+      track.enabled = !track.enabled
+    }
+    this.microphoneActive = this.IsMicrophoneActive()
+  }
+
+  ToggleDisplayStream(): void {
+    if (!this.displayStream) return
+    for (const track of this.displayStream.getVideoTracks()) {
+      track.enabled = !track.enabled
+    }
+    this.displayStreamActive = this.displayStream.getVideoTracks().some((track) => track.enabled)
+    if (!this.displayStreamActive) this.ToggleRemoteCursors(false)
+  }
+
+  ToggleRemoteCursors(enabled: boolean): boolean {
+    if (!this.isPresenter) return false
+    this.cursorsEnabled = enabled
+    if (!enabled) window.KiwiApi.toggleRemoteCursors(false)
+    else window.KiwiApi.toggleRemoteCursors(true)
+    return enabled
+  }
+
+  PingRemoteCursor(cursorId: string): void {
+    this.broadcast({
+      t: 'cursor-ping',
+      v: PROTOCOL_VERSION,
+      cursorId,
+    })
+  }
+
+  UpdateRemoteCursor(cursorData: RemoteCursorData): void {
+    this.broadcast({
+      t: 'cursor',
+      v: PROTOCOL_VERSION,
+      id: cursorData.id,
+      name: cursorData.name,
+      color: cursorData.color,
+      x: cursorData.x,
+      y: cursorData.y,
+    })
+  }
+
+  async Setup(v: HTMLVideoElement | null = null): Promise<'ok' | 'cancelled' | 'failed'> {
+    this.userSettings = await window.KiwiApi.getSettings()
+    this.username = this.userSettings.username
+    this.color = this.userSettings.color
+    this.remoteVideo = v
+    this.localPeerId = getUUIDv4()
+    this.microphoneActive = this.userSettings.isMicrophoneEnabledOnConnect
+    this.sessionEndedReason = null
+    this.presenterGone = false
+    this.quietClose = false
+
+    try {
+      this.audioStream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: true,
+      })
+      for (const track of this.audioStream.getAudioTracks()) {
+        track.enabled = this.userSettings.isMicrophoneEnabledOnConnect
+      }
+    } catch (e) {
+      errorHandler(e)
+      this.audioStream = null
+    }
+    this.hasAudioInput = this.audioStream !== null
+
+    if (!v) {
+      this.coordinatorId = this.localPeerId
+      this.presenterId = this.localPeerId
+      appState.isCoordinator = true
+      try {
+        this.displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false,
+        })
+        if (!this.displayStream.getVideoTracks().length) {
+          return 'failed'
+        }
+        for (const track of this.displayStream.getVideoTracks()) {
+          track.addEventListener('ended', () => {
+            this.displayStreamActive = false
+          })
+        }
+        this.displayStreamActive = true
+      } catch (e) {
+        if (e && typeof e === 'object' && 'name' in e && e.name === 'NotAllowedError') {
+          return 'cancelled'
+        }
+        errorHandler(e)
+        return 'failed'
+      }
+    } else {
+      appState.isCoordinator = false
+      const link = await this.createLink(false)
+      this.handshakeKey = link.pendingId
+      this.links.set(link.pendingId, link)
+      this.addLocalMediaToLink(link)
+    }
+    this.syncLocalPeer()
+    return 'ok'
+  }
+
+  async CreateHostUrl(data: { username: string }): Promise<string | null> {
+    this.gcPendingInvites()
+    if (this.occupiedSlots() >= MAX_PEERS) return null
+    const link = await this.createLink(true)
+    this.addLocalMediaToLink(link)
+    const offer = await link.createLocalOffer()
+    await link.waitForIceGatheringComplete()
+    this.links.set(link.pendingId, link)
+    this.lastCopiedPendingId = link.pendingId
+    this.username = data.username || this.username
+    return await getConnectionString(
+      ConnectionType.HOST,
+      dropTcpIceCandidates(link.localDescription ?? offer),
+      { username: this.username },
+    )
+  }
+
+  async CreateParticipantUrl(
+    c: RTCSessionDescriptionOptions,
+    data: { username: string },
+  ): Promise<string> {
+    this.username = data.username || this.username
+    const link = this.handshakeLink()
+    if (!link) throw new Error('viewer handshake is not ready')
+    if (link.pc.localDescription?.type !== 'answer') {
+      await link.setRemoteDescription(c)
+      await link.createLocalAnswer()
+    }
+    await link.waitForIceGatheringComplete()
+    return await getConnectionString(
+      ConnectionType.PARTICIPANT,
+      dropTcpIceCandidates(link.localDescription ?? { type: 'answer', sdp: '' }),
+      { username: this.username },
+    )
+  }
+
+  async Connect(c: RTCSessionDescriptionOptions): Promise<void> {
+    try {
+      if (c.type === 'answer') {
+        const pending = this.findPendingForAnswer(c)
+        if (!pending) throw new Error('no pending invite matches this answer')
+        await pending.setRemoteDescription(c)
+        this.isLive = true
+        this.setConnectionState('connected')
+        return
+      }
+      const link = this.handshakeLink()
+      if (!link) throw new Error('viewer handshake is not ready')
+      await link.setRemoteDescription(c)
+      if (c.type === 'offer' && link.pc.localDescription?.type !== 'answer') {
+        await link.createLocalAnswer()
+      }
+    } catch (e) {
+      errorHandler(e)
+    }
+  }
+
+  async Disconnect(): Promise<void> {
+    await this.leave()
+  }
+
+  async leave(): Promise<void> {
+    if (this.isCoordinator) {
+      const successor = nextCoordinator({
+        remainingPeerIds: this.establishedRemoteIds(),
+      })
+      if (successor) {
+        this.broadcast({
+          t: 'coordinator-handoff',
+          v: PROTOCOL_VERSION,
+          coordinatorId: successor,
+        })
+      }
+    }
+    this.broadcast({
+      t: 'peer-left',
+      v: PROTOCOL_VERSION,
+      peerId: this.localPeerId,
+    })
+    await this.teardown(true)
+  }
+
+  async endSession(): Promise<void> {
+    this.broadcast({
+      t: 'session-ended',
+      v: PROTOCOL_VERSION,
+      byPeerId: this.localPeerId,
+    })
+    await this.teardown(true)
+  }
+
+  async requestToPresent(): Promise<'ok' | 'blocked' | 'cancelled' | 'failed'> {
+    const now = Date.now()
+    if (
+      !canStartVote({
+        now,
+        cooldownUntil: this.cooldownUntil,
+        activeVote: this.activeVote,
+        requesterId: this.localPeerId,
+        presenterId: this.presenterId,
+      })
+    ) {
+      return 'blocked'
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      })
+      if (!stream.getVideoTracks().length) return 'failed'
+      this.stopStream(this.pendingDisplayStream)
+      this.pendingDisplayStream = stream
+    } catch (e) {
+      if (e && typeof e === 'object' && 'name' in e && e.name === 'NotAllowedError') {
+        return 'cancelled'
+      }
+      errorHandler(e)
+      return 'failed'
+    }
+
+    const vote = startVote({
+      voteId: getUUIDv4(),
+      candidateId: this.localPeerId,
+      now,
+      timeoutMs: VOTE_TIMEOUT_MS,
+      peerIds: this.allPeerIds(),
+    })
+    this.activeVote = vote
+    this.localVoteCast = true
+    this.broadcast({
+      t: 'vote-start',
+      v: PROTOCOL_VERSION,
+      voteId: vote.voteId,
+      candidateId: vote.candidateId,
+      expiresAt: vote.expiresAt,
+    })
+    this.armVoteTimer(vote)
+    if (voteOutcome(vote, Date.now()) === 'approved') {
+      await this.concludeVote(vote, true)
+    }
+    return 'ok'
+  }
+
+  async castLocalVote(approve: boolean): Promise<void> {
+    const vote = this.activeVote
+    if (!vote || this.localVoteCast !== null) return
+    this.localVoteCast = approve
+    const next = castVote(vote, this.localPeerId, approve)
+    this.activeVote = next
+    this.broadcast({
+      t: 'vote-cast',
+      v: PROTOCOL_VERSION,
+      voteId: vote.voteId,
+      peerId: this.localPeerId,
+      approve,
+    })
+    await this.checkVoteOutcome(next)
+  }
+
+  async changeScreen(): Promise<'ok' | 'cancelled' | 'failed'> {
+    if (!this.isPresenter) return 'failed'
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      })
+      const track = stream.getVideoTracks()[0]
+      if (!track) return 'failed'
+      track.addEventListener('ended', () => {
+        this.displayStreamActive = false
+      })
+      this.stopStream(this.displayStream)
+      this.displayStream = stream
+      this.displayStreamActive = true
+      await this.pushVideoToAll(track, stream)
+      return 'ok'
+    } catch (e) {
+      if (e && typeof e === 'object' && 'name' in e && e.name === 'NotAllowedError') {
+        return 'cancelled'
+      }
+      errorHandler(e)
+      return 'failed'
+    }
+  }
+
+  occupiedSlots(): number {
+    return 1 + this.establishedRemoteIds().length + this.pendingInviteCount()
+  }
+
+  dismissSessionEnded(): void {
+    if (this.remoteVideo) this.remoteVideo.srcObject = null
+    this.sessionEndedReason = null
+  }
+
+  private handshakeLink(): PeerLink | null {
+    if (!this.handshakeKey) return null
+    return this.links.get(this.handshakeKey) ?? null
+  }
+
+  private pendingInviteCount(): number {
+    let count = 0
+    for (const [key, link] of this.links) {
+      if (key === this.handshakeKey) continue
+      if (!link.remotePeerId) count += 1
+    }
+    return count
+  }
+
+  private gcPendingInvites(): void {
+    const now = Date.now()
+    const stale: string[] = []
+    for (const [key, link] of this.links) {
+      if (link.remotePeerId) continue
+      if (key === this.handshakeKey) continue
+      if (now - link.createdAt > PENDING_INVITE_TTL_MS) stale.push(key)
+    }
+    for (const key of stale) {
+      this.links.get(key)?.close()
+      this.links.delete(key)
+    }
+  }
+
+  private async createLink(isOfferer: boolean, remotePeerId?: string): Promise<PeerLink> {
+    const rtcConfig = await getRTCPeerConnectionConfig()
+    const pendingId = getUUIDv4()
+    const link = new PeerLink({
+      rtcConfig,
+      localPeerId: this.localPeerId,
+      pendingId,
+      isOfferer,
+      remotePeerId: remotePeerId ?? null,
+      events: {
+        onControl: (msg) => {
+          void this.onControl(link, msg)
+        },
+        onTrack: (event) => {
+          this.onTrack(link, event)
+        },
+        onIceConnectionStateChange: (state) => {
+          this.onIceState(link, state)
+        },
+        onConnectionStateChange: (state) => {
+          if (state === 'connected') this.markLive(link)
+          if (state === 'failed' || state === 'closed') {
+            void this.handleRemoteDeparted(link, false)
+          }
+        },
+        onControlOpen: () => {
+          this.sendHello(link)
+        },
+        onNegotiationOffer: (sdp) => {
+          if (!link.remotePeerId) return
+          this.sendRouted(
+            link.remotePeerId,
+            {
+              t: 'mesh-offer',
+              v: PROTOCOL_VERSION,
+              from: this.localPeerId,
+              to: link.remotePeerId,
+              sdp,
+            },
+            link,
+          )
+        },
+      },
+    })
+    return link
+  }
+
+  private addLocalMediaToLink(link: PeerLink): void {
+    if (this.audioStream) {
+      for (const track of this.audioStream.getAudioTracks()) {
+        link.addTrack(track, this.audioStream)
+      }
+    }
+    if (this.isPresenter && this.displayStream) {
+      for (const track of this.displayStream.getVideoTracks()) {
+        link.addTrack(track, this.displayStream)
+      }
+    }
+  }
+
+  private sendHello(link: PeerLink): void {
+    link.sendControl({
+      t: 'hello',
+      v: PROTOCOL_VERSION,
+      peerId: this.localPeerId,
+      username: this.username,
+      color: this.color,
+    })
+  }
+
+  private async onControl(link: PeerLink, msg: ControlMessage): Promise<void> {
+    switch (msg.t) {
+      case 'hello':
+        await this.onHello(link, msg)
+        break
+      case 'roster':
+        await this.onRoster(msg)
+        break
+      case 'mesh-offer':
+        await this.onMeshOffer(link, msg)
+        break
+      case 'mesh-answer':
+        await this.onMeshAnswer(link, msg)
+        break
+      case 'vote-start':
+        this.onVoteStart(msg)
+        break
+      case 'vote-cast':
+        await this.onVoteCast(msg)
+        break
+      case 'vote-result':
+        await this.onVoteResult(msg)
+        break
+      case 'presenter-changed':
+        await this.onPresenterChanged(msg.presenterId)
+        break
+      case 'peer-left':
+        await this.onPeerLeftMessage(msg.peerId)
+        break
+      case 'coordinator-handoff':
+        this.onCoordinatorHandoff(msg.coordinatorId)
+        break
+      case 'session-ended':
+        this.onSessionEnded()
+        break
+      case 'cursor':
+        this.onCursor(msg)
+        break
+      case 'cursor-ping':
+        this.onCursorPing(msg.cursorId)
+        break
+    }
+  }
+
+  private async onHello(
+    link: PeerLink,
+    msg: Extract<ControlMessage, { t: 'hello' }>,
+  ): Promise<void> {
+    this.rekeyLink(link, msg.peerId)
+    this.upsertPeer({ id: msg.peerId, username: msg.username, color: msg.color })
+    if (!this.coordinatorId) this.coordinatorId = msg.peerId
+    if (!this.presenterId) this.presenterId = msg.peerId
+    appState.isCoordinator = this.isCoordinator
+    this.markLive(link)
+    if (this.isCoordinator) this.broadcastRoster()
+  }
+
+  private async onRoster(msg: Extract<ControlMessage, { t: 'roster' }>): Promise<void> {
+    this.coordinatorId = msg.coordinatorId
+    this.presenterId = msg.presenterId
+    this.peers = msg.peers
+    appState.isCoordinator = this.isCoordinator
+    for (const peer of msg.peers) {
+      if (peer.id === this.localPeerId) continue
+      if (this.findLinkByRemote(peer.id)) continue
+      await this.startMeshTo(peer.id)
+    }
+    this.attachPresenterVideo()
+  }
+
+  private async startMeshTo(targetId: string): Promise<void> {
+    if (this.findLinkByRemote(targetId)) return
+    const link = await this.createLink(true, targetId)
+    this.links.set(targetId, link)
+    this.addLocalMediaToLink(link)
+    const offer = await link.createLocalOffer()
+    await link.waitForIceGatheringComplete()
+    this.sendRouted(
+      targetId,
+      {
+        t: 'mesh-offer',
+        v: PROTOCOL_VERSION,
+        from: this.localPeerId,
+        to: targetId,
+        sdp: dropTcpIceCandidates(link.localDescription ?? offer),
+      },
+      link,
+    )
+  }
+
+  private async onMeshOffer(
+    fromLink: PeerLink,
+    msg: Extract<ControlMessage, { t: 'mesh-offer' }>,
+  ): Promise<void> {
+    const route = routeMeshSignal({
+      localPeerId: this.localPeerId,
+      coordinatorId: this.coordinatorId,
+      to: msg.to,
+      from: msg.from,
+      connectedPeerIds: this.routablePeerIds(),
+    })
+    if (route === 'drop') return
+    if (route === 'forward') {
+      this.sendTo(msg.to, msg)
+      return
+    }
+    const existing = this.findLinkByRemote(msg.from)
+    if (existing) {
+      const answer = await existing.handleRemoteSdp(msg.sdp)
+      if (answer) {
+        this.sendRouted(
+          msg.from,
+          {
+            t: 'mesh-answer',
+            v: PROTOCOL_VERSION,
+            from: this.localPeerId,
+            to: msg.from,
+            sdp: dropTcpIceCandidates(answer),
+          },
+          fromLink,
+        )
+      }
+      return
+    }
+    const link = await this.createLink(false, msg.from)
+    this.links.set(msg.from, link)
+    this.addLocalMediaToLink(link)
+    await link.setRemoteDescription(msg.sdp)
+    const answer = await link.createLocalAnswer()
+    await link.waitForIceGatheringComplete()
+    link.markEstablished()
+    this.sendRouted(
+      msg.from,
+      {
+        t: 'mesh-answer',
+        v: PROTOCOL_VERSION,
+        from: this.localPeerId,
+        to: msg.from,
+        sdp: dropTcpIceCandidates(link.localDescription ?? answer),
+      },
+      fromLink,
+    )
+  }
+
+  private async onMeshAnswer(
+    fromLink: PeerLink,
+    msg: Extract<ControlMessage, { t: 'mesh-answer' }>,
+  ): Promise<void> {
+    const route = routeMeshSignal({
+      localPeerId: this.localPeerId,
+      coordinatorId: this.coordinatorId,
+      to: msg.to,
+      from: msg.from,
+      connectedPeerIds: this.routablePeerIds(),
+    })
+    if (route === 'drop') return
+    if (route === 'forward') {
+      this.sendTo(msg.to, msg)
+      return
+    }
+    const link = this.findLinkByRemote(msg.from)
+    if (!link) return
+    await link.setRemoteDescription(msg.sdp)
+    link.markEstablished()
+    this.markLive(link)
+    void fromLink
+  }
+
+  private onVoteStart(msg: Extract<ControlMessage, { t: 'vote-start' }>): void {
+    if (this.activeVote && this.activeVote.voteId === msg.voteId) return
+    const vote = resumeVote({
+      voteId: msg.voteId,
+      candidateId: msg.candidateId,
+      expiresAt: msg.expiresAt,
+      peerIds: this.allPeerIds(),
+    })
+    this.activeVote = vote
+    this.localVoteCast = msg.candidateId === this.localPeerId ? true : null
+    this.armVoteTimer(vote)
+  }
+
+  private async onVoteCast(msg: Extract<ControlMessage, { t: 'vote-cast' }>): Promise<void> {
+    if (!this.activeVote || this.activeVote.voteId !== msg.voteId) return
+    const next = castVote(this.activeVote, msg.peerId, msg.approve)
+    this.activeVote = next
+    await this.checkVoteOutcome(next)
+  }
+
+  private async onVoteResult(msg: Extract<ControlMessage, { t: 'vote-result' }>): Promise<void> {
+    this.clearVoteTimer()
+    this.cooldownUntil = Date.now() + VOTE_COOLDOWN_MS
+    this.activeVote = null
+    this.localVoteCast = null
+    if (msg.approved) await this.onPresenterChanged(msg.presenterId)
+    else this.stopStream(this.pendingDisplayStream)
+    this.pendingDisplayStream = null
+  }
+
+  private async checkVoteOutcome(vote: VoteState): Promise<void> {
+    const outcome = voteOutcome(vote, Date.now())
+    if (outcome === 'pending') return
+    if (vote.candidateId === this.localPeerId) {
+      await this.concludeVote(vote, outcome === 'approved')
+    }
+  }
+
+  private async concludeVote(vote: VoteState, approved: boolean): Promise<void> {
+    this.clearVoteTimer()
+    this.cooldownUntil = Date.now() + VOTE_COOLDOWN_MS
+    this.activeVote = null
+    this.localVoteCast = null
+    if (approved) {
+      await this.becomePresenter()
+    } else {
+      this.stopStream(this.pendingDisplayStream)
+      this.pendingDisplayStream = null
+    }
+    this.broadcast({
+      t: 'vote-result',
+      v: PROTOCOL_VERSION,
+      voteId: vote.voteId,
+      approved,
+      presenterId: this.presenterId,
+    })
+  }
+
+  private async becomePresenter(): Promise<void> {
+    const stream = this.pendingDisplayStream
+    this.pendingDisplayStream = null
+    if (!stream) return
+    const track = stream.getVideoTracks()[0]
+    if (!track) return
+    track.addEventListener('ended', () => {
+      this.displayStreamActive = false
+    })
+    this.stopStream(this.displayStream)
+    this.displayStream = stream
+    this.displayStreamActive = true
+    this.presenterId = this.localPeerId
+    this.presenterGone = false
+    await this.pushVideoToAll(track, stream)
+    this.broadcast({
+      t: 'presenter-changed',
+      v: PROTOCOL_VERSION,
+      presenterId: this.localPeerId,
+    })
+    this.broadcastRoster()
+  }
+
+  private async onPresenterChanged(presenterId: string): Promise<void> {
+    const wasPresenter = this.isPresenter
+    this.presenterId = presenterId
+    this.presenterGone = presenterId === ''
+    if (wasPresenter && !this.isPresenter) {
+      await this.stopPresenting()
+    }
+    this.attachPresenterVideo()
+  }
+
+  private async stopPresenting(): Promise<void> {
+    this.ToggleRemoteCursors(false)
+    for (const link of this.links.values()) {
+      await link.setVideoTrack(null, null)
+    }
+    this.stopStream(this.displayStream)
+    this.displayStream = null
+    this.displayStreamActive = false
+  }
+
+  private async onPeerLeftMessage(peerId: string): Promise<void> {
+    const link = this.findLinkByRemote(peerId)
+    if (link) await this.handleRemoteDeparted(link, false)
+    else this.removePeerById(peerId)
+  }
+
+  private onCoordinatorHandoff(coordinatorId: string): void {
+    this.coordinatorId = coordinatorId
+    appState.isCoordinator = this.isCoordinator
+  }
+
+  private onSessionEnded(): void {
+    this.sessionEndedReason = 'host-ended'
+    playSessionEndedSound()
+    void this.teardown(true)
+  }
+
+  private onCursor(msg: Extract<ControlMessage, { t: 'cursor' }>): void {
+    if (!this.isPresenter || !this.cursorsEnabled) return
+    window.KiwiApi.updateRemoteCursor({
+      id: msg.id,
+      name: msg.name,
+      color: msg.color,
+      x: msg.x,
+      y: msg.y,
+    })
+  }
+
+  private onCursorPing(cursorId: string): void {
+    if (!this.isPresenter || !this.cursorsEnabled) return
+    window.KiwiApi.remoteCursorPing(cursorId)
+  }
+
+  private onTrack(link: PeerLink, event: RTCTrackEvent): void {
+    const peerId = link.remotePeerId ?? link.pendingId
+    const stream = event.streams[0] ?? new MediaStream([event.track])
+    if (event.track.kind === 'video') {
+      this.remoteVideoStreams.set(peerId, stream)
+      this.attachPresenterVideo()
+    }
+    if (event.track.kind === 'audio') {
+      this.attachRemoteAudio(peerId, stream)
+    }
+  }
+
+  private attachPresenterVideo(): void {
+    if (!this.remoteVideo || this.isPresenter) return
+    const stream =
+      this.remoteVideoStreams.get(this.presenterId) ?? [...this.remoteVideoStreams.values()].at(-1)
+    if (stream && this.remoteVideo.srcObject !== stream) {
+      this.remoteVideo.srcObject = stream
+    }
+  }
+
+  private attachRemoteAudio(peerId: string, stream: MediaStream): void {
+    let audio = this.remoteAudioElements.get(peerId)
+    if (!audio) {
+      audio = document.createElement('audio')
+      audio.autoplay = true
+      this.remoteAudioElements.set(peerId, audio)
+    }
+    audio.srcObject = stream
+  }
+
+  private onIceState(link: PeerLink, state: RTCIceConnectionState): void {
+    const key = link.remotePeerId ?? link.pendingId
+    const existing = this.iceGraceTimers.get(key)
+    if (existing) {
+      clearTimeout(existing)
+      this.iceGraceTimers.delete(key)
+    }
+    if (state === 'connected' || state === 'completed') {
+      this.markLive(link)
+      this.setConnectionState('connected')
+      return
+    }
+    if (state === 'failed' || state === 'closed') {
+      void this.handleRemoteDeparted(link, false)
+      return
+    }
+    if (state === 'disconnected') {
+      const timer = setTimeout(() => {
+        this.iceGraceTimers.delete(key)
+        void this.handleRemoteDeparted(link, false)
+      }, ICE_DISCONNECT_GRACE_MS)
+      this.iceGraceTimers.set(key, timer)
+    }
+  }
+
+  private markLive(link: PeerLink): void {
+    link.markEstablished()
+    this.isLive = this.remotePeerCount > 0 || link.iceConnectionState === 'connected'
+    if (link.connectionState === 'connected' || link.iceConnectionState === 'connected') {
+      this.setConnectionState('connected')
+      this.isLive = true
+    }
+    this.syncLocalPeer()
+  }
+
+  private async handleRemoteDeparted(
+    link: PeerLink,
+    sessionEndedBroadcast: boolean,
+  ): Promise<void> {
+    const key = link.remotePeerId ?? link.pendingId
+    if (this.quietClose || this.closing.has(key)) return
+    this.closing.add(key)
+    const peerId = link.remotePeerId
+    this.clearIceGrace(key)
+    link.close()
+    this.deleteLink(link)
+    if (peerId) {
+      this.removePeerById(peerId)
+      this.remoteVideoStreams.delete(peerId)
+      const audio = this.remoteAudioElements.get(peerId)
+      if (audio) {
+        audio.srcObject = null
+        this.remoteAudioElements.delete(peerId)
+      }
+    }
+    const remaining = this.establishedRemoteIds().length
+    const reason = sessionEndedReasonAfterDeparture({
+      sessionEndedBroadcast,
+      remainingRemoteCount: remaining,
+    })
+    if (reason) {
+      this.sessionEndedReason = reason
+      this.isLive = false
+      this.setConnectionState('closed')
+      playSessionEndedSound()
+      return
+    }
+    this.isLive = remaining > 0
+    if (peerId && peerId === this.presenterId) {
+      this.presenterId = ''
+      this.presenterGone = true
+    }
+    if (peerId && peerId === this.coordinatorId) {
+      const next = nextCoordinator({
+        remainingPeerIds: [this.localPeerId, ...this.establishedRemoteIds()],
+      })
+      if (next) {
+        this.coordinatorId = next
+        appState.isCoordinator = this.isCoordinator
+      }
+    }
+    if (this.isCoordinator) this.broadcastRoster()
+    this.syncLocalPeer()
+  }
+
+  private findPendingForAnswer(answer: RTCSessionDescriptionInit): PeerLink | null {
+    for (const link of this.links.values()) {
+      if (link.remotePeerId) continue
+      if (answersMatchOffer(link.localDescription?.sdp, answer.sdp)) return link
+    }
+    if (this.lastCopiedPendingId) {
+      const last = this.links.get(this.lastCopiedPendingId)
+      if (last && !last.remotePeerId) return last
+    }
+    for (const [key, link] of this.links) {
+      if (key === this.handshakeKey) continue
+      if (!link.remotePeerId) return link
+    }
+    return null
+  }
+
+  private rekeyLink(link: PeerLink, remotePeerId: string): void {
+    link.remotePeerId = remotePeerId
+    const oldKey = [...this.links.entries()].find(([, value]) => value === link)?.[0]
+    if (oldKey && oldKey !== remotePeerId) this.links.delete(oldKey)
+    this.links.set(remotePeerId, link)
+    const pendingStream = this.remoteVideoStreams.get(link.pendingId)
+    if (pendingStream) {
+      this.remoteVideoStreams.delete(link.pendingId)
+      this.remoteVideoStreams.set(remotePeerId, pendingStream)
+      this.attachPresenterVideo()
+    }
+    const pendingAudio = this.remoteAudioElements.get(link.pendingId)
+    if (pendingAudio) {
+      this.remoteAudioElements.delete(link.pendingId)
+      this.remoteAudioElements.set(remotePeerId, pendingAudio)
+    }
+    if (this.handshakeKey === oldKey) this.handshakeKey = remotePeerId
+  }
+
+  private findLinkByRemote(peerId: string): PeerLink | undefined {
+    return this.links.get(peerId)
+  }
+
+  private deleteLink(link: PeerLink): void {
+    for (const [key, value] of this.links) {
+      if (value === link) this.links.delete(key)
+    }
+  }
+
+  private upsertPeer(peer: RoomPeer): void {
+    const others = this.peers.filter((item) => item.id !== peer.id)
+    this.peers = [...others, peer]
+  }
+
+  private removePeerById(peerId: string): void {
+    this.peers = this.peers.filter((peer) => peer.id !== peerId)
+  }
+
+  private syncLocalPeer(): void {
+    this.upsertPeer({
+      id: this.localPeerId,
+      username: this.username,
+      color: this.color,
+    })
+  }
+
+  private allPeerIds(): string[] {
+    const ids = new Set<string>([this.localPeerId, ...this.establishedRemoteIds()])
+    return [...ids]
+  }
+
+  private establishedRemoteIds(): string[] {
+    const ids: string[] = []
+    for (const [key, link] of this.links) {
+      if (key === this.handshakeKey && !link.remotePeerId) continue
+      if (link.remotePeerId) ids.push(link.remotePeerId)
+    }
+    return ids
+  }
+
+  private routablePeerIds(): string[] {
+    return this.establishedRemoteIds()
+  }
+
+  private broadcastRoster(): void {
+    const peers = this.peers.some((peer) => peer.id === this.localPeerId)
+      ? this.peers
+      : [...this.peers, { id: this.localPeerId, username: this.username, color: this.color }]
+    this.peers = peers
+    this.broadcast({
+      t: 'roster',
+      v: PROTOCOL_VERSION,
+      peers,
+      coordinatorId: this.coordinatorId,
+      presenterId: this.presenterId,
+    })
+  }
+
+  private broadcast(msg: ControlMessage): void {
+    for (const link of this.links.values()) {
+      link.sendControl(msg)
+    }
+  }
+
+  private sendTo(peerId: string, msg: ControlMessage): boolean {
+    const link = this.findLinkByRemote(peerId)
+    if (!link) return false
+    return link.sendControl(msg)
+  }
+
+  private sendRouted(to: string, msg: ControlMessage, fallback: PeerLink): void {
+    if (this.sendTo(to, msg)) return
+    fallback.sendControl(msg)
+    if (this.coordinatorId && this.coordinatorId !== this.localPeerId) {
+      this.sendTo(this.coordinatorId, msg)
+    }
+  }
+
+  private async pushVideoToAll(track: MediaStreamTrack, stream: MediaStream): Promise<void> {
+    for (const link of this.links.values()) {
+      await link.setVideoTrack(track, stream)
+    }
+  }
+
+  private armVoteTimer(vote: VoteState): void {
+    this.clearVoteTimer()
+    const delay = Math.max(0, vote.expiresAt - Date.now())
+    this.voteTimer = setTimeout(() => {
+      if (!this.activeVote || this.activeVote.voteId !== vote.voteId) return
+      void this.checkVoteOutcome(this.activeVote)
+    }, delay)
+  }
+
+  private clearVoteTimer(): void {
+    if (this.voteTimer) {
+      clearTimeout(this.voteTimer)
+      this.voteTimer = null
+    }
+  }
+
+  private clearIceGrace(key: string): void {
+    const timer = this.iceGraceTimers.get(key)
+    if (timer) clearTimeout(timer)
+    this.iceGraceTimers.delete(key)
+  }
+
+  private stopStream(stream: MediaStream | null): void {
+    if (!stream) return
+    for (const track of stream.getTracks()) track.stop()
+  }
+
+  private async teardown(quiet: boolean): Promise<void> {
+    this.quietClose = quiet
+    this.clearVoteTimer()
+    for (const timer of this.iceGraceTimers.values()) clearTimeout(timer)
+    this.iceGraceTimers.clear()
+    for (const link of this.links.values()) link.close()
+    this.links.clear()
+    this.stopStream(this.displayStream)
+    this.stopStream(this.pendingDisplayStream)
+    this.stopStream(this.audioStream)
+    this.displayStream = null
+    this.pendingDisplayStream = null
+    this.audioStream = null
+    for (const audio of this.remoteAudioElements.values()) {
+      audio.srcObject = null
+    }
+    this.remoteAudioElements.clear()
+    this.hasAudioInput = false
+    this.isLive = false
+    this.activeVote = null
+    this.localVoteCast = null
+    this.displayStreamActive = false
+    this.cursorsEnabled = false
+    window.KiwiApi.toggleRemoteCursors(false)
+    appState.isCoordinator = false
+    this.setConnectionState('disconnected')
+  }
+
+  private setConnectionState(state: string): void {
+    if (this.connectionState === state) return
+    this.connectionState = state
+  }
+}

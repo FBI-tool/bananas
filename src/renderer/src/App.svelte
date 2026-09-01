@@ -26,7 +26,7 @@
         appState.participantUrl = data.url
         break
       case 'participant':
-        if (appState.activeView !== 'host' || !appState.isHosting) return
+        if (!appState.isCoordinator) return
         appState.hostUrl = data.url
         break
     }

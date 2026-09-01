@@ -7,6 +7,7 @@ describe('appState', () => {
     expect(appState.navigationEnabled).toBe(true)
     expect(appState.isHosting).toBe(false)
     expect(appState.isWatching).toBe(false)
+    expect(appState.isCoordinator).toBe(false)
   })
 
   it('updates view and session flags', () => {

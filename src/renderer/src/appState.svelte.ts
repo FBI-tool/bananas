@@ -5,6 +5,7 @@ class AppState {
   navigationEnabled = $state(true)
   isHosting = $state(false)
   isWatching = $state(false)
+  isCoordinator = $state(false)
   hostUrl = $state('')
   participantUrl = $state('')
 }

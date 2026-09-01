@@ -15,17 +15,20 @@ class MockRTCPeerConnection {
   iceGatheringState = 'complete'
   connectionState = 'new'
   iceConnectionState = 'new'
+  signalingState = 'stable'
   ondatachannel: ((e: RTCDataChannelEvent) => void) | null = null
   ontrack: ((e: RTCTrackEvent) => void) | null = null
   onicecandidate: ((e: RTCPeerConnectionIceEvent) => void) | null = null
   oniceconnectionstatechange: (() => void) | null = null
+  onconnectionstatechange: (() => void) | null = null
+  onnegotiationneeded: (() => void) | null = null
   private senders: RTCRtpSender[] = []
 
   createDataChannel = vi.fn((label: string) => new MockDataChannel(label))
   createOffer = vi.fn(async () => ({ type: 'offer' as const, sdp: 'v=0' }))
   createAnswer = vi.fn(async () => ({ type: 'answer' as const, sdp: 'v=0' }))
-  setLocalDescription = vi.fn(async (desc: RTCSessionDescriptionInit) => {
-    this.localDescription = desc
+  setLocalDescription = vi.fn(async (desc?: RTCSessionDescriptionInit) => {
+    if (desc) this.localDescription = desc
   })
   setRemoteDescription = vi.fn(async () => undefined)
   addTrack = vi.fn((track: MediaStreamTrack, _stream: MediaStream) => {
@@ -64,17 +67,20 @@ beforeEach(() => {
       getSettings,
       updateRemoteCursor: vi.fn(),
       remoteCursorPing: vi.fn(),
+      toggleRemoteCursors: vi.fn(),
     },
   })
   vi.stubGlobal('navigator', {
     mediaDevices: {
       getDisplayMedia: vi.fn(async () => ({
-        getVideoTracks: () => [{ enabled: true, stop: vi.fn() }],
-        getTracks: () => [{ enabled: true, stop: vi.fn() }],
+        getVideoTracks: () => [{ enabled: true, stop: vi.fn(), addEventListener: vi.fn() }],
+        getTracks: () => [{ enabled: true, stop: vi.fn(), addEventListener: vi.fn() }],
       })),
       getUserMedia: vi.fn(async () => ({
-        getAudioTracks: () => [{ enabled: true, stop: vi.fn() }],
-        getTracks: () => [{ enabled: true, stop: vi.fn(), id: 'audio' }],
+        getAudioTracks: () => [
+          { enabled: true, stop: vi.fn(), id: 'audio', addEventListener: vi.fn() },
+        ],
+        getTracks: () => [{ enabled: true, stop: vi.fn(), id: 'audio', addEventListener: vi.fn() }],
       })),
     },
   })
@@ -95,8 +101,9 @@ describe('WebRTCSession', () => {
     const result = await session.Setup()
     expect(result).toBe('ok')
     const url = await session.CreateHostUrl({ username: 'Kiwi' })
-    expect(mayBeConnectionString(ConnectionType.HOST, url)).toBe(true)
-    expect(url.startsWith('kiwi://h/')).toBe(true)
+    expect(url).toBeTruthy()
+    expect(mayBeConnectionString(ConnectionType.HOST, url ?? '')).toBe(true)
+    expect(url?.startsWith('kiwi://h/')).toBe(true)
   })
 
   it('Disconnect resets the peer connection', async () => {
