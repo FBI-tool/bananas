@@ -58,5 +58,17 @@
       </span>
       <strong>{L.about()}</strong>
     </button>
+    {#if appState.debugLogsEnabled}
+      <button
+        class="btn {appState.activeView === 'debug' ? 'btn-primary' : 'btn-ghost'}"
+        data-action="debug"
+        onclick={handleTopButtonsClick}
+      >
+        <span class="icon">
+          <i class="fa-solid fa-bug"></i>
+        </span>
+        <strong>{L.debug()}</strong>
+      </button>
+    {/if}
   </div>
 </div>

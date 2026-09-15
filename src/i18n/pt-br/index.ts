@@ -82,6 +82,13 @@ const pt_br = {
   chat: 'Chat',
   chat_placeholder: 'Mensagem',
   send: 'Enviar',
+  debug: 'Depuração',
+  debug_logs: 'Ativar logs de depuração',
+  debug_logs_description:
+    'Mostra uma página de Depuração com logs de conexão e WebRTC. Ative antes de reproduzir o problema e copie o log.',
+  debug_clear: 'Limpar log',
+  debug_copy: 'Copiar log',
+  debug_empty: 'Nenhum log ainda. Reproduza o problema e copie o log.',
 } satisfies BaseTranslation
 
 export default pt_br

@@ -82,6 +82,13 @@ const fr = {
   chat: 'Discussion',
   chat_placeholder: 'Message',
   send: 'Envoyer',
+  debug: 'Débogage',
+  debug_logs: 'Activer les journaux de débogage',
+  debug_logs_description:
+    'Affiche une page Débogage avec les journaux de connexion et WebRTC. Activez-la avant de reproduire le problème, puis copiez le journal.',
+  debug_clear: 'Effacer le journal',
+  debug_copy: 'Copier le journal',
+  debug_empty: 'Aucun journal pour le moment. Reproduisez le problème, puis copiez le journal.',
 } satisfies BaseTranslation
 
 export default fr

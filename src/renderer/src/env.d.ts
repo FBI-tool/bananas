@@ -53,6 +53,7 @@ type KiwiApi = {
     color: string
     isMicrophoneEnabledOnConnect: boolean
     hardwareVideoAcceleration: boolean
+    debugLogsEnabled: boolean
     iceServers: IceServer[]
   }) => Promise<void>
   getSettings: () => Promise<{
@@ -61,6 +62,7 @@ type KiwiApi = {
     language: string
     isMicrophoneEnabledOnConnect: boolean
     hardwareVideoAcceleration: boolean
+    debugLogsEnabled: boolean
     iceServers: IceServer[]
   }>
   getAppVersion: () => Promise<string>

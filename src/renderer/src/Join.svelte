@@ -4,6 +4,7 @@
   import { mayBeConnectionString, getDataFromKiwiUrl, ConnectionType } from './Utils'
   import { appState } from './appState.svelte'
   import { toast } from './toastState.svelte'
+  import { debugLog } from './debugLog.svelte'
   import { Room } from './session/room.svelte'
   import SessionStage from './SessionStage.svelte'
 
@@ -39,6 +40,7 @@
         toast.show('success', L.connection_established())
         break
       case 'failed':
+        debugLog.error('join', 'connectionState failed')
         toast.show('error', L.connection_failed())
         break
       case 'closed':
@@ -52,17 +54,25 @@
   const onConnectClick = async (): Promise<void> => {
     const setupResult = await room.Setup(remoteScreen ?? document.createElement('video'))
     if (setupResult !== 'ok') {
+      debugLog.error('join', `Setup returned ${setupResult}`)
       toast.show('error', L.connection_failed())
       return
     }
     try {
       const data = await getDataFromKiwiUrl(appState.participantUrl)
+      debugLog.info('join', 'parsed host URL', {
+        type: data.type,
+        username: data.data.username,
+        sdpType: data.rtcSessionDescription.type,
+        sdpChars: data.rtcSessionDescription.sdp?.length ?? 0,
+      })
       await room.Connect(data.rtcSessionDescription)
       isConnected = true
       appState.isWatching = true
       appState.navigationEnabled = false
     } catch (error) {
       console.error(error)
+      debugLog.error('join', 'Connect click failed', error)
       toast.show('error', L.connection_failed())
     }
   }
@@ -83,6 +93,7 @@
       void navigator.clipboard.writeText(data)
     } catch (error) {
       console.error(error)
+      debugLog.error('join', 'Copy participant string failed', error)
       toast.show('error', L.connection_failed())
     } finally {
       copyInFlight = false

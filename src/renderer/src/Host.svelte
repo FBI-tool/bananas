@@ -3,6 +3,7 @@
   import { L } from './translations'
   import { appState } from './appState.svelte'
   import { toast } from './toastState.svelte'
+  import { debugLog } from './debugLog.svelte'
   import { mayBeConnectionString, getDataFromKiwiUrl, ConnectionType } from './Utils'
   import { Room } from './session/room.svelte'
   import SessionStage from './SessionStage.svelte'
@@ -40,6 +41,7 @@
         toast.show('success', L.connection_established())
         break
       case 'failed':
+        debugLog.error('host', 'connectionState failed')
         toast.show('error', L.connection_failed())
         break
       case 'closed':
@@ -57,6 +59,7 @@
       appState.hostUrl = ''
     } catch (error) {
       console.error(error)
+      debugLog.error('host', 'Connect participant string failed', error)
       toast.show('error', L.connection_failed())
     }
   }
@@ -80,6 +83,7 @@
       }
     } catch (error) {
       console.error(error)
+      debugLog.error('host', 'Copy host string failed', error)
       toast.show('error', L.connection_failed())
     } finally {
       copyInFlight = false

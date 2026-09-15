@@ -82,6 +82,13 @@ const en = {
   chat: 'Chat',
   chat_placeholder: 'Message',
   send: 'Send',
+  debug: 'Debug',
+  debug_logs: 'Enable debug logs',
+  debug_logs_description:
+    'Show a Debug page with connection and WebRTC logs. Turn this on before reproducing a problem, then copy the log.',
+  debug_clear: 'Clear log',
+  debug_copy: 'Copy log',
+  debug_empty: 'No debug log entries yet. Reproduce the issue, then copy the log.',
 } satisfies BaseTranslation
 
 export default en

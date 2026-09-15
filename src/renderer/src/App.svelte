@@ -4,16 +4,22 @@
   import Host from './Host.svelte'
   import Settings from './Settings.svelte'
   import About from './About.svelte'
+  import Debug from './Debug.svelte'
   import ScreenPicker from './ScreenPicker.svelte'
   import Toast from './Toast.svelte'
   import { appState } from './appState.svelte'
+  import { debugLog } from './debugLog.svelte'
   import { getDataFromKiwiUrl } from './Utils'
   import { onMount } from 'svelte'
 
   let screenPicker: ScreenPicker | undefined = $state()
 
-  onMount(() => {
+  onMount(async () => {
     window.KiwiApi.onSelectScreenShareSource((sources) => screenPicker.pick(sources))
+    const settings = await window.KiwiApi.getSettings()
+    appState.debugLogsEnabled = settings.debugLogsEnabled
+    debugLog.setEnabled(settings.debugLogsEnabled)
+    if (settings.debugLogsEnabled) debugLog.info('app', 'debug logs enabled')
   })
 
   window.onmessage = async (evt: MessageEvent): Promise<void> => {
@@ -44,6 +50,8 @@
   <Settings />
 {:else if appState.activeView === 'about'}
   <About />
+{:else if appState.activeView === 'debug'}
+  <Debug />
 {/if}
 
 <ScreenPicker bind:this={screenPicker} />

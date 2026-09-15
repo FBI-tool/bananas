@@ -330,6 +330,30 @@ type RootTranslation = {
 	 * S​e​n​d
 	 */
 	send: string
+	/**
+	 * D​e​b​u​g
+	 */
+	debug: string
+	/**
+	 * E​n​a​b​l​e​ ​d​e​b​u​g​ ​l​o​g​s
+	 */
+	debug_logs: string
+	/**
+	 * S​h​o​w​ ​a​ ​D​e​b​u​g​ ​p​a​g​e​ ​w​i​t​h​ ​c​o​n​n​e​c​t​i​o​n​ ​a​n​d​ ​W​e​b​R​T​C​ ​l​o​g​s​.​ ​T​u​r​n​ ​t​h​i​s​ ​o​n​ ​b​e​f​o​r​e​ ​r​e​p​r​o​d​u​c​i​n​g​ ​a​ ​p​r​o​b​l​e​m​,​ ​t​h​e​n​ ​c​o​p​y​ ​t​h​e​ ​l​o​g​.
+	 */
+	debug_logs_description: string
+	/**
+	 * C​l​e​a​r​ ​l​o​g
+	 */
+	debug_clear: string
+	/**
+	 * C​o​p​y​ ​l​o​g
+	 */
+	debug_copy: string
+	/**
+	 * N​o​ ​d​e​b​u​g​ ​l​o​g​ ​e​n​t​r​i​e​s​ ​y​e​t​.​ ​R​e​p​r​o​d​u​c​e​ ​t​h​e​ ​i​s​s​u​e​,​ ​t​h​e​n​ ​c​o​p​y​ ​t​h​e​ ​l​o​g​.
+	 */
+	debug_empty: string
 }
 
 export type TranslationFunctions = {
@@ -645,6 +669,30 @@ export type TranslationFunctions = {
 	 * Send
 	 */
 	send: () => LocalizedString
+	/**
+	 * Debug
+	 */
+	debug: () => LocalizedString
+	/**
+	 * Enable debug logs
+	 */
+	debug_logs: () => LocalizedString
+	/**
+	 * Show a Debug page with connection and WebRTC logs. Turn this on before reproducing a problem, then copy the log.
+	 */
+	debug_logs_description: () => LocalizedString
+	/**
+	 * Clear log
+	 */
+	debug_clear: () => LocalizedString
+	/**
+	 * Copy log
+	 */
+	debug_copy: () => LocalizedString
+	/**
+	 * No debug log entries yet. Reproduce the issue, then copy the log.
+	 */
+	debug_empty: () => LocalizedString
 }
 
 export type Formatters = {}

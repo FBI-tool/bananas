@@ -17,6 +17,7 @@ export type SettingsData = {
   color: string
   isMicrophoneEnabledOnConnect: boolean
   hardwareVideoAcceleration: boolean
+  debugLogsEnabled: boolean
   iceServers: IceServer[]
 }
 
@@ -28,4 +29,4 @@ export type ScreenShareSource = {
   isScreen: boolean
 }
 
-export type ViewName = 'join' | 'host' | 'settings' | 'about'
+export type ViewName = 'join' | 'host' | 'settings' | 'about' | 'debug'

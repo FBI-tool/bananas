@@ -2,6 +2,8 @@
   import { onMount } from 'svelte'
   import ColorPicker from 'svelte-awesome-color-picker'
   import { L } from './translations'
+  import { appState } from './appState.svelte'
+  import { debugLog } from './debugLog.svelte'
 
   let colorPreviewIcon: HTMLElement | undefined = $state()
   let usernameValue = $state('Kiwi')
@@ -13,6 +15,7 @@
   let modalFailureIsActive = $state(false)
   let isMicrophoneEnabledOnConnect = $state(true)
   let hardwareVideoAcceleration = $state(true)
+  let debugLogsEnabled = $state(false)
   const isLinux = window.electron.process.platform === 'linux'
 
   const isUsernameValid = $derived(usernameValue.length > 0 && usernameValue.length < 32)
@@ -43,8 +46,13 @@
         language,
         isMicrophoneEnabledOnConnect,
         hardwareVideoAcceleration,
+        debugLogsEnabled,
         iceServers: iceServersValue.split('\n').map((srv) => JSON.parse(srv))
       })
+      appState.debugLogsEnabled = debugLogsEnabled
+      debugLog.setEnabled(debugLogsEnabled)
+      if (!debugLogsEnabled && appState.activeView === 'debug') appState.activeView = 'settings'
+      if (debugLogsEnabled) debugLog.info('settings', 'debug logs enabled')
       modalSuccessIsActive = true
       setTimeout(() => {
         modalSuccessIsActive = false
@@ -63,6 +71,7 @@
     language = settings.language
     isMicrophoneEnabledOnConnect = settings.isMicrophoneEnabledOnConnect
     hardwareVideoAcceleration = settings.hardwareVideoAcceleration
+    debugLogsEnabled = settings.debugLogsEnabled
     iceServersValue = settings.iceServers.map((srv) => JSON.stringify(srv)).join('\n')
   })
 </script>
@@ -138,6 +147,12 @@
     {/if}
 
     <h2 class="text-xl font-semibold mt-2">{L.advanced()}</h2>
+
+    <label class="label cursor-pointer justify-start gap-2">
+      <input bind:checked={debugLogsEnabled} class="checkbox" type="checkbox" id="debug_logs" />
+      {L.debug_logs()}
+    </label>
+    <p class="label">{L.debug_logs_description()}</p>
 
     <fieldset class="fieldset">
       <legend class="fieldset-legend">{L.stun_turn_server_objects()}</legend>

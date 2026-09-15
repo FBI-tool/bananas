@@ -65,6 +65,7 @@ const getSettings = vi.fn(async () => ({
   language: 'en',
   isMicrophoneEnabledOnConnect: true,
   hardwareVideoAcceleration: true,
+  debugLogsEnabled: false,
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 }))
 

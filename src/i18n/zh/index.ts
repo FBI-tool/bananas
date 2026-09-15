@@ -81,6 +81,12 @@ const zh = {
   chat: '聊天',
   chat_placeholder: '输入消息',
   send: '发送',
+  debug: '调试',
+  debug_logs: '启用调试日志',
+  debug_logs_description: '显示包含连接和 WebRTC 日志的调试页面。请先开启，再复现问题并复制日志。',
+  debug_clear: '清空日志',
+  debug_copy: '复制日志',
+  debug_empty: '暂无调试日志。请复现问题后复制日志。',
 } satisfies Translation
 
 export default zh

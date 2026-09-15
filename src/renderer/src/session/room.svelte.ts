@@ -31,9 +31,11 @@ import {
   type VoteState,
 } from './roomLogic'
 import { playSessionEndedSound } from './sessionEndedSound'
+import { debugLog, summarizePc, summarizeSdp } from '../debugLog.svelte'
 
 const errorHandler = (e: unknown): void => {
   console.error(e)
+  debugLog.error('room', 'unhandled error', e)
 }
 
 export type RoomPeer = RosterPeer
@@ -192,6 +194,7 @@ export class Room {
   }
 
   async Setup(v: HTMLVideoElement | null = null): Promise<'ok' | 'cancelled' | 'failed'> {
+    debugLog.info('room', 'Setup start', { hasVideoEl: Boolean(v), role: v ? 'joiner' : 'host' })
     this.bindCallIpc()
     this.userSettings = await window.KiwiApi.getSettings()
     this.username = this.userSettings.username
@@ -214,8 +217,10 @@ export class Room {
     } catch (e) {
       errorHandler(e)
       this.audioStream = null
+      debugLog.warn('room', 'getUserMedia audio failed', e)
     }
     this.hasAudioInput = this.audioStream !== null
+    debugLog.info('room', `audio input ${this.hasAudioInput ? 'available' : 'unavailable'}`)
 
     if (!v) {
       this.coordinatorId = this.localPeerId
@@ -247,26 +252,49 @@ export class Room {
       const link = await this.createLink(false)
       this.handshakeKey = link.pendingId
       this.links.set(link.pendingId, link)
+      debugLog.info('room', 'joiner handshake link created', {
+        pendingId: link.pendingId,
+        pc: summarizePc(link.pc),
+      })
     }
     this.syncLocalPeer()
+    debugLog.info('room', 'Setup ok', {
+      localPeerId: this.localPeerId,
+      coordinatorId: this.coordinatorId,
+      presenterId: this.presenterId,
+    })
     return 'ok'
   }
 
   async CreateHostUrl(data: { username: string }): Promise<string | null> {
     this.gcPendingInvites()
-    if (this.occupiedSlots() >= MAX_PEERS) return null
+    if (this.occupiedSlots() >= MAX_PEERS) {
+      debugLog.warn('room', 'CreateHostUrl blocked: room full', { slots: this.occupiedSlots() })
+      return null
+    }
     const link = await this.createLink(true)
     this.addLocalMediaToLink(link)
+    debugLog.info('room', 'CreateHostUrl adding local media', summarizePc(link.pc))
     const offer = await link.createLocalOffer()
+    debugLog.info('room', 'CreateHostUrl local offer', summarizeSdp(offer))
     await link.waitForIceGatheringComplete()
+    debugLog.info('room', 'CreateHostUrl ICE gathered', {
+      pc: summarizePc(link.pc),
+      local: summarizeSdp(link.localDescription),
+    })
     this.links.set(link.pendingId, link)
     this.lastCopiedPendingId = link.pendingId
     this.username = data.username || this.username
-    return await getConnectionString(
+    const url = await getConnectionString(
       ConnectionType.HOST,
       dropTcpIceCandidates(link.localDescription ?? offer),
       { username: this.username },
     )
+    debugLog.info('room', 'CreateHostUrl copied host string', {
+      pendingId: link.pendingId,
+      urlChars: url.length,
+    })
+    return url
   }
 
   async CreateParticipantUrl(
@@ -275,40 +303,83 @@ export class Room {
   ): Promise<string> {
     this.username = data.username || this.username
     const link = this.handshakeLink()
-    if (!link) throw new Error('viewer handshake is not ready')
+    if (!link) {
+      debugLog.error('room', 'CreateParticipantUrl: handshake missing')
+      throw new Error('viewer handshake is not ready')
+    }
+    debugLog.info('room', 'CreateParticipantUrl start', {
+      incoming: summarizeSdp(c),
+      pc: summarizePc(link.pc),
+      hasRemote: Boolean(link.pc.remoteDescription),
+      localType: link.pc.localDescription?.type ?? 'none',
+    })
     if (!link.pc.remoteDescription) {
       await link.setRemoteDescription(c)
+      debugLog.info('room', 'CreateParticipantUrl setRemote', summarizePc(link.pc))
     }
     this.addLocalMediaToLink(link)
     if (link.pc.localDescription?.type !== 'answer') {
-      await link.createLocalAnswer()
+      const answer = await link.createLocalAnswer()
+      debugLog.info('room', 'CreateParticipantUrl created answer', summarizeSdp(answer))
     }
     await link.waitForIceGatheringComplete()
     const local = link.localDescription
-    if (!local?.sdp) throw new Error('participant answer is not ready')
-    return await getConnectionString(ConnectionType.PARTICIPANT, dropTcpIceCandidates(local), {
+    if (!local?.sdp) {
+      debugLog.error('room', 'CreateParticipantUrl: no local SDP', summarizePc(link.pc))
+      throw new Error('participant answer is not ready')
+    }
+    debugLog.info('room', 'CreateParticipantUrl ICE gathered', {
+      pc: summarizePc(link.pc),
+      local: summarizeSdp(local),
+    })
+    const url = await getConnectionString(ConnectionType.PARTICIPANT, dropTcpIceCandidates(local), {
       username: this.username,
     })
+    debugLog.info('room', 'CreateParticipantUrl copied answer string', { urlChars: url.length })
+    return url
   }
 
   async Connect(c: RTCSessionDescriptionOptions): Promise<void> {
+    debugLog.info('room', 'Connect start', summarizeSdp(c))
     try {
       if (c.type === 'answer') {
         const pending = this.findPendingForAnswer(c)
-        if (!pending) throw new Error('no pending invite matches this answer')
+        if (!pending) {
+          debugLog.error('room', 'Connect: no pending invite matches answer', {
+            answer: summarizeSdp(c),
+            pendingIds: [...this.links.keys()],
+          })
+          throw new Error('no pending invite matches this answer')
+        }
+        debugLog.info('room', 'Connect applying answer to pending invite', {
+          pendingId: pending.pendingId,
+          before: summarizePc(pending.pc),
+        })
         await pending.setRemoteDescription(c)
         this.isLive = true
         this.setConnectionState('connected')
+        debugLog.info('room', 'Connect host applied answer', summarizePc(pending.pc))
         return
       }
       const link = this.handshakeLink()
-      if (!link) throw new Error('viewer handshake is not ready')
+      if (!link) {
+        debugLog.error('room', 'Connect: joiner handshake missing')
+        throw new Error('viewer handshake is not ready')
+      }
+      debugLog.info('room', 'Connect joiner applying offer', summarizePc(link.pc))
       await link.setRemoteDescription(c)
+      debugLog.info('room', 'Connect joiner after setRemote', summarizePc(link.pc))
       this.addLocalMediaToLink(link)
+      debugLog.info('room', 'Connect joiner after addLocalMedia', summarizePc(link.pc))
       if (c.type === 'offer' && link.pc.localDescription?.type !== 'answer') {
-        await link.createLocalAnswer()
+        const answer = await link.createLocalAnswer()
+        debugLog.info('room', 'Connect joiner created answer', {
+          pc: summarizePc(link.pc),
+          answer: summarizeSdp(answer),
+        })
       }
     } catch (e) {
+      debugLog.error('room', 'Connect failed', e)
       errorHandler(e)
       throw e
     }
@@ -496,9 +567,19 @@ export class Room {
           this.onTrack(link, event)
         },
         onIceConnectionStateChange: (state) => {
+          debugLog.info('room', `ICE ${state}`, {
+            pendingId: link.pendingId,
+            remotePeerId: link.remotePeerId,
+            pc: summarizePc(link.pc),
+          })
           this.onIceState(link, state)
         },
         onConnectionStateChange: (state) => {
+          debugLog.info('room', `PC ${state}`, {
+            pendingId: link.pendingId,
+            remotePeerId: link.remotePeerId,
+            pc: summarizePc(link.pc),
+          })
           if (state === 'connected') this.markLive(link)
           if (state === 'failed' || state === 'closed') {
             void this.handleRemoteDeparted(link, false)
