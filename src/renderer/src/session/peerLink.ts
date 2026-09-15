@@ -183,22 +183,17 @@ export class PeerLink {
         if (settled) return
         settled = true
         this.pc.removeEventListener('icegatheringstatechange', onStateChange)
-        this.pc.removeEventListener('icecandidate', onCandidate)
         clearTimeout(timeoutId)
         resolve()
       }
       const onStateChange = (): void => {
         if (this.pc.iceGatheringState === 'complete') finish()
       }
-      const onCandidate = (event: RTCPeerConnectionIceEvent): void => {
-        if (!event.candidate) finish()
-      }
       const timeoutId = setTimeout(() => {
         console.warn('ICE gathering timed out; continuing with current candidates')
         finish()
       }, ICE_GATHERING_TIMEOUT_MS)
       this.pc.addEventListener('icegatheringstatechange', onStateChange)
-      this.pc.addEventListener('icecandidate', onCandidate)
       onStateChange()
     })
   }

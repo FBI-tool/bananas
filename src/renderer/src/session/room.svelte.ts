@@ -247,7 +247,6 @@ export class Room {
       const link = await this.createLink(false)
       this.handshakeKey = link.pendingId
       this.links.set(link.pendingId, link)
-      this.addLocalMediaToLink(link)
     }
     this.syncLocalPeer()
     return 'ok'
@@ -280,6 +279,7 @@ export class Room {
     if (!link.pc.remoteDescription) {
       await link.setRemoteDescription(c)
     }
+    this.addLocalMediaToLink(link)
     if (link.pc.localDescription?.type !== 'answer') {
       await link.createLocalAnswer()
     }
@@ -304,6 +304,7 @@ export class Room {
       const link = this.handshakeLink()
       if (!link) throw new Error('viewer handshake is not ready')
       await link.setRemoteDescription(c)
+      this.addLocalMediaToLink(link)
       if (c.type === 'offer' && link.pc.localDescription?.type !== 'answer') {
         await link.createLocalAnswer()
       }
@@ -686,8 +687,8 @@ export class Room {
     }
     const link = await this.createLink(false, msg.from)
     this.links.set(msg.from, link)
-    this.addLocalMediaToLink(link)
     await link.setRemoteDescription(msg.sdp)
+    this.addLocalMediaToLink(link)
     const answer = await link.createLocalAnswer()
     await link.waitForIceGatheringComplete()
     link.markEstablished()
