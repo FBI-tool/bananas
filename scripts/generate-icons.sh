@@ -13,6 +13,8 @@ generate_icons() {
 
   echo "Generating icons from $source_icon..."
 
+  magick "$source_icon" -resize "192x192" "logo.png"
+
   for SIZE in "${sizes[@]}"; do
       dest="$output_dir_appimage_icons/${SIZE}x${SIZE}.png"
       magick "$source_icon" -resize "${SIZE}x${SIZE}" "$dest"
