@@ -235,10 +235,10 @@
         class="btn {room.microphoneActive ? 'btn-success' : 'btn-error'}"
         onclick={onMicrophoneToggle}
       >
-        <span class="icon">
+        <span class="icon mic-btn-icon">
           {#if room.microphoneActive}
             <AudioVisualizer
-              className="icon {visualizerIsActive ? '' : 'hidden'}"
+              className={visualizerIsActive ? '' : 'hidden'}
               bind:visualizerIsActive
               stream={room.GetAudioStream()}
             />
@@ -393,6 +393,14 @@
   .video-overflow {
     width: 100%;
     height: auto;
+    overflow: hidden;
+  }
+  .mic-btn-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     overflow: hidden;
   }
 </style>

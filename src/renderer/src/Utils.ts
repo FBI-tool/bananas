@@ -56,7 +56,7 @@ export const mediaTrackConstraints = (
   deviceId: string | undefined | null,
 ): boolean | MediaTrackConstraints => {
   if (!deviceId) return true
-  return { deviceId: { ideal: deviceId } }
+  return { deviceId: { exact: deviceId } }
 }
 
 /** Native RTCSessionDescription stores type/sdp as prototype getters, so object spread drops them. */

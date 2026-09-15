@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { onDestroy } from 'svelte'
 
   let {
     stream = null,
@@ -11,144 +11,125 @@
     visualizerIsActive?: boolean
   } = $props()
 
+  const CSS_WIDTH = 22
+  const CSS_HEIGHT = 18
+  const BAR_COUNT = 4
+  const MIN_BAR = 0.22
+  const SMOOTHING = 0.28
+  const ACTIVATE_AT = 0.12
+  const DEACTIVATE_AT = 0.05
+
   let canvas: HTMLCanvasElement | undefined = $state()
   let audioCtx: AudioContext | null = null
   let analyser: AnalyserNode | null = null
-  let animationFrameId: number
+  let source: MediaStreamAudioSourceNode | null = null
+  let animationFrameId = 0
+  let bars = Array.from({ length: BAR_COUNT }, () => MIN_BAR)
+  let speaking = false
 
-  const ACTIVE_THRESHOLD = 0.006
-  const ACTIVATION_PERCENTAGE = 0.1
-  const HEIGHT_SCALE = 4
-  const BUFFER_SIZE = 256
-  const DELAY_FRAMES = 50
-  const EASING_FACTOR = 0.1
-  const DECAY_RATE = 0.05
-
-  let smoothedRMS = 0
-  let buffer: number[] = []
-  let signalBuffer: number[][] = []
-  let displayedValues: number[] = []
-  let signalBufferIndex = 0
-
-  function visualize(s: MediaStream): void {
-    if (!canvas) return
-
-    if (!audioCtx) {
-      audioCtx = new AudioContext()
+  const stop = (): void => {
+    if (animationFrameId) cancelAnimationFrame(animationFrameId)
+    animationFrameId = 0
+    source?.disconnect()
+    source = null
+    analyser?.disconnect()
+    analyser = null
+    if (audioCtx) {
+      void audioCtx.close()
+      audioCtx = null
     }
+  }
 
+  const start = (media: MediaStream): void => {
+    if (!canvas) return
+    stop()
+
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = CSS_WIDTH * dpr
+    canvas.height = CSS_HEIGHT * dpr
+    canvas.style.width = `${CSS_WIDTH}px`
+    canvas.style.height = `${CSS_HEIGHT}px`
     const canvasCtx = canvas.getContext('2d')
-    const source = audioCtx.createMediaStreamSource(s)
+    if (!canvasCtx) return
+    canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
+    audioCtx = new AudioContext()
     analyser = audioCtx.createAnalyser()
-    analyser.fftSize = 2048
-    const bufferLength = analyser.frequencyBinCount
-    const dataArray = new Uint8Array(bufferLength)
-
-    signalBuffer = Array.from({ length: DELAY_FRAMES }, () =>
-      Array.from({ length: bufferLength }, () => 0)
-    )
-    displayedValues = Array.from({ length: bufferLength }, () => 0)
-
+    analyser.fftSize = 64
+    analyser.smoothingTimeConstant = 0.65
+    source = audioCtx.createMediaStreamSource(media)
     source.connect(analyser)
 
-    function calculateRMS(data: Uint8Array): number {
-      const squaredSum = data.reduce((sum, value) => sum + Math.pow(value / 128.0 - 1.0, 2), 0)
-      return Math.sqrt(squaredSum / data.length)
-    }
+    const freq = new Uint8Array(analyser.frequencyBinCount)
+    bars = Array.from({ length: BAR_COUNT }, () => MIN_BAR)
 
-    function draw(): void {
+    const draw = (): void => {
       animationFrameId = requestAnimationFrame(draw)
-
       if (!canvas || !canvasCtx || !analyser) return
 
-      const canvasWidth = canvas.width
-      const canvasHeight = canvas.height
-      const centerY = canvasHeight / 2
-
-      analyser.getByteTimeDomainData(dataArray)
-
-      signalBuffer[signalBufferIndex] = [...dataArray]
-      signalBufferIndex = (signalBufferIndex + 1) % DELAY_FRAMES
-
-      const delayedSignal = signalBuffer[(signalBufferIndex + 1) % DELAY_FRAMES]
-
-      for (let i = 0; i < delayedSignal.length; i++) {
-        const targetValue = (delayedSignal[i] / 128.0 - 1.0) * 3
-        if (Math.abs(targetValue) > Math.abs(displayedValues[i])) {
-          displayedValues[i] += (targetValue - displayedValues[i]) * EASING_FACTOR
-        } else {
-          displayedValues[i] *= 1 - DECAY_RATE
+      analyser.getByteFrequencyData(freq)
+      const usable = Math.max(1, Math.floor(freq.length * 0.45))
+      let energy = 0
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const startBin = Math.floor((i * usable) / BAR_COUNT) + 1
+        const endBin = Math.floor(((i + 1) * usable) / BAR_COUNT) + 1
+        let sum = 0
+        let count = 0
+        for (let bin = startBin; bin < endBin; bin++) {
+          sum += freq[bin] ?? 0
+          count += 1
         }
-        displayedValues[i] = Math.min(Math.max(displayedValues[i], -1), 1)
+        const target = MIN_BAR + ((count ? sum / count : 0) / 255) * (1 - MIN_BAR)
+        bars[i] += (target - bars[i]) * SMOOTHING
+        energy += bars[i]
       }
 
-      canvasCtx.clearRect(0, 0, canvasWidth, canvasHeight)
-      canvasCtx.fillStyle = 'transparent'
-      canvasCtx.fillRect(0, 0, canvasWidth, canvasHeight)
+      const level = energy / BAR_COUNT - MIN_BAR
+      if (!speaking && level > ACTIVATE_AT) speaking = true
+      else if (speaking && level < DEACTIVATE_AT) speaking = false
+      visualizerIsActive = speaking
 
-      canvasCtx.lineWidth = 2
-      canvasCtx.strokeStyle = 'rgb(0, 0, 0)'
-      canvasCtx.beginPath()
+      const color = getComputedStyle(canvas).color
+      canvasCtx.clearRect(0, 0, CSS_WIDTH, CSS_HEIGHT)
+      canvasCtx.fillStyle = color
 
-      const sliceWidth = canvasWidth / bufferLength
-      let x = 0
+      const gap = 2
+      const barWidth = (CSS_WIDTH - gap * (BAR_COUNT - 1)) / BAR_COUNT
+      const radius = Math.min(2, barWidth / 2)
 
-      for (let i = 0; i < bufferLength; i++) {
-        const y = centerY + displayedValues[i] * (centerY * HEIGHT_SCALE * 1.5)
-
-        if (i === 0) {
-          canvasCtx.moveTo(x, y)
-        } else {
-          canvasCtx.lineTo(x, y)
-        }
-        x += sliceWidth
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const height = Math.max(2, bars[i] * CSS_HEIGHT)
+        const x = i * (barWidth + gap)
+        const y = (CSS_HEIGHT - height) / 2
+        canvasCtx.beginPath()
+        canvasCtx.roundRect(x, y, barWidth, height, radius)
+        canvasCtx.fill()
       }
-
-      canvasCtx.lineTo(canvasWidth, centerY)
-      canvasCtx.stroke()
-
-      const rms = calculateRMS(dataArray)
-
-      smoothedRMS = 0.8 * smoothedRMS + 0.2 * rms
-
-      buffer.push(smoothedRMS)
-      if (buffer.length > BUFFER_SIZE) {
-        buffer.shift()
-      }
-
-      const activeCount = buffer.filter((value) => value > ACTIVE_THRESHOLD).length
-      const activePercentage = activeCount / buffer.length
-
-      visualizerIsActive = activePercentage >= ACTIVATION_PERCENTAGE
     }
 
+    void audioCtx.resume()
     draw()
   }
 
-  onMount(() => {
-    if (stream) {
-      visualize(stream)
-    }
+  $effect(() => {
+    const media = stream
+    const node = canvas
+    if (!media || !node) return undefined
+    start(media)
+    return stop
   })
 
-  onDestroy(() => {
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId)
-    }
-    if (audioCtx) {
-      audioCtx.close()
-    }
-    audioCtx = null
-    analyser = null
-  })
+  onDestroy(stop)
 </script>
 
-<canvas class={className} bind:this={canvas}></canvas>
+<canvas class={className} bind:this={canvas} width={CSS_WIDTH} height={CSS_HEIGHT}></canvas>
 
 <style>
   canvas {
-    margin-inline-end: initial !important;
-    margin-inline-start: initial !important;
+    display: block;
+    width: 1.375rem;
+    height: 1.125rem;
+    margin: 0 !important;
+    flex: none;
   }
 </style>

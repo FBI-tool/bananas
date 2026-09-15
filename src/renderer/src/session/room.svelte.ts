@@ -1360,8 +1360,11 @@ export class Room {
 
   private async enableCamera(): Promise<void> {
     try {
+      this.userSettings = await window.KiwiApi.getSettings()
+      const deviceId = this.userSettings.cameraDeviceId
+      debugLog.info('room', 'camera getUserMedia', { deviceId: deviceId || 'default' })
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: mediaTrackConstraints(this.userSettings?.cameraDeviceId),
+        video: mediaTrackConstraints(deviceId),
         audio: false,
       })
       const track = stream.getVideoTracks()[0]
@@ -1378,7 +1381,9 @@ export class Room {
       this.cameraSendStreamId = stream.id
       debugLog.info('room', 'camera enabled', {
         streamId: stream.id,
+        requestedDeviceId: deviceId || 'default',
         deviceId: track.getSettings().deviceId ?? '',
+        label: track.label,
         links: this.links.size,
       })
       for (const link of this.links.values()) {

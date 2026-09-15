@@ -240,7 +240,7 @@ describe('mediaTrackConstraints', () => {
   })
 
   it('prefers the selected device id', () => {
-    expect(mediaTrackConstraints('cam-1')).toEqual({ deviceId: { ideal: 'cam-1' } })
+    expect(mediaTrackConstraints('cam-1')).toEqual({ deviceId: { exact: 'cam-1' } })
   })
 })
 

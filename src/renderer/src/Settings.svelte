@@ -4,7 +4,6 @@
   import { L } from './translations'
   import { appState } from './appState.svelte'
   import { debugLog } from './debugLog.svelte'
-  import { mediaTrackConstraints } from './Utils'
 
   let colorPreviewIcon: HTMLElement | undefined = $state()
   let usernameValue = $state('Kiwi')
@@ -106,14 +105,14 @@
     }
     if (
       await tryGet({
-        audio: mediaTrackConstraints(microphoneDeviceId),
-        video: mediaTrackConstraints(cameraDeviceId)
+        audio: true,
+        video: true
       })
     ) {
       return
     }
-    if (await tryGet({ audio: mediaTrackConstraints(microphoneDeviceId) })) return
-    await tryGet({ video: mediaTrackConstraints(cameraDeviceId) })
+    if (await tryGet({ audio: true })) return
+    await tryGet({ video: true })
   }
 
   const refreshMediaDevices = async (): Promise<void> => {
@@ -121,16 +120,6 @@
     const devices = await navigator.mediaDevices.enumerateDevices()
     cameras = devices.filter((device) => device.kind === 'videoinput' && device.deviceId)
     microphones = devices.filter((device) => device.kind === 'audioinput' && device.deviceId)
-    if (cameras.length > 0 && cameraDeviceId && !cameras.some((device) => device.deviceId === cameraDeviceId)) {
-      cameraDeviceId = ''
-    }
-    if (
-      microphones.length > 0 &&
-      microphoneDeviceId &&
-      !microphones.some((device) => device.deviceId === microphoneDeviceId)
-    ) {
-      microphoneDeviceId = ''
-    }
   }
 
   const deviceLabel = (device: MediaDeviceInfo, index: number): string =>
