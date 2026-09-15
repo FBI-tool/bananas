@@ -10,7 +10,7 @@ import {
   startVote,
   voteOutcome,
 } from './roomLogic'
-import { VOTE_COOLDOWN_MS, VOTE_TIMEOUT_MS } from './constants'
+import { VOTE_COOLDOWN_MS, VOTE_TIMEOUT_MS, truncateChatText } from './constants'
 
 describe('vote', () => {
   it('approves when every other peer votes yes', () => {
@@ -197,5 +197,12 @@ describe('sdp origin matching', () => {
     const answer = 'v=0\r\no=- 123 3 IN IP4 0.0.0.0\r\n'
     expect(answersMatchOffer(offer, answer)).toBe(true)
     expect(answersMatchOffer(offer, 'v=0\r\no=- 999 3 IN IP4 0.0.0.0\r\n')).toBe(false)
+  })
+})
+
+describe('chat text', () => {
+  it('truncates oversize text', () => {
+    expect(truncateChatText('hello')).toBe('hello')
+    expect(truncateChatText('x'.repeat(2001)).length).toBe(2000)
   })
 })

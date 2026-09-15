@@ -35,4 +35,69 @@ describe('controlProtocol', () => {
     )
     expect(parsed?.t).toBe('mesh-offer')
   })
+
+  it('accepts and truncates chat messages', () => {
+    const parsed = parseControlMessage(
+      JSON.stringify({
+        t: 'chat',
+        v: 1,
+        id: 'm1',
+        from: 'a',
+        name: 'Kiwi',
+        text: 'hello',
+        at: 1,
+      }),
+    )
+    expect(parsed).toEqual({
+      t: 'chat',
+      v: 1,
+      id: 'm1',
+      from: 'a',
+      name: 'Kiwi',
+      text: 'hello',
+      at: 1,
+    })
+    const long = parseControlMessage(
+      JSON.stringify({
+        t: 'chat',
+        v: 1,
+        id: 'm2',
+        from: 'a',
+        name: 'Kiwi',
+        text: 'x'.repeat(3000),
+        at: 2,
+      }),
+    )
+    expect(long?.t).toBe('chat')
+    if (long?.t === 'chat') expect(long.text.length).toBe(2000)
+  })
+
+  it('rejects invalid chat and camera-state payloads', () => {
+    expect(parseControlMessage('{"t":"chat","v":1,"id":"m"}')).toBeNull()
+    expect(parseControlMessage('{"t":"camera-state","v":1,"peerId":"a"}')).toBeNull()
+    expect(
+      parseControlMessage(
+        JSON.stringify({ t: 'camera-state', v: 1, peerId: 'a', enabled: 'yes', streamId: '' }),
+      ),
+    ).toBeNull()
+  })
+
+  it('accepts camera-state', () => {
+    const parsed = parseControlMessage(
+      JSON.stringify({
+        t: 'camera-state',
+        v: 1,
+        peerId: 'a',
+        enabled: true,
+        streamId: 's1',
+      }),
+    )
+    expect(parsed).toEqual({
+      t: 'camera-state',
+      v: 1,
+      peerId: 'a',
+      enabled: true,
+      streamId: 's1',
+    })
+  })
 })

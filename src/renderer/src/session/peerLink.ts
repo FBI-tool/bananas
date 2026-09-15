@@ -33,6 +33,8 @@ export class PeerLink {
   private ignoreOffer = false
   private suppressNegotiation = true
   private closed = false
+  private displaySender: RTCRtpSender | null = null
+  private cameraSender: RTCRtpSender | null = null
 
   constructor(opts: PeerLinkOptions) {
     this.pendingId = opts.pendingId
@@ -102,13 +104,41 @@ export class PeerLink {
   }
 
   async setVideoTrack(track: MediaStreamTrack | null, stream: MediaStream | null): Promise<void> {
-    const sender = this.pc.getSenders().find((item) => item.track?.kind === 'video')
-    if (sender) {
-      await sender.replaceTrack(track)
+    await this.setDisplayTrack(track, stream)
+  }
+
+  async setDisplayTrack(track: MediaStreamTrack | null, stream: MediaStream | null): Promise<void> {
+    await this.replaceOrAddSender('display', track, stream)
+  }
+
+  async setCameraTrack(track: MediaStreamTrack | null, stream: MediaStream | null): Promise<void> {
+    await this.replaceOrAddSender('camera', track, stream)
+  }
+
+  private async replaceOrAddSender(
+    kind: 'display' | 'camera',
+    track: MediaStreamTrack | null,
+    stream: MediaStream | null,
+  ): Promise<void> {
+    const existing = kind === 'display' ? this.displaySender : this.cameraSender
+    if (existing) {
+      await existing.replaceTrack(track)
       return
     }
+    if (kind === 'display') {
+      const found = this.pc
+        .getSenders()
+        .find((item) => item.track?.kind === 'video' && item !== this.cameraSender)
+      if (found) {
+        this.displaySender = found
+        await found.replaceTrack(track)
+        return
+      }
+    }
     if (track && stream) {
-      this.pc.addTrack(track, stream)
+      const sender = this.pc.addTrack(track, stream)
+      if (kind === 'display') this.displaySender = sender
+      else this.cameraSender = sender
     }
   }
 

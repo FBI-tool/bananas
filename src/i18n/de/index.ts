@@ -76,6 +76,12 @@ const en = {
   hardware_video_acceleration: 'Hardware-Videobeschleunigung (VA-API)',
   hardware_video_acceleration_description:
     'Nutzt die GPU zum Kodieren und Dekodieren von Video. Deaktiviere dies, wenn die Bildschirmfreigabe schwarz ist oder abstürzt. Starte die App danach neu.',
+  camera: 'Kamera',
+  camera_on: 'Kamera an',
+  camera_off: 'Kamera aus',
+  chat: 'Chat',
+  chat_placeholder: 'Nachricht',
+  send: 'Senden',
 } satisfies BaseTranslation
 
 export default en

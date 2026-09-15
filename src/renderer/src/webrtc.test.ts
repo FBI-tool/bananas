@@ -32,11 +32,19 @@ class MockRTCPeerConnection {
   })
   setRemoteDescription = vi.fn(async () => undefined)
   addTrack = vi.fn((track: MediaStreamTrack, _stream: MediaStream) => {
-    const sender = { track } as RTCRtpSender
-    this.senders.push(sender)
-    return sender
+    const sender = {
+      track,
+      replaceTrack: vi.fn(async (next: MediaStreamTrack | null) => {
+        sender.track = next
+      }),
+    }
+    this.senders.push(sender as unknown as RTCRtpSender)
+    return sender as unknown as RTCRtpSender
   })
   getSenders = vi.fn(() => this.senders)
+  getTransceivers = vi.fn(() => [])
+  removeTrack = vi.fn()
+  addIceCandidate = vi.fn(async () => undefined)
   addEventListener = vi.fn()
   removeEventListener = vi.fn()
   close = vi.fn()
@@ -69,6 +77,18 @@ beforeEach(() => {
       updateRemoteCursor: vi.fn(),
       remoteCursorPing: vi.fn(),
       toggleRemoteCursors: vi.fn(),
+      toggleCallOverlay: vi.fn(),
+      onCallOverlayClosed: vi.fn(),
+      onCallOverlayReady: vi.fn(),
+      onCallChatSend: vi.fn(),
+      onCallToggleCamera: vi.fn(),
+      onCallLoopAnswer: vi.fn(),
+      onCallLoopIce: vi.fn(),
+      sendCallLoopOffer: vi.fn(),
+      sendCallLoopIce: vi.fn(),
+      sendCallCameraMids: vi.fn(),
+      sendCallChat: vi.fn(),
+      sendCallPeers: vi.fn(),
     },
   })
   vi.stubGlobal('navigator', {
@@ -81,6 +101,7 @@ beforeEach(() => {
         getAudioTracks: () => [
           { enabled: true, stop: vi.fn(), id: 'audio', addEventListener: vi.fn() },
         ],
+        getVideoTracks: () => [],
         getTracks: () => [{ enabled: true, stop: vi.fn(), id: 'audio', addEventListener: vi.fn() }],
       })),
     },

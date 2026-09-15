@@ -37,6 +37,44 @@ type SelectScreenShareSourceHandler = (sources: ScreenShareSource[]) => Promise<
 
 let selectScreenShareSourceHandler: SelectScreenShareSourceHandler | null = null
 
+type CallChatMessage = {
+  id: string
+  from: string
+  name: string
+  text: string
+  at: number
+}
+
+type CallPeerInfo = {
+  id: string
+  name: string
+  color: string
+  cameraEnabled: boolean
+  isLocal: boolean
+}
+
+type CallCameraMid = {
+  mid: string
+  peerId: string
+}
+
+type SdpPayload = {
+  type?: 'offer' | 'answer' | 'pranswer' | 'rollback'
+  sdp?: string
+}
+
+type IcePayload = {
+  candidate?: string
+  sdpMid?: string | null
+  sdpMLineIndex?: number | null
+  usernameFragment?: string | null
+}
+
+const onIpc = (channel: string, listener: (...args: unknown[]) => void): void => {
+  ipcRenderer.removeAllListeners(channel)
+  ipcRenderer.on(channel, (...eventArgs) => listener(...eventArgs.slice(1)))
+}
+
 ipcRenderer.on(
   'selectScreenShareSource',
   async (_, payload: { requestId: number; sources: ScreenShareSource[] }) => {
@@ -92,6 +130,42 @@ const KiwiApi = {
   },
   onSelectScreenShareSource: (handler: SelectScreenShareSourceHandler): void => {
     selectScreenShareSourceHandler = handler
+  },
+  toggleCallOverlay: async (open: boolean): Promise<void> => {
+    await ipcRenderer.invoke('toggleCallOverlay', open)
+  },
+  onCallOverlayClosed: (handler: () => void): void => {
+    onIpc('callOverlayClosed', () => handler())
+  },
+  onCallOverlayReady: (handler: () => void): void => {
+    onIpc('call-overlay-ready', () => handler())
+  },
+  onCallChatSend: (handler: (text: string) => void): void => {
+    onIpc('call-chat-send', (text) => handler(String(text)))
+  },
+  onCallToggleCamera: (handler: () => void): void => {
+    onIpc('call-toggle-camera', () => handler())
+  },
+  onCallLoopAnswer: (handler: (sdp: SdpPayload) => void): void => {
+    onIpc('call-loop-answer', (sdp) => handler(sdp as SdpPayload))
+  },
+  onCallLoopIce: (handler: (candidate: IcePayload) => void): void => {
+    onIpc('call-loop-ice', (candidate) => handler(candidate as IcePayload))
+  },
+  sendCallLoopOffer: (sdp: SdpPayload): void => {
+    ipcRenderer.send('call-loop-offer', sdp)
+  },
+  sendCallLoopIce: (candidate: IcePayload): void => {
+    ipcRenderer.send('call-loop-ice', candidate)
+  },
+  sendCallCameraMids: (mids: CallCameraMid[]): void => {
+    ipcRenderer.send('call-camera-mids', mids)
+  },
+  sendCallChat: (messages: CallChatMessage[]): void => {
+    ipcRenderer.send('call-chat', messages)
+  },
+  sendCallPeers: (peers: CallPeerInfo[]): void => {
+    ipcRenderer.send('call-peers', peers)
   },
 }
 

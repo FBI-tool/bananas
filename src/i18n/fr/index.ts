@@ -76,6 +76,12 @@ const fr = {
   hardware_video_acceleration: 'Accélération vidéo matérielle (VA-API)',
   hardware_video_acceleration_description:
     'Utilise le GPU pour encoder et décoder la vidéo. Désactivez cette option si le partage d’écran est noir ou plante. Redémarrez l’application après modification.',
+  camera: 'Caméra',
+  camera_on: 'Caméra activée',
+  camera_off: 'Caméra désactivée',
+  chat: 'Discussion',
+  chat_placeholder: 'Message',
+  send: 'Envoyer',
 } satisfies BaseTranslation
 
 export default fr

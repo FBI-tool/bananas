@@ -1,3 +1,5 @@
+import { truncateChatText } from './constants'
+
 export const PROTOCOL_VERSION = 1 as const
 
 export type RosterPeer = {
@@ -94,6 +96,22 @@ export type CursorPingMessage = Envelope & {
   cursorId: string
 }
 
+export type ChatMessage = Envelope & {
+  t: 'chat'
+  id: string
+  from: string
+  name: string
+  text: string
+  at: number
+}
+
+export type CameraStateMessage = Envelope & {
+  t: 'camera-state'
+  peerId: string
+  enabled: boolean
+  streamId: string
+}
+
 export type ControlMessage =
   | HelloMessage
   | RosterMessage
@@ -108,6 +126,8 @@ export type ControlMessage =
   | SessionEndedMessage
   | CursorMessage
   | CursorPingMessage
+  | ChatMessage
+  | CameraStateMessage
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -168,6 +188,18 @@ export const isControlMessage = (value: unknown): value is ControlMessage => {
       )
     case 'cursor-ping':
       return isString(value.cursorId)
+    case 'chat':
+      return (
+        isString(value.id) &&
+        isString(value.from) &&
+        isString(value.name) &&
+        isString(value.text) &&
+        typeof value.at === 'number'
+      )
+    case 'camera-state':
+      return (
+        isString(value.peerId) && typeof value.enabled === 'boolean' && isString(value.streamId)
+      )
     default:
       return false
   }
@@ -178,7 +210,11 @@ export const serializeControlMessage = (msg: ControlMessage): string => JSON.str
 export const parseControlMessage = (raw: string): ControlMessage | null => {
   try {
     const value: unknown = JSON.parse(raw)
-    return isControlMessage(value) ? value : null
+    if (!isControlMessage(value)) return null
+    if (value.t === 'chat') {
+      return { ...value, text: truncateChatText(value.text) }
+    }
+    return value
   } catch {
     return null
   }

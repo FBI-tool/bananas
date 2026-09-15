@@ -76,6 +76,12 @@ const en = {
   hardware_video_acceleration: 'Hardware video acceleration (VA-API)',
   hardware_video_acceleration_description:
     'Use the GPU to encode and decode video. Turn this off if screen sharing is black or crashes. Restart the app after changing.',
+  camera: 'Camera',
+  camera_on: 'Camera on',
+  camera_off: 'Camera off',
+  chat: 'Chat',
+  chat_placeholder: 'Message',
+  send: 'Send',
 } satisfies BaseTranslation
 
 export default en

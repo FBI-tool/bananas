@@ -76,6 +76,12 @@ const pt_br = {
   hardware_video_acceleration: 'Aceleração de vídeo por hardware (VA-API)',
   hardware_video_acceleration_description:
     'Usa a GPU para codificar e decodificar vídeo. Desative se o compartilhamento de tela ficar preto ou travar. Reinicie o aplicativo após alterar.',
+  camera: 'Câmera',
+  camera_on: 'Câmera ligada',
+  camera_off: 'Câmera desligada',
+  chat: 'Chat',
+  chat_placeholder: 'Mensagem',
+  send: 'Enviar',
 } satisfies BaseTranslation
 
 export default pt_br

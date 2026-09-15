@@ -1,17 +1,21 @@
+import type { CallChatMessage, CallPeerInfo } from '../callTypes'
 import type { RemoteCursorData, SettingsData } from '../types'
 import type { RTCSessionDescriptionOptions } from '../Utils'
 import { ConnectionType, dropTcpIceCandidates, getConnectionString, getUUIDv4 } from '../Utils'
 import { getRTCPeerConnectionConfig } from '../Config'
 import { appState } from '../appState.svelte'
 import {
+  CHAT_MAX_MESSAGES,
   MAX_PEERS,
   PENDING_INVITE_TTL_MS,
   VOTE_COOLDOWN_MS,
   VOTE_TIMEOUT_MS,
   ICE_DISCONNECT_GRACE_MS,
+  truncateChatText,
 } from './constants'
 import type { ControlMessage, RosterPeer } from './controlProtocol'
 import { PROTOCOL_VERSION } from './controlProtocol'
+import { CallLoopback } from './callLoopback'
 import { PeerLink } from './peerLink'
 import {
   answersMatchOffer,
@@ -45,20 +49,27 @@ export class Room {
   peers = $state<RoomPeer[]>([])
   displayStreamActive = $state(false)
   microphoneActive = $state(false)
+  cameraActive = $state(false)
   cursorsEnabled = $state(false)
   hasAudioInput = $state(false)
   activeVote = $state<VoteState | null>(null)
   localVoteCast = $state<boolean | null>(null)
+  chatMessages = $state<CallChatMessage[]>([])
 
   private remoteVideo: HTMLVideoElement | null = null
   private audioStream: MediaStream | null = null
   private displayStream: MediaStream | null = null
   private pendingDisplayStream: MediaStream | null = null
+  private cameraStream: MediaStream | null = null
+  private cameraSendStreamId = ''
   private userSettings: SettingsData | null = null
   private username = ''
   private color = '#ffffff'
   private links = new Map<string, PeerLink>()
   private remoteVideoStreams = new Map<string, MediaStream>()
+  private remoteVideoByStreamId = new Map<string, { peerId: string; stream: MediaStream }>()
+  private remoteCameraState = new Map<string, { enabled: boolean; streamId: string }>()
+  private remoteCameraStreams = new Map<string, MediaStream>()
   private remoteAudioElements = new Map<string, HTMLAudioElement>()
   private iceGraceTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private voteTimer: ReturnType<typeof setTimeout> | null = null
@@ -67,6 +78,9 @@ export class Room {
   private quietClose = false
   private handshakeKey: string | null = null
   private lastCopiedPendingId: string | null = null
+  private callIpcBound = false
+  private overlayOpen = false
+  private readonly loopback = new CallLoopback()
 
   get isCoordinator(): boolean {
     return this.localPeerId !== '' && this.localPeerId === this.coordinatorId
@@ -130,6 +144,33 @@ export class Room {
     return enabled
   }
 
+  async ToggleCamera(): Promise<void> {
+    if (this.cameraStream) {
+      await this.disableCamera()
+      return
+    }
+    await this.enableCamera()
+  }
+
+  sendChat(text: string): void {
+    const trimmed = truncateChatText(text.trim())
+    if (!trimmed) return
+    const msg: CallChatMessage = {
+      id: getUUIDv4(),
+      from: this.localPeerId,
+      name: this.username,
+      text: trimmed,
+      at: Date.now(),
+    }
+    this.appendChat(msg)
+    this.broadcast({
+      t: 'chat',
+      v: PROTOCOL_VERSION,
+      ...msg,
+    })
+    this.syncCallOverlay()
+  }
+
   PingRemoteCursor(cursorId: string): void {
     this.broadcast({
       t: 'cursor-ping',
@@ -151,6 +192,7 @@ export class Room {
   }
 
   async Setup(v: HTMLVideoElement | null = null): Promise<'ok' | 'cancelled' | 'failed'> {
+    this.bindCallIpc()
     this.userSettings = await window.KiwiApi.getSettings()
     this.username = this.userSettings.username
     this.color = this.userSettings.color
@@ -488,8 +530,12 @@ export class Room {
     }
     if (this.isPresenter && this.displayStream) {
       for (const track of this.displayStream.getVideoTracks()) {
-        link.addTrack(track, this.displayStream)
+        void link.setDisplayTrack(track, this.displayStream)
       }
+    }
+    if (this.cameraStream) {
+      const track = this.cameraStream.getVideoTracks()[0]
+      if (track) void link.setCameraTrack(track, this.cameraStream)
     }
   }
 
@@ -544,6 +590,12 @@ export class Room {
       case 'cursor-ping':
         this.onCursorPing(msg.cursorId)
         break
+      case 'chat':
+        this.onChat(msg)
+        break
+      case 'camera-state':
+        this.onCameraState(msg)
+        break
     }
   }
 
@@ -558,6 +610,7 @@ export class Room {
     appState.isCoordinator = this.isCoordinator
     this.markLive(link)
     if (this.isCoordinator) this.broadcastRoster()
+    this.sendCameraStateTo(link)
   }
 
   private async onRoster(msg: Extract<ControlMessage, { t: 'roster' }>): Promise<void> {
@@ -571,6 +624,7 @@ export class Room {
       await this.startMeshTo(peer.id)
     }
     this.attachPresenterVideo()
+    this.syncCallOverlay()
   }
 
   private async startMeshTo(targetId: string): Promise<void> {
@@ -765,7 +819,7 @@ export class Room {
   private async stopPresenting(): Promise<void> {
     this.ToggleRemoteCursors(false)
     for (const link of this.links.values()) {
-      await link.setVideoTrack(null, null)
+      await link.setDisplayTrack(null, null)
     }
     this.stopStream(this.displayStream)
     this.displayStream = null
@@ -805,16 +859,48 @@ export class Room {
     window.KiwiApi.remoteCursorPing(cursorId)
   }
 
+  private onChat(msg: Extract<ControlMessage, { t: 'chat' }>): void {
+    this.appendChat({
+      id: msg.id,
+      from: msg.from,
+      name: msg.name,
+      text: msg.text,
+      at: msg.at,
+    })
+    this.syncCallOverlay()
+  }
+
+  private onCameraState(msg: Extract<ControlMessage, { t: 'camera-state' }>): void {
+    this.remoteCameraState.set(msg.peerId, { enabled: msg.enabled, streamId: msg.streamId })
+    if (!msg.enabled) this.remoteCameraStreams.delete(msg.peerId)
+    this.classifyRemoteVideos(msg.peerId)
+  }
+
   private onTrack(link: PeerLink, event: RTCTrackEvent): void {
     const peerId = link.remotePeerId ?? link.pendingId
     const stream = event.streams[0] ?? new MediaStream([event.track])
     if (event.track.kind === 'video') {
-      this.remoteVideoStreams.set(peerId, stream)
-      this.attachPresenterVideo()
+      this.remoteVideoByStreamId.set(stream.id, { peerId, stream })
+      this.classifyRemoteVideos(peerId)
     }
     if (event.track.kind === 'audio') {
       this.attachRemoteAudio(peerId, stream)
     }
+  }
+
+  private classifyRemoteVideos(peerId: string): void {
+    const cam = this.remoteCameraState.get(peerId)
+    const entries = [...this.remoteVideoByStreamId.entries()].filter(
+      ([, entry]) => entry.peerId === peerId,
+    )
+    const cameraEntry = entries.find(([streamId]) => cam?.enabled && cam.streamId === streamId)
+    const displayEntry = entries.find(([, entry]) => entry.stream !== cameraEntry?.[1].stream)
+    if (cameraEntry) this.remoteCameraStreams.set(peerId, cameraEntry[1].stream)
+    else this.remoteCameraStreams.delete(peerId)
+    if (displayEntry) this.remoteVideoStreams.set(peerId, displayEntry[1].stream)
+    else this.remoteVideoStreams.delete(peerId)
+    this.attachPresenterVideo()
+    this.syncCallOverlay()
   }
 
   private attachPresenterVideo(): void {
@@ -885,6 +971,11 @@ export class Room {
     if (peerId) {
       this.removePeerById(peerId)
       this.remoteVideoStreams.delete(peerId)
+      this.remoteCameraStreams.delete(peerId)
+      this.remoteCameraState.delete(peerId)
+      for (const [streamId, entry] of this.remoteVideoByStreamId) {
+        if (entry.peerId === peerId) this.remoteVideoByStreamId.delete(streamId)
+      }
       const audio = this.remoteAudioElements.get(peerId)
       if (audio) {
         audio.srcObject = null
@@ -919,6 +1010,7 @@ export class Room {
     }
     if (this.isCoordinator) this.broadcastRoster()
     this.syncLocalPeer()
+    this.syncCallOverlay()
   }
 
   private findPendingForAnswer(answer: RTCSessionDescriptionInit): PeerLink | null {
@@ -947,6 +1039,19 @@ export class Room {
       this.remoteVideoStreams.delete(link.pendingId)
       this.remoteVideoStreams.set(remotePeerId, pendingStream)
       this.attachPresenterVideo()
+    }
+    const pendingCamera = this.remoteCameraStreams.get(link.pendingId)
+    if (pendingCamera) {
+      this.remoteCameraStreams.delete(link.pendingId)
+      this.remoteCameraStreams.set(remotePeerId, pendingCamera)
+    }
+    const pendingCamState = this.remoteCameraState.get(link.pendingId)
+    if (pendingCamState) {
+      this.remoteCameraState.delete(link.pendingId)
+      this.remoteCameraState.set(remotePeerId, pendingCamState)
+    }
+    for (const entry of this.remoteVideoByStreamId.values()) {
+      if (entry.peerId === link.pendingId) entry.peerId = remotePeerId
     }
     const pendingAudio = this.remoteAudioElements.get(link.pendingId)
     if (pendingAudio) {
@@ -981,6 +1086,7 @@ export class Room {
       username: this.username,
       color: this.color,
     })
+    this.syncCallOverlay()
   }
 
   private allPeerIds(): string[] {
@@ -1037,7 +1143,7 @@ export class Room {
 
   private async pushVideoToAll(track: MediaStreamTrack, stream: MediaStream): Promise<void> {
     for (const link of this.links.values()) {
-      await link.setVideoTrack(track, stream)
+      await link.setDisplayTrack(track, stream)
     }
   }
 
@@ -1078,9 +1184,21 @@ export class Room {
     this.stopStream(this.displayStream)
     this.stopStream(this.pendingDisplayStream)
     this.stopStream(this.audioStream)
+    this.stopStream(this.cameraStream)
     this.displayStream = null
     this.pendingDisplayStream = null
     this.audioStream = null
+    this.cameraStream = null
+    this.cameraSendStreamId = ''
+    this.cameraActive = false
+    this.chatMessages = []
+    this.remoteVideoStreams.clear()
+    this.remoteVideoByStreamId.clear()
+    this.remoteCameraStreams.clear()
+    this.remoteCameraState.clear()
+    this.overlayOpen = false
+    this.loopback.close()
+    window.KiwiApi.toggleCallOverlay?.(false)
     for (const audio of this.remoteAudioElements.values()) {
       audio.srcObject = null
     }
@@ -1094,6 +1212,135 @@ export class Room {
     window.KiwiApi.toggleRemoteCursors(false)
     appState.isCoordinator = false
     this.setConnectionState('disconnected')
+  }
+
+  private bindCallIpc(): void {
+    if (this.callIpcBound) return
+    this.callIpcBound = true
+    window.KiwiApi.onCallOverlayClosed?.(() => {
+      this.overlayOpen = false
+      this.loopback.close()
+    })
+    window.KiwiApi.onCallOverlayReady?.(() => {
+      void this.onCallOverlayReady()
+    })
+    window.KiwiApi.onCallChatSend?.((text) => {
+      this.sendChat(text)
+    })
+    window.KiwiApi.onCallToggleCamera?.(() => {
+      void this.ToggleCamera()
+    })
+    window.KiwiApi.onCallLoopAnswer?.((sdp) => {
+      void this.loopback.handleAnswer(sdp)
+    })
+    window.KiwiApi.onCallLoopIce?.((candidate) => {
+      void this.loopback.addIce(candidate)
+    })
+  }
+
+  private async onCallOverlayReady(): Promise<void> {
+    this.overlayOpen = true
+    await this.loopback.start()
+    this.syncCallOverlay()
+  }
+
+  private async enableCamera(): Promise<void> {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      })
+      const track = stream.getVideoTracks()[0]
+      if (!track) {
+        this.stopStream(stream)
+        return
+      }
+      track.addEventListener('ended', () => {
+        if (this.cameraStream === stream) void this.disableCamera()
+      })
+      this.stopStream(this.cameraStream)
+      this.cameraStream = stream
+      this.cameraActive = true
+      if (!this.cameraSendStreamId) this.cameraSendStreamId = stream.id
+      for (const link of this.links.values()) {
+        await link.setCameraTrack(track, stream)
+      }
+      this.broadcastCameraState()
+      this.syncCallOverlay()
+    } catch (e) {
+      errorHandler(e)
+    }
+  }
+
+  private async disableCamera(): Promise<void> {
+    if (!this.cameraStream && !this.cameraActive) return
+    for (const link of this.links.values()) {
+      await link.setCameraTrack(null, null)
+    }
+    this.stopStream(this.cameraStream)
+    this.cameraStream = null
+    this.cameraActive = false
+    this.broadcastCameraState()
+    this.syncCallOverlay()
+  }
+
+  private broadcastCameraState(): void {
+    const msg = {
+      t: 'camera-state' as const,
+      v: PROTOCOL_VERSION,
+      peerId: this.localPeerId,
+      enabled: this.cameraActive,
+      streamId: this.cameraActive ? this.cameraSendStreamId : '',
+    }
+    this.broadcast(msg)
+  }
+
+  private sendCameraStateTo(link: PeerLink): void {
+    if (!this.cameraActive) return
+    link.sendControl({
+      t: 'camera-state',
+      v: PROTOCOL_VERSION,
+      peerId: this.localPeerId,
+      enabled: true,
+      streamId: this.cameraSendStreamId,
+    })
+  }
+
+  private appendChat(msg: CallChatMessage): void {
+    if (this.chatMessages.some((item) => item.id === msg.id)) return
+    const next = [...this.chatMessages, msg]
+    this.chatMessages = next.length > CHAT_MAX_MESSAGES ? next.slice(-CHAT_MAX_MESSAGES) : next
+  }
+
+  private cameraSources(): Array<{ peerId: string; stream: MediaStream }> {
+    const sources: Array<{ peerId: string; stream: MediaStream }> = []
+    if (this.cameraStream) {
+      sources.push({ peerId: this.localPeerId, stream: this.cameraStream })
+    }
+    for (const [peerId, stream] of this.remoteCameraStreams) {
+      sources.push({ peerId, stream })
+    }
+    return sources
+  }
+
+  private callPeerInfos(): CallPeerInfo[] {
+    return this.peers.map((peer) => ({
+      id: peer.id,
+      name: peer.username,
+      color: peer.color,
+      cameraEnabled:
+        peer.id === this.localPeerId
+          ? this.cameraActive
+          : Boolean(this.remoteCameraState.get(peer.id)?.enabled),
+      isLocal: peer.id === this.localPeerId,
+    }))
+  }
+
+  private syncCallOverlay(): void {
+    if (!this.overlayOpen) return
+    window.KiwiApi.sendCallPeers?.(this.callPeerInfos())
+    window.KiwiApi.sendCallChat?.(this.chatMessages)
+    void this.loopback.setVideoSources(this.cameraSources())
   }
 
   private setConnectionState(state: string): void {

@@ -35,6 +35,7 @@
   let connectToUserName = $state('')
   let username = $state('')
   let color = $state('#ffffff')
+  let overlayAutoOpened = false
 
   const showVideo = $derived(!room.isPresenter || Boolean(room.sessionEndedReason))
   const videoClass = $derived(room.sessionEndedReason ? 'video video-ended' : 'video')
@@ -62,6 +63,14 @@
     })()
   })
 
+  $effect(() => {
+    if (room.isLive && !overlayAutoOpened) {
+      overlayAutoOpened = true
+      void window.KiwiApi.toggleCallOverlay(true)
+    }
+    if (!room.isLive) overlayAutoOpened = false
+  })
+
   onMount(async () => {
     const settings = await window.KiwiApi.getSettings()
     username = settings.username
@@ -70,6 +79,15 @@
 
   const onMicrophoneToggle = (): void => {
     room.ToggleMicrophone()
+  }
+
+  const onCameraToggle = async (): Promise<void> => {
+    await room.ToggleCamera()
+    void window.KiwiApi.toggleCallOverlay(true)
+  }
+
+  const onChatClick = (): void => {
+    void window.KiwiApi.toggleCallOverlay(true)
   }
 
   const onDisplayStreamToggle = (): void => {
@@ -221,6 +239,22 @@
         </span>
       </button>
     {/if}
+    <button
+      aria-label={room.cameraActive ? L.camera_on() : L.camera_off()}
+      title={room.cameraActive ? L.camera_on() : L.camera_off()}
+      class="btn {room.cameraActive ? 'btn-success' : 'btn-error'}"
+      onclick={onCameraToggle}
+    >
+      <span class="icon">
+        <i class="fa-solid {room.cameraActive ? 'fa-video' : 'fa-video-slash'}"></i>
+      </span>
+    </button>
+    <button class="btn btn-info" onclick={onChatClick}>
+      <span class="icon">
+        <i class="fa-solid fa-comment"></i>
+      </span>
+      <span>{L.chat()}</span>
+    </button>
   </div>
   <div class="flex gap-2">
     <button class="btn btn-error" onclick={onLeaveClick}>

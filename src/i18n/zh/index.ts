@@ -75,6 +75,12 @@ const zh = {
   hardware_video_acceleration: '硬件视频加速（VA-API）',
   hardware_video_acceleration_description:
     '使用 GPU 编码和解码视频。如果屏幕共享黑屏或崩溃，请关闭此项。更改后需要重启应用。',
+  camera: '摄像头',
+  camera_on: '摄像头已开启',
+  camera_off: '摄像头已关闭',
+  chat: '聊天',
+  chat_placeholder: '输入消息',
+  send: '发送',
 } satisfies Translation
 
 export default zh

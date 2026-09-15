@@ -85,6 +85,12 @@ async function createWindow(): Promise<void> {
     MAIN_WINDOW.show()
   })
 
+  MAIN_WINDOW.on('close', () => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win !== MAIN_WINDOW) win.close()
+    }
+  })
+
   MAIN_WINDOW.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
