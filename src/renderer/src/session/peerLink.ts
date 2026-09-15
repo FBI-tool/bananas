@@ -178,22 +178,27 @@ export class PeerLink {
   async waitForIceGatheringComplete(): Promise<void> {
     if (this.pc.iceGatheringState === 'complete') return
     await new Promise<void>((resolve) => {
-      const cleanup = (): void => {
+      let settled = false
+      const finish = (): void => {
+        if (settled) return
+        settled = true
         this.pc.removeEventListener('icegatheringstatechange', onStateChange)
+        this.pc.removeEventListener('icecandidate', onCandidate)
         clearTimeout(timeoutId)
+        resolve()
       }
       const onStateChange = (): void => {
-        if (this.pc.iceGatheringState === 'complete') {
-          cleanup()
-          resolve()
-        }
+        if (this.pc.iceGatheringState === 'complete') finish()
+      }
+      const onCandidate = (event: RTCPeerConnectionIceEvent): void => {
+        if (!event.candidate) finish()
       }
       const timeoutId = setTimeout(() => {
-        cleanup()
         console.warn('ICE gathering timed out; continuing with current candidates')
-        resolve()
+        finish()
       }, ICE_GATHERING_TIMEOUT_MS)
       this.pc.addEventListener('icegatheringstatechange', onStateChange)
+      this.pc.addEventListener('icecandidate', onCandidate)
       onStateChange()
     })
   }

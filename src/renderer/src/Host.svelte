@@ -12,10 +12,11 @@
   let sessionStarted = $state(false)
   let connectionStringIsValid = $state<boolean | null>(null)
   let connectToUserName = $state('')
-  let copyButtonIsLoading = $state(false)
   let startingSession = $state(false)
   let username = $state('')
   let remoteScreen: HTMLVideoElement | undefined = $state()
+  let copiedConnectionString: string | null = null
+  let copyInFlight = false
 
   $effect(() => {
     const value = appState.hostUrl
@@ -50,24 +51,39 @@
   })
 
   const onConnectClick = async (): Promise<void> => {
-    const data = await getDataFromKiwiUrl(appState.hostUrl)
-    await room.Connect(data.rtcSessionDescription)
-    appState.hostUrl = ''
+    try {
+      const data = await getDataFromKiwiUrl(appState.hostUrl)
+      await room.Connect(data.rtcSessionDescription)
+      appState.hostUrl = ''
+    } catch (error) {
+      console.error(error)
+      toast.show('error', L.connection_failed())
+    }
   }
 
   const onCopyClick = async (): Promise<void> => {
-    copyButtonIsLoading = true
-    const offer = await room.CreateHostUrl({
-      username
-    })
-    if (!offer) {
-      toast.show('error', L.room_is_full())
-    } else {
-      navigator.clipboard.writeText(offer)
+    if (copiedConnectionString) {
+      void navigator.clipboard.writeText(copiedConnectionString)
+      return
     }
-    setTimeout(() => {
-      copyButtonIsLoading = false
-    }, 400)
+    if (copyInFlight) return
+    copyInFlight = true
+    try {
+      const offer = await room.CreateHostUrl({
+        username
+      })
+      if (!offer) {
+        toast.show('error', L.room_is_full())
+      } else {
+        copiedConnectionString = offer
+        void navigator.clipboard.writeText(offer)
+      }
+    } catch (error) {
+      console.error(error)
+      toast.show('error', L.connection_failed())
+    } finally {
+      copyInFlight = false
+    }
   }
 
   onMount(async () => {
@@ -97,7 +113,8 @@
   const reset = (): void => {
     appState.hostUrl = ''
     connectionStringIsValid = null
-    copyButtonIsLoading = false
+    copiedConnectionString = null
+    copyInFlight = false
     sessionStarted = false
     appState.navigationEnabled = true
     appState.isHosting = false
@@ -148,17 +165,10 @@
         </span>
         <span>{L.cancel()}</span>
       </button>
-      <button
-        class="btn btn-primary {copyButtonIsLoading ? 'pointer-events-none' : ''}"
-        onclick={onCopyClick}
-      >
-        {#if copyButtonIsLoading}
-          <span class="loading loading-spinner"></span>
-        {:else}
-          <span class="icon">
-            <i class="fas fa-copy"></i>
-          </span>
-        {/if}
+      <button class="btn btn-primary" onclick={onCopyClick}>
+        <span class="icon">
+          <i class="fas fa-copy"></i>
+        </span>
         <span>{L.copy_my_connection_string()}</span>
       </button>
     </div>

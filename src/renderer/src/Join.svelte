@@ -13,8 +13,9 @@
   let isConnected = $state(false)
   let connectionStringIsValid = $state<boolean | null>(null)
   let connectToUserName = $state('')
-  let copyButtonIsLoading = $state(false)
   let username = $state('')
+  let copiedConnectionString: string | null = null
+  let copyInFlight = false
 
   $effect(() => {
     const value = appState.participantUrl
@@ -49,24 +50,43 @@
   })
 
   const onConnectClick = async (): Promise<void> => {
-    await room.Setup(remoteScreen ?? document.createElement('video'))
-    const data = await getDataFromKiwiUrl(appState.participantUrl)
-    await room.Connect(data.rtcSessionDescription)
-    isConnected = true
-    appState.isWatching = true
-    appState.navigationEnabled = false
+    const setupResult = await room.Setup(remoteScreen ?? document.createElement('video'))
+    if (setupResult !== 'ok') {
+      toast.show('error', L.connection_failed())
+      return
+    }
+    try {
+      const data = await getDataFromKiwiUrl(appState.participantUrl)
+      await room.Connect(data.rtcSessionDescription)
+      isConnected = true
+      appState.isWatching = true
+      appState.navigationEnabled = false
+    } catch (error) {
+      console.error(error)
+      toast.show('error', L.connection_failed())
+    }
   }
 
   const onCopyClick = async (): Promise<void> => {
-    copyButtonIsLoading = true
-    const remoteData = await getDataFromKiwiUrl(appState.participantUrl)
-    const data = await room.CreateParticipantUrl(remoteData.rtcSessionDescription, {
-      username
-    })
-    navigator.clipboard.writeText(data)
-    setTimeout(() => {
-      copyButtonIsLoading = false
-    }, 400)
+    if (copiedConnectionString) {
+      void navigator.clipboard.writeText(copiedConnectionString)
+      return
+    }
+    if (copyInFlight) return
+    copyInFlight = true
+    try {
+      const remoteData = await getDataFromKiwiUrl(appState.participantUrl)
+      const data = await room.CreateParticipantUrl(remoteData.rtcSessionDescription, {
+        username
+      })
+      copiedConnectionString = data
+      void navigator.clipboard.writeText(data)
+    } catch (error) {
+      console.error(error)
+      toast.show('error', L.connection_failed())
+    } finally {
+      copyInFlight = false
+    }
   }
 
   onMount(async () => {
@@ -78,6 +98,8 @@
     appState.participantUrl = ''
     connectionStringIsValid = null
     isConnected = false
+    copiedConnectionString = null
+    copyInFlight = false
     appState.navigationEnabled = true
     appState.isWatching = false
     appState.isCoordinator = false
@@ -141,17 +163,10 @@
 
   {#if isConnected && !room.isLive && !room.sessionEndedReason}
     <div class="flex gap-2 mb-4">
-      <button
-        class="btn btn-primary {copyButtonIsLoading ? 'pointer-events-none' : ''}"
-        onclick={onCopyClick}
-      >
-        {#if copyButtonIsLoading}
-          <span class="loading loading-spinner"></span>
-        {:else}
-          <span class="icon">
-            <i class="fas fa-copy"></i>
-          </span>
-        {/if}
+      <button class="btn btn-primary" onclick={onCopyClick}>
+        <span class="icon">
+          <i class="fas fa-copy"></i>
+        </span>
         <span>{L.copy_my_connection_string()}</span>
       </button>
       <button class="btn btn-error" onclick={onDisconnectClick}>

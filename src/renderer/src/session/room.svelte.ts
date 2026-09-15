@@ -277,16 +277,18 @@ export class Room {
     this.username = data.username || this.username
     const link = this.handshakeLink()
     if (!link) throw new Error('viewer handshake is not ready')
-    if (link.pc.localDescription?.type !== 'answer') {
+    if (!link.pc.remoteDescription) {
       await link.setRemoteDescription(c)
+    }
+    if (link.pc.localDescription?.type !== 'answer') {
       await link.createLocalAnswer()
     }
     await link.waitForIceGatheringComplete()
-    return await getConnectionString(
-      ConnectionType.PARTICIPANT,
-      dropTcpIceCandidates(link.localDescription ?? { type: 'answer', sdp: '' }),
-      { username: this.username },
-    )
+    const local = link.localDescription
+    if (!local?.sdp) throw new Error('participant answer is not ready')
+    return await getConnectionString(ConnectionType.PARTICIPANT, dropTcpIceCandidates(local), {
+      username: this.username,
+    })
   }
 
   async Connect(c: RTCSessionDescriptionOptions): Promise<void> {
@@ -307,6 +309,7 @@ export class Room {
       }
     } catch (e) {
       errorHandler(e)
+      throw e
     }
   }
 

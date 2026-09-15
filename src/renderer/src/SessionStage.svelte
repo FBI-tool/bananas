@@ -30,12 +30,12 @@
   const UUID = getUUIDv4()
   let zoomFactor = $state(1)
   let visualizerIsActive = $state(true)
-  let copyButtonIsLoading = $state(false)
   let connectionStringIsValid = $state<boolean | null>(null)
   let connectToUserName = $state('')
   let username = $state('')
   let color = $state('#ffffff')
   let overlayAutoOpened = false
+  let inviteInFlight = false
 
   const showVideo = $derived(!room.isPresenter || Boolean(room.sessionEndedReason))
   const videoClass = $derived(room.sessionEndedReason ? 'video video-ended' : 'video')
@@ -121,22 +121,32 @@
   }
 
   const onCopyInvite = async (): Promise<void> => {
-    copyButtonIsLoading = true
-    const offer = await room.CreateHostUrl({ username })
-    if (!offer) {
-      toast.show('error', L.room_is_full())
-    } else {
-      navigator.clipboard.writeText(offer)
+    if (inviteInFlight) return
+    inviteInFlight = true
+    try {
+      const offer = await room.CreateHostUrl({ username })
+      if (!offer) {
+        toast.show('error', L.room_is_full())
+      } else {
+        void navigator.clipboard.writeText(offer)
+      }
+    } catch (error) {
+      console.error(error)
+      toast.show('error', L.connection_failed())
+    } finally {
+      inviteInFlight = false
     }
-    setTimeout(() => {
-      copyButtonIsLoading = false
-    }, 400)
   }
 
   const onConnectInvite = async (): Promise<void> => {
-    const data = await getDataFromKiwiUrl(appState.hostUrl)
-    await room.Connect(data.rtcSessionDescription)
-    appState.hostUrl = ''
+    try {
+      const data = await getDataFromKiwiUrl(appState.hostUrl)
+      await room.Connect(data.rtcSessionDescription)
+      appState.hostUrl = ''
+    } catch (error) {
+      console.error(error)
+      toast.show('error', L.connection_failed())
+    }
   }
 
   const onRemoteScreenDblClick = (): void => {
@@ -294,17 +304,10 @@
 
 {#if showInvite && room.isCoordinator}
   <div class="flex flex-wrap gap-2 mb-4">
-    <button
-      class="btn btn-primary {copyButtonIsLoading ? 'pointer-events-none' : ''}"
-      onclick={onCopyInvite}
-    >
-      {#if copyButtonIsLoading}
-        <span class="loading loading-spinner"></span>
-      {:else}
-        <span class="icon">
-          <i class="fas fa-copy"></i>
-        </span>
-      {/if}
+    <button class="btn btn-primary" onclick={onCopyInvite}>
+      <span class="icon">
+        <i class="fas fa-copy"></i>
+      </span>
       <span>{L.invite_another()}</span>
     </button>
   </div>
