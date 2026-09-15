@@ -342,42 +342,44 @@ export class Room {
   async Connect(c: RTCSessionDescriptionOptions): Promise<void> {
     debugLog.info('room', 'Connect start', summarizeSdp(c))
     try {
-      if (c.type === 'answer') {
-        const pending = this.findPendingForAnswer(c)
-        if (!pending) {
-          debugLog.error('room', 'Connect: no pending invite matches answer', {
-            answer: summarizeSdp(c),
-            pendingIds: [...this.links.keys()],
-          })
-          throw new Error('no pending invite matches this answer')
-        }
-        debugLog.info('room', 'Connect applying answer to pending invite', {
-          pendingId: pending.pendingId,
-          before: summarizePc(pending.pc),
+      const handshake = this.handshakeLink()
+      if (handshake) {
+        const offer: RTCSessionDescriptionInit = { type: 'offer', sdp: c.sdp }
+        debugLog.info('room', 'Connect joiner applying offer', {
+          incomingType: c.type,
+          pc: summarizePc(handshake.pc),
         })
-        await pending.setRemoteDescription(c)
-        this.isLive = true
-        this.setConnectionState('connected')
-        debugLog.info('room', 'Connect host applied answer', summarizePc(pending.pc))
+        await handshake.setRemoteDescription(offer)
+        debugLog.info('room', 'Connect joiner after setRemote', summarizePc(handshake.pc))
+        this.addLocalMediaToLink(handshake)
+        debugLog.info('room', 'Connect joiner after addLocalMedia', summarizePc(handshake.pc))
+        if (handshake.pc.localDescription?.type !== 'answer') {
+          const answer = await handshake.createLocalAnswer()
+          debugLog.info('room', 'Connect joiner created answer', {
+            pc: summarizePc(handshake.pc),
+            answer: summarizeSdp(answer),
+          })
+        }
         return
       }
-      const link = this.handshakeLink()
-      if (!link) {
-        debugLog.error('room', 'Connect: joiner handshake missing')
-        throw new Error('viewer handshake is not ready')
-      }
-      debugLog.info('room', 'Connect joiner applying offer', summarizePc(link.pc))
-      await link.setRemoteDescription(c)
-      debugLog.info('room', 'Connect joiner after setRemote', summarizePc(link.pc))
-      this.addLocalMediaToLink(link)
-      debugLog.info('room', 'Connect joiner after addLocalMedia', summarizePc(link.pc))
-      if (c.type === 'offer' && link.pc.localDescription?.type !== 'answer') {
-        const answer = await link.createLocalAnswer()
-        debugLog.info('room', 'Connect joiner created answer', {
-          pc: summarizePc(link.pc),
+      const answer: RTCSessionDescriptionInit = { type: 'answer', sdp: c.sdp }
+      const pending = this.findPendingForAnswer(answer)
+      if (!pending) {
+        debugLog.error('room', 'Connect: no pending invite matches answer', {
           answer: summarizeSdp(answer),
+          pendingIds: [...this.links.keys()],
         })
+        throw new Error('no pending invite matches this answer')
       }
+      debugLog.info('room', 'Connect applying answer to pending invite', {
+        pendingId: pending.pendingId,
+        incomingType: c.type,
+        before: summarizePc(pending.pc),
+      })
+      await pending.setRemoteDescription(answer)
+      this.isLive = true
+      this.setConnectionState('connected')
+      debugLog.info('room', 'Connect host applied answer', summarizePc(pending.pc))
     } catch (e) {
       debugLog.error('room', 'Connect failed', e)
       errorHandler(e)

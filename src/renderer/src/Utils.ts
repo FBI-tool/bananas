@@ -50,15 +50,24 @@ const hasUdpCandidate = (lines: string[]): boolean =>
     return parts[2]?.toLowerCase() === 'udp'
   })
 
+/** Native RTCSessionDescription stores type/sdp as prototype getters, so object spread drops them. */
+export const cloneSessionDescription = (
+  desc: RTCSessionDescriptionInit,
+): RTCSessionDescriptionInit => ({
+  type: desc.type,
+  sdp: desc.sdp,
+})
+
 export const dropTcpIceCandidates = (
   desc: RTCSessionDescriptionInit,
 ): RTCSessionDescriptionInit => {
-  if (!desc.sdp) return desc
-  const newline = desc.sdp.includes('\r\n') ? '\r\n' : '\n'
-  const lines = desc.sdp.split(/\r?\n/)
-  if (!hasUdpCandidate(lines)) return desc
+  const cloned = cloneSessionDescription(desc)
+  if (!cloned.sdp) return cloned
+  const newline = cloned.sdp.includes('\r\n') ? '\r\n' : '\n'
+  const lines = cloned.sdp.split(/\r?\n/)
+  if (!hasUdpCandidate(lines)) return cloned
   return {
-    ...desc,
+    type: cloned.type,
     sdp: lines.filter((line) => !isTcpCandidateLine(line)).join(newline),
   }
 }
@@ -107,16 +116,21 @@ export const decompressJson = async (data: string): Promise<unknown> => {
   return JSON.parse(await blob.text())
 }
 
-const encodeCompactPayload = (desc: RTCSessionDescriptionInit): string => {
-  const compacted = compact(dropTcpIceCandidates(desc), COMPACT_OPTIONS)
+const sdpTypeForConnection = (ct: ConnectionType): RTCSdpType =>
+  ct === ConnectionType.HOST ? 'offer' : 'answer'
+
+const encodeCompactPayload = (desc: RTCSessionDescriptionInit, type: RTCSdpType): string => {
+  const pruned = dropTcpIceCandidates(desc)
+  const compacted = compact({ type, sdp: pruned.sdp }, COMPACT_OPTIONS)
   return PAYLOAD_VERSION + compacted[0] + toBase64Url(compacted.slice(1))
 }
 
-const decodeCompactPayload = (payload: string): RTCSessionDescriptionInit => {
+const decodeCompactPayload = (payload: string, type: RTCSdpType): RTCSessionDescriptionInit => {
   if (!payload.startsWith(PAYLOAD_VERSION) || payload.length < 3) {
     throw new Error('unsupported connection payload')
   }
-  const compacted = payload[1] + fromBase64Url(payload.slice(2))
+  const letter = type === 'offer' ? 'O' : 'A'
+  const compacted = letter + fromBase64Url(payload.slice(2))
   return decompact(compacted, COMPACT_OPTIONS)
 }
 
@@ -164,7 +178,7 @@ export const mayBeConnectionString = (ct: ConnectionType, str: string): boolean 
       decompressJson(parsed.token)
       return true
     }
-    decodeCompactPayload(parsed.payload ?? '')
+    decodeCompactPayload(parsed.payload ?? '', sdpTypeForConnection(parsed.type))
     return parsed.username.length > 0
   } catch {
     return false
@@ -179,7 +193,7 @@ export const getConnectionString = async (
   },
 ): Promise<string> => {
   const { username } = data
-  const payload = encodeCompactPayload(offer)
+  const payload = encodeCompactPayload(offer, sdpTypeForConnection(ct))
   return `kiwi://${SHORT_TYPE[ct]}/${encodeURIComponent(username)}/${payload}`
 }
 
@@ -191,9 +205,11 @@ export const getDataFromKiwiUrl = async (
   rtcSessionDescription: RTCSessionDescriptionInit
 }> => {
   const parsed = parseConnectionUrl(url)
+  const expectedType = sdpTypeForConnection(parsed.type)
   const rtcSessionDescription = parsed.token
     ? ((await decompressJson(parsed.token)) as RTCSessionDescriptionInit)
-    : decodeCompactPayload(parsed.payload ?? '')
+    : decodeCompactPayload(parsed.payload ?? '', expectedType)
+  if (!parsed.token) rtcSessionDescription.type = expectedType
   return {
     type: parsed.type,
     data: {

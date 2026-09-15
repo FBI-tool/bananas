@@ -110,6 +110,20 @@ describe('dropTcpIceCandidates', () => {
     const pruned = dropTcpIceCandidates(REALISTIC_OFFER)
     expect(pruned.sdp).not.toMatch(/a=candidate:\S+\s+\d+\s+tcp\s/i)
     expect(pruned.sdp).toMatch(/a=candidate:\S+\s+\d+\s+udp\s/i)
+    expect(pruned.type).toBe('offer')
+  })
+
+  it('keeps SDP type from native-like descriptions whose fields are not enumerable', () => {
+    const nativeLike = {} as RTCSessionDescriptionInit
+    Object.defineProperty(nativeLike, 'type', { get: () => 'offer', enumerable: false })
+    Object.defineProperty(nativeLike, 'sdp', {
+      get: () => REALISTIC_OFFER.sdp,
+      enumerable: false,
+    })
+    expect({ ...nativeLike }).toEqual({})
+    const pruned = dropTcpIceCandidates(nativeLike)
+    expect(pruned.type).toBe('offer')
+    expect(pruned.sdp).toMatch(/a=candidate:\S+\s+\d+\s+udp\s/i)
   })
 })
 
@@ -133,6 +147,29 @@ describe('connection strings', () => {
     })
     expect(url.startsWith('kiwi://p/Guest/2')).toBe(true)
     expect(mayBeConnectionString(ConnectionType.PARTICIPANT, url)).toBe(true)
+  })
+
+  it('encodes host URLs as offers even when the native description type is missing', async () => {
+    const nativeLike = {} as RTCSessionDescriptionInit
+    Object.defineProperty(nativeLike, 'type', { get: () => 'offer', enumerable: false })
+    Object.defineProperty(nativeLike, 'sdp', {
+      get: () => MINIMAL_OFFER.sdp,
+      enumerable: false,
+    })
+    const url = await getConnectionString(ConnectionType.HOST, nativeLike, { username: 'Kiwi' })
+    expect(url.startsWith('kiwi://h/Kiwi/2O')).toBe(true)
+    const parsed = await getDataFromKiwiUrl(url)
+    expect(parsed.rtcSessionDescription.type).toBe('offer')
+  })
+
+  it('treats kiwi://h compact payloads as offers even if the type letter is A', async () => {
+    const url = await getConnectionString(ConnectionType.HOST, MINIMAL_OFFER, { username: 'Kiwi' })
+    const broken = url.replace('/2O', '/2A')
+    expect(broken.includes('/2A')).toBe(true)
+    const parsed = await getDataFromKiwiUrl(broken)
+    expect(parsed.type).toBe(ConnectionType.HOST)
+    expect(parsed.rtcSessionDescription.type).toBe('offer')
+    expect(parsed.rtcSessionDescription.sdp).toContain('a=setup:actpass')
   })
 
   it('round-trips a realistic offer well under Discord length', async () => {
