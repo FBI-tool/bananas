@@ -72,6 +72,7 @@ const en = {
   room_is_full: 'This session is full',
   vote_in_progress: '{name} wants to become the presenter',
   vote_rejected: 'Presenter request was declined',
+  vote_cooldown: 'Please wait a moment before requesting to present again',
   you: 'You',
   hardware_video_acceleration: 'Hardware video acceleration (VA-API)',
   hardware_video_acceleration_description:

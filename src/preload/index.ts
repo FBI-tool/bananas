@@ -140,6 +140,9 @@ const KiwiApi = {
   toggleCallOverlay: async (open: boolean): Promise<void> => {
     await ipcRenderer.invoke('toggleCallOverlay', open)
   },
+  setCallOverlayVisible: async (visible: boolean): Promise<void> => {
+    await ipcRenderer.invoke('setCallOverlayVisible', visible)
+  },
   onCallOverlayClosed: (handler: () => void): void => {
     onIpc('callOverlayClosed', () => handler())
   },

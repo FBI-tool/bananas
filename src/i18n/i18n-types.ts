@@ -295,6 +295,10 @@ type RootTranslation = {
 	 */
 	vote_rejected: string
 	/**
+	 * P​l​e​a​s​e​ ​w​a​i​t​ ​a​ ​m​o​m​e​n​t​ ​b​e​f​o​r​e​ ​r​e​q​u​e​s​t​i​n​g​ ​t​o​ ​p​r​e​s​e​n​t​ ​a​g​a​i​n
+	 */
+	vote_cooldown: string
+	/**
 	 * Y​o​u
 	 */
 	you: string
@@ -645,6 +649,10 @@ export type TranslationFunctions = {
 	 * Presenter request was declined
 	 */
 	vote_rejected: () => LocalizedString
+	/**
+	 * Please wait a moment before requesting to present again
+	 */
+	vote_cooldown: () => LocalizedString
 	/**
 	 * You
 	 */

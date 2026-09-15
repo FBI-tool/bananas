@@ -71,6 +71,7 @@ const zh = {
   room_is_full: '此会话已满',
   vote_in_progress: '{name} 想要成为演示者',
   vote_rejected: '演示请求被拒绝',
+  vote_cooldown: '请稍后再请求成为演示者',
   you: '你',
   hardware_video_acceleration: '硬件视频加速（VA-API）',
   hardware_video_acceleration_description:

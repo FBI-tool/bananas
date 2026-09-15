@@ -15,7 +15,9 @@
   let screenPicker: ScreenPicker | undefined = $state()
 
   onMount(async () => {
-    window.KiwiApi.onSelectScreenShareSource((sources) => screenPicker.pick(sources))
+    window.KiwiApi.onSelectScreenShareSource((sources) =>
+      screenPicker ? screenPicker.pick(sources) : Promise.resolve(null),
+    )
     const settings = await window.KiwiApi.getSettings()
     appState.debugLogsEnabled = settings.debugLogsEnabled
     debugLog.setEnabled(settings.debugLogsEnabled)

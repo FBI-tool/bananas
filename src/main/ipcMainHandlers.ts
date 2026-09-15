@@ -85,6 +85,11 @@ export const ipcMainHandlersInit = (): void => {
       callOverlayWindow.close()
     }
   })
+  ipcMain.handle('setCallOverlayVisible', async (_, visible: boolean): Promise<void> => {
+    if (!callOverlayWindow || callOverlayWindow.isDestroyed()) return
+    if (visible) callOverlayWindow.showInactive()
+    else callOverlayWindow.hide()
+  })
 
   ipcMain.on('call-overlay-ready', (event) => {
     if (!fromCallOverlay(event)) return

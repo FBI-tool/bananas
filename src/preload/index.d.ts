@@ -72,6 +72,7 @@ type KiwiApi = {
     handler: (sources: ScreenShareSource[]) => Promise<string | null>,
   ) => void
   toggleCallOverlay: (open: boolean) => Promise<void>
+  setCallOverlayVisible: (visible: boolean) => Promise<void>
   onCallOverlayClosed: (handler: () => void) => void
   onCallOverlayReady: (handler: () => void) => void
   onCallChatSend: (handler: (text: string) => void) => void

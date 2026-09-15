@@ -236,27 +236,11 @@ export class Room {
       this.coordinatorId = this.localPeerId
       this.presenterId = this.localPeerId
       appState.isCoordinator = true
-      try {
-        this.displayStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: false,
-        })
-        if (!this.displayStream.getVideoTracks().length) {
-          return 'failed'
-        }
-        for (const track of this.displayStream.getVideoTracks()) {
-          track.addEventListener('ended', () => {
-            this.displayStreamActive = false
-          })
-        }
-        this.displayStreamActive = true
-      } catch (e) {
-        if (e && typeof e === 'object' && 'name' in e && e.name === 'NotAllowedError') {
-          return 'cancelled'
-        }
-        errorHandler(e)
-        return 'failed'
-      }
+      const captured = await this.acquireDisplayStream()
+      if (captured === 'cancelled' || captured === 'failed') return captured
+      this.displayStream = captured
+      this.displayStreamActive = true
+      this.bindDisplayEnded(captured)
     } else {
       appState.isCoordinator = false
       const link = await this.createLink(false)
@@ -431,31 +415,35 @@ export class Room {
     await this.teardown(true)
   }
 
-  async requestToPresent(): Promise<'ok' | 'blocked' | 'cancelled' | 'failed'> {
+  async requestToPresent(): Promise<'ok' | 'blocked' | 'cooldown' | 'cancelled' | 'failed'> {
     const now = Date.now()
+    if (now < this.cooldownUntil) {
+      debugLog.warn('room', 'requestToPresent blocked by cooldown', {
+        remainingMs: this.cooldownUntil - now,
+      })
+      return 'cooldown'
+    }
     if (
       !canStartVote({
         now,
-        cooldownUntil: this.cooldownUntil,
+        cooldownUntil: 0,
         activeVote: this.activeVote,
         requesterId: this.localPeerId,
         presenterId: this.presenterId,
       })
     ) {
+      debugLog.warn('room', 'requestToPresent blocked', {
+        isPresenter: this.isPresenter,
+        hasActiveVote: Boolean(this.activeVote),
+      })
       return 'blocked'
     }
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      })
-      if (!stream.getVideoTracks().length) return 'failed'
+      const captured = await this.acquireDisplayStream()
+      if (captured === 'cancelled' || captured === 'failed') return captured
       this.stopStream(this.pendingDisplayStream)
-      this.pendingDisplayStream = stream
+      this.pendingDisplayStream = captured
     } catch (e) {
-      if (e && typeof e === 'object' && 'name' in e && e.name === 'NotAllowedError') {
-        return 'cancelled'
-      }
       errorHandler(e)
       return 'failed'
     }
@@ -501,28 +489,26 @@ export class Room {
 
   async changeScreen(): Promise<'ok' | 'cancelled' | 'failed'> {
     if (!this.isPresenter) return 'failed'
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      })
-      const track = stream.getVideoTracks()[0]
-      if (!track) return 'failed'
-      track.addEventListener('ended', () => {
-        this.displayStreamActive = false
-      })
-      this.stopStream(this.displayStream)
-      this.displayStream = stream
-      this.displayStreamActive = true
-      await this.pushVideoToAll(track, stream)
-      return 'ok'
-    } catch (e) {
-      if (e && typeof e === 'object' && 'name' in e && e.name === 'NotAllowedError') {
-        return 'cancelled'
-      }
-      errorHandler(e)
+    debugLog.info('room', 'changeScreen start')
+    const captured = await this.acquireDisplayStream({ releasePrevious: true })
+    if (captured === 'cancelled') {
+      this.displayStreamActive = false
+      await this.pushVideoToAll(null, null)
+      debugLog.warn('room', 'changeScreen cancelled')
+      return 'cancelled'
+    }
+    if (captured === 'failed') return 'failed'
+    const track = captured.getVideoTracks()[0]
+    if (!track) {
+      this.stopStream(captured)
       return 'failed'
     }
+    this.displayStream = captured
+    this.displayStreamActive = true
+    this.bindDisplayEnded(captured)
+    await this.pushVideoToAll(track, captured)
+    debugLog.info('room', 'changeScreen ok')
+    return 'ok'
   }
 
   occupiedSlots(): number {
@@ -847,7 +833,7 @@ export class Room {
 
   private async onVoteResult(msg: Extract<ControlMessage, { t: 'vote-result' }>): Promise<void> {
     this.clearVoteTimer()
-    this.cooldownUntil = Date.now() + VOTE_COOLDOWN_MS
+    this.cooldownUntil = msg.approved ? 0 : Date.now() + VOTE_COOLDOWN_MS
     this.activeVote = null
     this.localVoteCast = null
     if (msg.approved) await this.onPresenterChanged(msg.presenterId)
@@ -865,7 +851,7 @@ export class Room {
 
   private async concludeVote(vote: VoteState, approved: boolean): Promise<void> {
     this.clearVoteTimer()
-    this.cooldownUntil = Date.now() + VOTE_COOLDOWN_MS
+    this.cooldownUntil = approved ? 0 : Date.now() + VOTE_COOLDOWN_MS
     this.activeVote = null
     this.localVoteCast = null
     if (approved) {
@@ -889,12 +875,10 @@ export class Room {
     if (!stream) return
     const track = stream.getVideoTracks()[0]
     if (!track) return
-    track.addEventListener('ended', () => {
-      this.displayStreamActive = false
-    })
     this.stopStream(this.displayStream)
     this.displayStream = stream
     this.displayStreamActive = true
+    this.bindDisplayEnded(stream)
     this.presenterId = this.localPeerId
     this.presenterGone = false
     await this.pushVideoToAll(track, stream)
@@ -1248,7 +1232,10 @@ export class Room {
     }
   }
 
-  private async pushVideoToAll(track: MediaStreamTrack, stream: MediaStream): Promise<void> {
+  private async pushVideoToAll(
+    track: MediaStreamTrack | null,
+    stream: MediaStream | null,
+  ): Promise<void> {
     for (const link of this.links.values()) {
       await link.setDisplayTrack(track, stream)
     }
@@ -1274,6 +1261,53 @@ export class Room {
     const timer = this.iceGraceTimers.get(key)
     if (timer) clearTimeout(timer)
     this.iceGraceTimers.delete(key)
+  }
+
+  private bindDisplayEnded(stream: MediaStream): void {
+    for (const track of stream.getVideoTracks()) {
+      track.addEventListener('ended', () => {
+        if (this.displayStream !== stream) return
+        this.displayStreamActive = false
+      })
+    }
+  }
+
+  private async setOverlayTemporarilyHidden(hidden: boolean): Promise<void> {
+    if (!this.overlayOpen) return
+    await window.KiwiApi.setCallOverlayVisible?.(!hidden)
+  }
+
+  private async acquireDisplayStream(options?: {
+    releasePrevious?: boolean
+  }): Promise<MediaStream | 'cancelled' | 'failed'> {
+    await this.setOverlayTemporarilyHidden(true)
+    try {
+      if (options?.releasePrevious) {
+        this.stopStream(this.displayStream)
+        this.displayStream = null
+      }
+      debugLog.info('room', 'getDisplayMedia start', {
+        releasePrevious: Boolean(options?.releasePrevious),
+      })
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      })
+      if (!stream.getVideoTracks().length) {
+        this.stopStream(stream)
+        debugLog.warn('room', 'getDisplayMedia returned no video tracks')
+        return 'failed'
+      }
+      return stream
+    } catch (e) {
+      if (e && typeof e === 'object' && 'name' in e && e.name === 'NotAllowedError') {
+        return 'cancelled'
+      }
+      errorHandler(e)
+      return 'failed'
+    } finally {
+      await this.setOverlayTemporarilyHidden(false)
+    }
   }
 
   private stopStream(stream: MediaStream | null): void {
