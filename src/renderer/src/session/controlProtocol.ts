@@ -41,10 +41,14 @@ export type MeshAnswerMessage = Envelope & {
   sdp: RTCSessionDescriptionInit
 }
 
+export type VoteKind = 'presenter' | 'kick'
+
 export type VoteStartMessage = Envelope & {
   t: 'vote-start'
   voteId: string
+  kind?: VoteKind
   candidateId: string
+  requesterId?: string
   expiresAt: number
 }
 
@@ -60,6 +64,8 @@ export type VoteResultMessage = Envelope & {
   voteId: string
   approved: boolean
   presenterId: string
+  kind?: VoteKind
+  removedPeerId?: string
 }
 
 export type PresenterChangedMessage = Envelope & {
@@ -144,6 +150,11 @@ const isRosterPeer = (value: unknown): value is RosterPeer => {
   return isString(value.id) && isString(value.username) && isString(value.color)
 }
 
+const isVoteKind = (value: unknown): value is VoteKind => value === 'presenter' || value === 'kick'
+
+const hasOptionalVoteKind = (value: Record<string, unknown>): boolean =>
+  value.kind === undefined || isVoteKind(value.kind)
+
 export const isControlMessage = (value: unknown): value is ControlMessage => {
   if (!isRecord(value)) return false
   if (value.v !== PROTOCOL_VERSION || !isString(value.t)) return false
@@ -162,13 +173,21 @@ export const isControlMessage = (value: unknown): value is ControlMessage => {
       return isString(value.from) && isString(value.to) && isSdp(value.sdp)
     case 'vote-start':
       return (
-        isString(value.voteId) && isString(value.candidateId) && typeof value.expiresAt === 'number'
+        isString(value.voteId) &&
+        isString(value.candidateId) &&
+        typeof value.expiresAt === 'number' &&
+        hasOptionalVoteKind(value) &&
+        (value.requesterId === undefined || isString(value.requesterId))
       )
     case 'vote-cast':
       return isString(value.voteId) && isString(value.peerId) && typeof value.approve === 'boolean'
     case 'vote-result':
       return (
-        isString(value.voteId) && typeof value.approved === 'boolean' && isString(value.presenterId)
+        isString(value.voteId) &&
+        typeof value.approved === 'boolean' &&
+        isString(value.presenterId) &&
+        hasOptionalVoteKind(value) &&
+        (value.removedPeerId === undefined || isString(value.removedPeerId))
       )
     case 'presenter-changed':
       return isString(value.presenterId)

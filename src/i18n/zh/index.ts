@@ -72,6 +72,12 @@ const zh = {
   vote_in_progress: '{name} 想要成为演示者',
   vote_rejected: '演示请求被拒绝',
   vote_cooldown: '请稍后再请求成为演示者',
+  remove_from_session: '移出会话',
+  vote_remove: '将 {name} 移出会话？',
+  vote_removing_you: '成员正在投票将你移出会话',
+  removed_from_session: '你已被移出会话',
+  vote_remove_rejected: '移除请求被拒绝',
+  vote_remove_cooldown: '请稍后再发起投票',
   you: '你',
   hardware_video_acceleration: '硬件视频加速（VA-API）',
   hardware_video_acceleration_description:

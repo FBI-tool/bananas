@@ -26,6 +26,7 @@ import { CallLoopback } from './callLoopback'
 import { PeerLink } from './peerLink'
 import {
   answersMatchOffer,
+  canStartKick,
   canStartVote,
   castVote,
   nextCoordinator,
@@ -37,6 +38,7 @@ import {
   uniquePeersById,
   voteOutcome,
   type SessionEndedReason,
+  type VoteKind,
   type VoteState,
 } from './roomLogic'
 import { playSessionEndedSound } from './sessionEndedSound'
@@ -65,6 +67,7 @@ export class Room {
   hasAudioInput = $state(false)
   activeVote = $state<VoteState | null>(null)
   localVoteCast = $state<boolean | null>(null)
+  voteRejectedKind = $state<VoteKind | null>(null)
   chatMessages = $state<CallChatMessage[]>([])
 
   private remoteVideo: HTMLVideoElement | null = null
@@ -450,7 +453,9 @@ export class Room {
 
     const vote = startVote({
       voteId: getUUIDv4(),
+      kind: 'presenter',
       candidateId: this.localPeerId,
+      requesterId: this.localPeerId,
       now,
       timeoutMs: VOTE_TIMEOUT_MS,
       peerIds: this.allPeerIds(),
@@ -461,7 +466,9 @@ export class Room {
       t: 'vote-start',
       v: PROTOCOL_VERSION,
       voteId: vote.voteId,
+      kind: vote.kind,
       candidateId: vote.candidateId,
+      requesterId: vote.requesterId,
       expiresAt: vote.expiresAt,
     })
     this.armVoteTimer(vote)
@@ -469,6 +476,79 @@ export class Room {
       await this.concludeVote(vote, true)
     }
     return 'ok'
+  }
+
+  canRequestKick(targetId: string): boolean {
+    return canStartKick({
+      now: Date.now(),
+      cooldownUntil: this.cooldownUntil,
+      activeVote: this.activeVote,
+      requesterId: this.localPeerId,
+      targetId,
+      peerIds: this.allPeerIds(),
+    })
+  }
+
+  async requestKick(targetId: string): Promise<'ok' | 'blocked' | 'cooldown'> {
+    const now = Date.now()
+    if (now < this.cooldownUntil) {
+      debugLog.warn('room', 'requestKick blocked by cooldown', {
+        remainingMs: this.cooldownUntil - now,
+        targetId,
+      })
+      return 'cooldown'
+    }
+    if (
+      !canStartKick({
+        now,
+        cooldownUntil: 0,
+        activeVote: this.activeVote,
+        requesterId: this.localPeerId,
+        targetId,
+        peerIds: this.allPeerIds(),
+      })
+    ) {
+      debugLog.warn('room', 'requestKick blocked', {
+        targetId,
+        hasActiveVote: Boolean(this.activeVote),
+      })
+      return 'blocked'
+    }
+    const started = startVote({
+      voteId: getUUIDv4(),
+      kind: 'kick',
+      candidateId: targetId,
+      requesterId: this.localPeerId,
+      now,
+      timeoutMs: VOTE_TIMEOUT_MS,
+      peerIds: this.allPeerIds(),
+    })
+    const vote = castVote(started, this.localPeerId, true)
+    this.activeVote = vote
+    this.localVoteCast = true
+    this.broadcast({
+      t: 'vote-start',
+      v: PROTOCOL_VERSION,
+      voteId: vote.voteId,
+      kind: vote.kind,
+      candidateId: vote.candidateId,
+      requesterId: vote.requesterId,
+      expiresAt: vote.expiresAt,
+    })
+    this.broadcast({
+      t: 'vote-cast',
+      v: PROTOCOL_VERSION,
+      voteId: vote.voteId,
+      peerId: this.localPeerId,
+      approve: true,
+    })
+    this.armVoteTimer(vote)
+    await this.checkVoteOutcome(vote)
+    return 'ok'
+  }
+
+  clearVoteRejected(): void {
+    this.voteRejectedKind = null
   }
 
   async castLocalVote(approve: boolean): Promise<void> {
@@ -813,14 +893,19 @@ export class Room {
 
   private onVoteStart(msg: Extract<ControlMessage, { t: 'vote-start' }>): void {
     if (this.activeVote && this.activeVote.voteId === msg.voteId) return
+    const kind = msg.kind === 'kick' ? 'kick' : 'presenter'
+    const requesterId = msg.requesterId ?? msg.candidateId
     const vote = resumeVote({
       voteId: msg.voteId,
+      kind,
       candidateId: msg.candidateId,
+      requesterId,
       expiresAt: msg.expiresAt,
       peerIds: this.allPeerIds(),
     })
     this.activeVote = vote
-    this.localVoteCast = msg.candidateId === this.localPeerId ? true : null
+    this.localVoteCast =
+      msg.candidateId === this.localPeerId || requesterId === this.localPeerId ? true : null
     this.armVoteTimer(vote)
   }
 
@@ -836,6 +921,10 @@ export class Room {
     this.cooldownUntil = msg.approved ? 0 : Date.now() + VOTE_COOLDOWN_MS
     this.activeVote = null
     this.localVoteCast = null
+    if (msg.kind === 'kick') {
+      if (msg.approved && msg.removedPeerId) await this.applyKick(msg.removedPeerId)
+      return
+    }
     if (msg.approved) await this.onPresenterChanged(msg.presenterId)
     else this.stopStream(this.pendingDisplayStream)
     this.pendingDisplayStream = null
@@ -844,7 +933,7 @@ export class Room {
   private async checkVoteOutcome(vote: VoteState): Promise<void> {
     const outcome = voteOutcome(vote, Date.now())
     if (outcome === 'pending') return
-    if (vote.candidateId === this.localPeerId) {
+    if (vote.requesterId === this.localPeerId) {
       await this.concludeVote(vote, outcome === 'approved')
     }
   }
@@ -854,9 +943,24 @@ export class Room {
     this.cooldownUntil = approved ? 0 : Date.now() + VOTE_COOLDOWN_MS
     this.activeVote = null
     this.localVoteCast = null
+    if (vote.kind === 'kick') {
+      if (!approved) this.voteRejectedKind = 'kick'
+      this.broadcast({
+        t: 'vote-result',
+        v: PROTOCOL_VERSION,
+        voteId: vote.voteId,
+        approved,
+        presenterId: this.presenterId,
+        kind: 'kick',
+        removedPeerId: approved ? vote.candidateId : '',
+      })
+      if (approved) await this.applyKick(vote.candidateId)
+      return
+    }
     if (approved) {
       await this.becomePresenter()
     } else {
+      this.voteRejectedKind = 'presenter'
       this.stopStream(this.pendingDisplayStream)
       this.pendingDisplayStream = null
     }
@@ -866,7 +970,24 @@ export class Room {
       voteId: vote.voteId,
       approved,
       presenterId: this.presenterId,
+      kind: 'presenter',
+      removedPeerId: '',
     })
+  }
+
+  private async applyKick(peerId: string): Promise<void> {
+    if (!peerId) return
+    debugLog.info('room', 'applyKick', { peerId, localPeerId: this.localPeerId })
+    if (peerId === this.localPeerId) {
+      this.sessionEndedReason = 'removed'
+      playSessionEndedSound()
+      await this.teardown(true)
+      return
+    }
+    const link = this.findLinkByRemote(peerId)
+    if (link) await this.handleRemoteDeparted(link, false)
+    else this.removePeerById(peerId)
+    this.syncCallOverlay()
   }
 
   private async becomePresenter(): Promise<void> {
@@ -1071,6 +1192,7 @@ export class Room {
         audio.srcObject = null
         this.remoteAudioElements.delete(peerId)
       }
+      await this.dropVoterFromActiveVote(peerId)
     }
     const remaining = this.establishedRemoteIds().length
     const reason = sessionEndedReasonAfterDeparture({
@@ -1101,6 +1223,25 @@ export class Room {
     if (this.isCoordinator) this.broadcastRoster()
     this.syncLocalPeer()
     this.syncCallOverlay()
+  }
+
+  private async dropVoterFromActiveVote(peerId: string): Promise<void> {
+    const vote = this.activeVote
+    if (!vote) return
+    if (vote.candidateId === peerId || vote.requesterId === peerId) {
+      this.clearVoteTimer()
+      this.activeVote = null
+      this.localVoteCast = null
+      return
+    }
+    if (!vote.requiredVoterIds.includes(peerId)) return
+    const next: VoteState = {
+      ...vote,
+      requiredVoterIds: vote.requiredVoterIds.filter((id) => id !== peerId),
+      votes: Object.fromEntries(Object.entries(vote.votes).filter(([id]) => id !== peerId)),
+    }
+    this.activeVote = next
+    await this.checkVoteOutcome(next)
   }
 
   private findPendingForAnswer(answer: RTCSessionDescriptionInit): PeerLink | null {
@@ -1348,6 +1489,7 @@ export class Room {
     this.isLive = false
     this.activeVote = null
     this.localVoteCast = null
+    this.voteRejectedKind = null
     this.displayStreamActive = false
     this.cursorsEnabled = false
     this.peers = []

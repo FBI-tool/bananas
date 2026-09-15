@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   answersMatchOffer,
+  canStartKick,
   canStartVote,
   castVote,
   electCoordinator,
@@ -98,6 +99,89 @@ describe('vote', () => {
         presenterId: 'a',
       }),
     ).toBe(true)
+  })
+
+  it('excludes the kick target from required voters', () => {
+    const vote = startVote({
+      voteId: 'k1',
+      kind: 'kick',
+      candidateId: 'c',
+      requesterId: 'a',
+      now: 0,
+      timeoutMs: VOTE_TIMEOUT_MS,
+      peerIds: ['a', 'b', 'c'],
+    })
+    expect(vote.requiredVoterIds).toEqual(['a', 'b'])
+    expect(voteOutcome(vote, 1)).toBe('pending')
+    const afterRequester = castVote(vote, 'a', true)
+    expect(voteOutcome(afterRequester, 1)).toBe('pending')
+    const afterAll = castVote(afterRequester, 'b', true)
+    expect(voteOutcome(afterAll, 1)).toBe('approved')
+    expect(castVote(afterAll, 'c', false)).toEqual(afterAll)
+  })
+
+  it('approves a two-person kick once the requester votes yes', () => {
+    const vote = startVote({
+      voteId: 'k2',
+      kind: 'kick',
+      candidateId: 'b',
+      requesterId: 'a',
+      now: 0,
+      timeoutMs: VOTE_TIMEOUT_MS,
+      peerIds: ['a', 'b'],
+    })
+    expect(vote.requiredVoterIds).toEqual(['a'])
+    expect(voteOutcome(castVote(vote, 'a', true), 1)).toBe('approved')
+  })
+
+  it('blocks a kick of self, missing peers, or while another vote is active', () => {
+    const vote = startVote({
+      voteId: 'v1',
+      candidateId: 'a',
+      now: 0,
+      timeoutMs: VOTE_TIMEOUT_MS,
+      peerIds: ['a', 'b'],
+    })
+    expect(
+      canStartKick({
+        now: 1,
+        cooldownUntil: 0,
+        activeVote: null,
+        requesterId: 'a',
+        targetId: 'b',
+        peerIds: ['a', 'b'],
+      }),
+    ).toBe(true)
+    expect(
+      canStartKick({
+        now: 1,
+        cooldownUntil: 0,
+        activeVote: vote,
+        requesterId: 'a',
+        targetId: 'b',
+        peerIds: ['a', 'b'],
+      }),
+    ).toBe(false)
+    expect(
+      canStartKick({
+        now: 1,
+        cooldownUntil: 0,
+        activeVote: null,
+        requesterId: 'a',
+        targetId: 'a',
+        peerIds: ['a', 'b'],
+      }),
+    ).toBe(false)
+    expect(
+      canStartKick({
+        now: 1,
+        cooldownUntil: 0,
+        activeVote: null,
+        requesterId: 'a',
+        targetId: 'c',
+        peerIds: ['a', 'b'],
+      }),
+    ).toBe(false)
   })
 })
 

@@ -73,6 +73,12 @@ const en = {
   vote_in_progress: '{name} möchte Presenter werden',
   vote_rejected: 'Die Presenter-Anfrage wurde abgelehnt',
   vote_cooldown: 'Bitte warte einen Moment, bevor du erneut Presenter werden möchtest',
+  remove_from_session: 'Aus der Sitzung entfernen',
+  vote_remove: '{name} aus der Sitzung entfernen?',
+  vote_removing_you: 'Die Gruppe stimmt darüber ab, dich aus der Sitzung zu entfernen',
+  removed_from_session: 'Du wurdest aus der Sitzung entfernt',
+  vote_remove_rejected: 'Die Entfernung wurde abgelehnt',
+  vote_remove_cooldown: 'Bitte warte einen Moment, bevor du eine neue Abstimmung startest',
   you: 'Du',
   hardware_video_acceleration: 'Hardware-Videobeschleunigung (VA-API)',
   hardware_video_acceleration_description:

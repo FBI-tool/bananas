@@ -71,6 +71,13 @@
     if (!room.isLive) overlayAutoOpened = false
   })
 
+  $effect(() => {
+    const kind = room.voteRejectedKind
+    if (!kind) return
+    room.clearVoteRejected()
+    toast.show('info', kind === 'kick' ? L.vote_remove_rejected() : L.vote_rejected())
+  })
+
   onMount(async () => {
     const settings = await window.KiwiApi.getSettings()
     username = settings.username
@@ -114,6 +121,12 @@
     if (result === 'cooldown') toast.show('info', L.vote_cooldown())
     if (result === 'blocked') toast.show('info', L.vote_rejected())
     if (result === 'failed') toast.show('error', L.screen_share_failed(), 2500)
+  }
+
+  const onRequestKick = async (peerId: string): Promise<void> => {
+    const result = await room.requestKick(peerId)
+    if (result === 'cooldown') toast.show('info', L.vote_remove_cooldown())
+    if (result === 'blocked') toast.show('info', L.vote_remove_rejected())
   }
 
   const onChangeScreen = async (): Promise<void> => {
@@ -297,6 +310,20 @@
         {/if}
         {#if peer.id === room.presenterId}
           · {L.presenter()}
+        {/if}
+        {#if peer.id !== room.localPeerId}
+          <button
+            type="button"
+            class="btn btn-ghost btn-xs btn-circle"
+            aria-label={L.remove_from_session()}
+            title={L.remove_from_session()}
+            disabled={Boolean(room.activeVote) || !room.canRequestKick(peer.id)}
+            onclick={() => onRequestKick(peer.id)}
+          >
+            <span class="icon">
+              <i class="fa-solid fa-user-minus"></i>
+            </span>
+          </button>
         {/if}
       </li>
     {/each}

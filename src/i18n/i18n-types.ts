@@ -299,6 +299,31 @@ type RootTranslation = {
 	 */
 	vote_cooldown: string
 	/**
+	 * R​e​m​o​v​e​ ​f​r​o​m​ ​s​e​s​s​i​o​n
+	 */
+	remove_from_session: string
+	/**
+	 * R​e​m​o​v​e​ ​{​n​a​m​e​}​ ​f​r​o​m​ ​t​h​e​ ​s​e​s​s​i​o​n​?
+	 * @param {unknown} name
+	 */
+	vote_remove: RequiredParams<'name'>
+	/**
+	 * T​h​e​ ​g​r​o​u​p​ ​i​s​ ​v​o​t​i​n​g​ ​t​o​ ​r​e​m​o​v​e​ ​y​o​u​ ​f​r​o​m​ ​t​h​e​ ​s​e​s​s​i​o​n
+	 */
+	vote_removing_you: string
+	/**
+	 * Y​o​u​ ​w​e​r​e​ ​r​e​m​o​v​e​d​ ​f​r​o​m​ ​t​h​e​ ​s​e​s​s​i​o​n
+	 */
+	removed_from_session: string
+	/**
+	 * R​e​m​o​v​a​l​ ​w​a​s​ ​d​e​c​l​i​n​e​d
+	 */
+	vote_remove_rejected: string
+	/**
+	 * P​l​e​a​s​e​ ​w​a​i​t​ ​a​ ​m​o​m​e​n​t​ ​b​e​f​o​r​e​ ​s​t​a​r​t​i​n​g​ ​a​n​o​t​h​e​r​ ​v​o​t​e
+	 */
+	vote_remove_cooldown: string
+	/**
 	 * Y​o​u
 	 */
 	you: string
@@ -653,6 +678,30 @@ export type TranslationFunctions = {
 	 * Please wait a moment before requesting to present again
 	 */
 	vote_cooldown: () => LocalizedString
+	/**
+	 * Remove from session
+	 */
+	remove_from_session: () => LocalizedString
+	/**
+	 * Remove {name} from the session?
+	 */
+	vote_remove: (arg: { name: unknown }) => LocalizedString
+	/**
+	 * The group is voting to remove you from the session
+	 */
+	vote_removing_you: () => LocalizedString
+	/**
+	 * You were removed from the session
+	 */
+	removed_from_session: () => LocalizedString
+	/**
+	 * Removal was declined
+	 */
+	vote_remove_rejected: () => LocalizedString
+	/**
+	 * Please wait a moment before starting another vote
+	 */
+	vote_remove_cooldown: () => LocalizedString
 	/**
 	 * You
 	 */

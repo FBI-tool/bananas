@@ -1,6 +1,12 @@
+import type { VoteKind } from './controlProtocol'
+
+export type { VoteKind }
+
 export type VoteState = {
   voteId: string
+  kind: VoteKind
   candidateId: string
+  requesterId: string
   expiresAt: number
   requiredVoterIds: string[]
   votes: Record<string, boolean>
@@ -8,7 +14,7 @@ export type VoteState = {
 
 export type VoteOutcome = 'pending' | 'approved' | 'rejected'
 
-export type SessionEndedReason = 'host-ended' | 'everyone-left'
+export type SessionEndedReason = 'host-ended' | 'everyone-left' | 'removed'
 
 export type MeshRoute = 'deliver-local' | 'forward' | 'drop'
 
@@ -27,13 +33,17 @@ export const answersMatchOffer = (offerSdp?: string | null, answerSdp?: string |
 
 export const startVote = (params: {
   voteId: string
+  kind?: VoteKind
   candidateId: string
+  requesterId?: string
   now: number
   timeoutMs: number
   peerIds: string[]
 }): VoteState => ({
   voteId: params.voteId,
+  kind: params.kind ?? 'presenter',
   candidateId: params.candidateId,
+  requesterId: params.requesterId ?? params.candidateId,
   expiresAt: params.now + params.timeoutMs,
   requiredVoterIds: params.peerIds.filter((id) => id !== params.candidateId),
   votes: {},
@@ -41,12 +51,16 @@ export const startVote = (params: {
 
 export const resumeVote = (params: {
   voteId: string
+  kind?: VoteKind
   candidateId: string
+  requesterId?: string
   expiresAt: number
   peerIds: string[]
 }): VoteState => ({
   voteId: params.voteId,
+  kind: params.kind ?? 'presenter',
   candidateId: params.candidateId,
+  requesterId: params.requesterId ?? params.candidateId,
   expiresAt: params.expiresAt,
   requiredVoterIds: params.peerIds.filter((id) => id !== params.candidateId),
   votes: {},
@@ -63,6 +77,22 @@ export const canStartVote = (params: {
   if (params.activeVote) return false
   if (params.now < params.cooldownUntil) return false
   return true
+}
+
+export const canStartKick = (params: {
+  now: number
+  cooldownUntil: number
+  activeVote: VoteState | null
+  requesterId: string
+  targetId: string
+  peerIds: string[]
+}): boolean => {
+  if (params.activeVote) return false
+  if (params.now < params.cooldownUntil) return false
+  if (params.requesterId === params.targetId) return false
+  if (!params.peerIds.includes(params.targetId)) return false
+  if (!params.peerIds.includes(params.requesterId)) return false
+  return params.peerIds.length >= 2
 }
 
 export const castVote = (vote: VoteState, peerId: string, approve: boolean): VoteState => {

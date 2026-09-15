@@ -73,6 +73,12 @@ const pt_br = {
   vote_in_progress: '{name} quer se tornar o apresentador',
   vote_rejected: 'O pedido para apresentar foi recusado',
   vote_cooldown: 'Aguarde um momento antes de pedir para apresentar novamente',
+  remove_from_session: 'Remover da sessão',
+  vote_remove: 'Remover {name} da sessão?',
+  vote_removing_you: 'O grupo está votando para remover você da sessão',
+  removed_from_session: 'Você foi removido da sessão',
+  vote_remove_rejected: 'A remoção foi recusada',
+  vote_remove_cooldown: 'Aguarde um momento antes de iniciar outra votação',
   you: 'Você',
   hardware_video_acceleration: 'Aceleração de vídeo por hardware (VA-API)',
   hardware_video_acceleration_description:

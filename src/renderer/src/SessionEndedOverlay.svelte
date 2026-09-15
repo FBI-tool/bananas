@@ -11,7 +11,11 @@
   } = $props()
 
   const title = $derived(
-    reason === 'host-ended' ? L.host_ended_the_session() : L.everyone_else_has_left()
+    reason === 'removed'
+      ? L.removed_from_session()
+      : reason === 'host-ended'
+        ? L.host_ended_the_session()
+        : L.everyone_else_has_left()
   )
 </script>
 

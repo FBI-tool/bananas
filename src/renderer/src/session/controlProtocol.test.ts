@@ -100,4 +100,75 @@ describe('controlProtocol', () => {
       streamId: 's1',
     })
   })
+
+  it('accepts kick vote-start and vote-result payloads', () => {
+    const start = parseControlMessage(
+      JSON.stringify({
+        t: 'vote-start',
+        v: 1,
+        voteId: 'v1',
+        kind: 'kick',
+        candidateId: 'c',
+        requesterId: 'a',
+        expiresAt: 10,
+      }),
+    )
+    expect(start).toEqual({
+      t: 'vote-start',
+      v: 1,
+      voteId: 'v1',
+      kind: 'kick',
+      candidateId: 'c',
+      requesterId: 'a',
+      expiresAt: 10,
+    })
+    const result = parseControlMessage(
+      JSON.stringify({
+        t: 'vote-result',
+        v: 1,
+        voteId: 'v1',
+        approved: true,
+        presenterId: 'a',
+        kind: 'kick',
+        removedPeerId: 'c',
+      }),
+    )
+    expect(result).toEqual({
+      t: 'vote-result',
+      v: 1,
+      voteId: 'v1',
+      approved: true,
+      presenterId: 'a',
+      kind: 'kick',
+      removedPeerId: 'c',
+    })
+  })
+
+  it('still accepts presenter votes without kind', () => {
+    const parsed = parseControlMessage(
+      JSON.stringify({
+        t: 'vote-start',
+        v: 1,
+        voteId: 'v1',
+        candidateId: 'a',
+        expiresAt: 10,
+      }),
+    )
+    expect(parsed?.t).toBe('vote-start')
+  })
+
+  it('rejects invalid vote kinds', () => {
+    expect(
+      parseControlMessage(
+        JSON.stringify({
+          t: 'vote-start',
+          v: 1,
+          voteId: 'v1',
+          kind: 'ban',
+          candidateId: 'c',
+          expiresAt: 10,
+        }),
+      ),
+    ).toBeNull()
+  })
 })
