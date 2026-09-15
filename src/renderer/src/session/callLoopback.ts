@@ -1,4 +1,5 @@
 import type { CallCameraMid } from '../callTypes'
+import { cloneSessionDescription } from '../Utils'
 
 export type LoopbackTrackSource = {
   peerId: string
@@ -96,7 +97,8 @@ export class CallLoopback {
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
       this.publishMids()
-      window.KiwiApi.sendCallLoopOffer?.(pc.localDescription ?? offer)
+      const local = pc.localDescription ?? offer
+      window.KiwiApi.sendCallLoopOffer?.(cloneSessionDescription(local))
     } catch (error) {
       console.error(error)
     } finally {

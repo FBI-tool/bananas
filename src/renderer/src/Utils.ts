@@ -50,6 +50,8 @@ const hasUdpCandidate = (lines: string[]): boolean =>
     return parts[2]?.toLowerCase() === 'udp'
   })
 
+export const cloneForIpc = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+
 export const mediaTrackConstraints = (
   deviceId: string | undefined | null,
 ): boolean | MediaTrackConstraints => {

@@ -7,6 +7,7 @@ import {
   getConnectionString,
   getUUIDv4,
   mediaTrackConstraints,
+  cloneForIpc,
 } from '../Utils'
 import { getRTCPeerConnectionConfig } from '../Config'
 import { appState } from '../appState.svelte'
@@ -1457,8 +1458,8 @@ export class Room {
 
   private syncCallOverlay(): void {
     if (!this.overlayOpen) return
-    window.KiwiApi.sendCallPeers?.(this.callPeerInfos())
-    window.KiwiApi.sendCallChat?.(this.chatMessages)
+    window.KiwiApi.sendCallPeers?.(cloneForIpc(this.callPeerInfos()))
+    window.KiwiApi.sendCallChat?.(cloneForIpc(this.chatMessages))
     void this.loopback.setVideoSources(this.cameraSources())
   }
 

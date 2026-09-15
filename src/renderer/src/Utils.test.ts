@@ -7,6 +7,7 @@ import {
   getDataFromKiwiUrl,
   mayBeConnectionString,
   mediaTrackConstraints,
+  cloneForIpc,
   ConnectionType,
   debounce,
 } from './Utils'
@@ -219,6 +220,16 @@ describe('connection strings', () => {
     expect(mayBeConnectionString(ConnectionType.HOST, 'kiwi://h/Kiwi/')).toBe(false)
     expect(mayBeConnectionString(ConnectionType.HOST, 'kiwi://h/Kiwi/not-valid')).toBe(false)
     expect(mayBeConnectionString(ConnectionType.HOST, 'not a url')).toBe(false)
+  })
+})
+
+describe('cloneForIpc', () => {
+  it('returns a structured-cloneable plain object', () => {
+    const proxyLike = { id: 'a', nested: { n: 1 } }
+    const cloned = cloneForIpc(proxyLike)
+    expect(cloned).toEqual(proxyLike)
+    expect(cloned).not.toBe(proxyLike)
+    expect(structuredClone(cloned)).toEqual(cloned)
   })
 })
 

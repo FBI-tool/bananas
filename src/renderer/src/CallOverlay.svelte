@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { L } from './translations'
   import type { CallCameraMid, CallChatMessage, CallPeerInfo } from './callTypes'
+  import { cloneSessionDescription } from './Utils'
 
   let peers = $state<CallPeerInfo[]>([])
   let messages = $state<CallChatMessage[]>([])
@@ -100,7 +101,7 @@
           await pc.setRemoteDescription(sdp)
           const answer = await pc.createAnswer()
           await pc.setLocalDescription(answer)
-          window.CallApi.sendAnswer(pc.localDescription ?? answer)
+          window.CallApi.sendAnswer(cloneSessionDescription(pc.localDescription ?? answer))
           await flushIce()
         }
       } catch (error) {
