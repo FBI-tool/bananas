@@ -22,7 +22,7 @@ const VAAPI_ENABLE_FEATURES = [
 export const linuxGpuCliArgs = (opts: { wayland: boolean; vaapi: boolean }): string[] => {
   if (!isLinux) return []
 
-  const args: string[] = []
+  const args: string[] = ['--enable-transparent-visuals']
   const enableFeatures: string[] = []
   const disableFeatures: string[] = []
 

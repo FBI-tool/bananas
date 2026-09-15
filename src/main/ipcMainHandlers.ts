@@ -5,7 +5,6 @@ import { createCallOverlayWindow } from './callOverlay'
 import { settingsKeeper } from './stateKeeper'
 
 export const ipcMainHandlersInit = (): void => {
-  const availableDimensions = screen.getPrimaryDisplay().workAreaSize
   let remoteCursorsWindow: BrowserWindow | null = null
   let remoteCursorsActive = false
   let callOverlayWindow: BrowserWindow | null = null
@@ -37,10 +36,9 @@ export const ipcMainHandlersInit = (): void => {
   ipcMain.handle('updateRemoteCursor', async (_, state): Promise<void> => {
     if (!remoteCursorsActive) return
     if (!remoteCursorsWindow) return
-    const realX: string = (state.x * availableDimensions.width).toString()
-    const realY: string = (state.y * availableDimensions.height).toString()
-    const x = parseInt(realX, 10)
-    const y = parseInt(realY, 10)
+    const { width, height } = screen.getPrimaryDisplay().bounds
+    const x = Math.round(state.x * width)
+    const y = Math.round(state.y * height)
     const data = {
       ...state,
       x,
