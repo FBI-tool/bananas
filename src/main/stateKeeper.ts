@@ -13,6 +13,7 @@ export type SettingsData = {
   color: string
   language: string
   isMicrophoneEnabledOnConnect: boolean
+  hardwareVideoAcceleration: boolean
   iceServers: IceServer[]
 }
 
@@ -33,18 +34,20 @@ type WindowStateKeeper = WindowState & {
   track: (win: Electron.BrowserWindow) => void
 }
 
+export const defaultSettings: SettingsData = {
+  username: 'Kiwi',
+  color: '#ffffff',
+  language: 'en',
+  isMicrophoneEnabledOnConnect: true,
+  hardwareVideoAcceleration: true,
+  iceServers: [
+    {
+      urls: 'stun:stun.l.google.com:19302',
+    },
+  ],
+}
+
 export const settingsKeeper = async (): Promise<Settings> => {
-  const defaultSettings: SettingsData = {
-    username: 'Kiwi',
-    color: '#ffffff',
-    language: 'en',
-    isMicrophoneEnabledOnConnect: true,
-    iceServers: [
-      {
-        urls: 'stun:stun.l.google.com:19302',
-      },
-    ],
-  }
   const hasSettings = await settings.has('settings')
   if (hasSettings) {
     const data = (await settings.get('settings')) as unknown as SettingsData

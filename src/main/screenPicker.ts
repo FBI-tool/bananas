@@ -1,6 +1,14 @@
 import { BrowserWindow, desktopCapturer, ipcMain, session } from 'electron'
 import type { DesktopCapturerSource, NativeImage } from 'electron'
 
+const isWayland =
+  process.platform === 'linux' &&
+  (process.env.XDG_SESSION_TYPE === 'wayland' || Boolean(process.env.WAYLAND_DISPLAY))
+
+// PipeWire ignores this id and opens its own portal session. Passing a real
+// source from getSources() would show a second chooser.
+const WAYLAND_VIDEO_SOURCE = { id: 'screen:0:0', name: 'Entire Screen' }
+
 export type ScreenShareSource = {
   id: string
   name: string
@@ -59,9 +67,11 @@ const getDesktopSources = async (): Promise<DesktopCapturerSource[]> => {
   }
 }
 
+type VideoStream = { id: string; name: string }
+
 const respondOnce = (
-  callback: (streams: { video?: DesktopCapturerSource }) => void,
-): ((streams: { video?: DesktopCapturerSource }) => void) => {
+  callback: (streams: { video?: VideoStream }) => void,
+): ((streams: { video?: VideoStream }) => void) => {
   let responded = false
   return (streams): void => {
     if (responded) return
@@ -130,10 +140,14 @@ export const installDisplayMediaHandler = (getMainWindow: () => BrowserWindow): 
 
   const handler = async (
     _request: unknown,
-    callback: (streams: { video?: DesktopCapturerSource }) => void,
+    callback: (streams: { video?: VideoStream }) => void,
   ): Promise<void> => {
     const respond = respondOnce(callback)
     try {
+      if (isWayland) {
+        respond({ video: WAYLAND_VIDEO_SOURCE })
+        return
+      }
       const capturerSources = await getDesktopSources()
       const win = getMainWindow()
       if (!win || win.isDestroyed()) {

@@ -3,10 +3,13 @@ import path from 'path'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { applyChromiumFlags } from './chromiumFlags'
 import { windowStateKeeper } from './stateKeeper'
 import { ipcMainHandlersInit } from './ipcMainHandlers'
 import { installDisplayMediaHandler } from './screenPicker'
 import { isInProductionMode } from './utils'
+
+applyChromiumFlags()
 
 const CUSTOM_PROTOCOL = 'kiwi'
 const LEGACY_PROTOCOL = 'bananas'

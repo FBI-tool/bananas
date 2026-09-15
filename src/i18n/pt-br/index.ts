@@ -73,6 +73,9 @@ const pt_br = {
   vote_in_progress: '{name} quer se tornar o apresentador',
   vote_rejected: 'O pedido para apresentar foi recusado',
   you: 'Você',
+  hardware_video_acceleration: 'Aceleração de vídeo por hardware (VA-API)',
+  hardware_video_acceleration_description:
+    'Usa a GPU para codificar e decodificar vídeo. Desative se o compartilhamento de tela ficar preto ou travar. Reinicie o aplicativo após alterar.',
 } satisfies BaseTranslation
 
 export default pt_br

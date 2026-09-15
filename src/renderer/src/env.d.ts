@@ -34,6 +34,7 @@ declare global {
         language: string
         color: string
         isMicrophoneEnabledOnConnect: boolean
+        hardwareVideoAcceleration: boolean
         iceServers: IceServer[]
       }) => Promise<void>
       getSettings: () => Promise<{
@@ -41,6 +42,7 @@ declare global {
         color: string
         language: string
         isMicrophoneEnabledOnConnect: boolean
+        hardwareVideoAcceleration: boolean
         iceServers: IceServer[]
       }>
       getAppVersion: () => Promise<string>

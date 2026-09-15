@@ -14,9 +14,24 @@ export default defineConfig({
     singleQuote: true,
     semi: false,
     printWidth: 100,
+    ignorePatterns: [
+      'out/**',
+      'dist/**',
+      'build/**',
+      '**/*.d.ts',
+      '.vale/**',
+      'src/i18n/i18n-types.ts',
+    ],
   },
   lint: {
-    ignorePatterns: ['out/**', 'dist/**', 'build/**', 'src/i18n/**', '**/*.d.ts'],
+    ignorePatterns: [
+      'out/**',
+      'dist/**',
+      'build/**',
+      '**/*.d.ts',
+      '.vale/**',
+      'src/i18n/i18n-types.ts',
+    ],
     options: {
       typeAware: false,
       typeCheck: false,

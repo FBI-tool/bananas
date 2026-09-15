@@ -72,6 +72,9 @@ const zh = {
   vote_in_progress: '{name} 想要成为演示者',
   vote_rejected: '演示请求被拒绝',
   you: '你',
+  hardware_video_acceleration: '硬件视频加速（VA-API）',
+  hardware_video_acceleration_description:
+    '使用 GPU 编码和解码视频。如果屏幕共享黑屏或崩溃，请关闭此项。更改后需要重启应用。',
 } satisfies Translation
 
 export default zh

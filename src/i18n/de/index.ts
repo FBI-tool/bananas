@@ -73,6 +73,9 @@ const en = {
   vote_in_progress: '{name} möchte Presenter werden',
   vote_rejected: 'Die Presenter-Anfrage wurde abgelehnt',
   you: 'Du',
+  hardware_video_acceleration: 'Hardware-Videobeschleunigung (VA-API)',
+  hardware_video_acceleration_description:
+    'Nutzt die GPU zum Kodieren und Dekodieren von Video. Deaktiviere dies, wenn die Bildschirmfreigabe schwarz ist oder abstürzt. Starte die App danach neu.',
 } satisfies BaseTranslation
 
 export default en

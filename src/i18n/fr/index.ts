@@ -73,6 +73,9 @@ const fr = {
   vote_in_progress: '{name} veut devenir présentateur',
   vote_rejected: 'La demande de présentation a été refusée',
   you: 'Vous',
+  hardware_video_acceleration: 'Accélération vidéo matérielle (VA-API)',
+  hardware_video_acceleration_description:
+    'Utilise le GPU pour encoder et décoder la vidéo. Désactivez cette option si le partage d’écran est noir ou plante. Redémarrez l’application après modification.',
 } satisfies BaseTranslation
 
 export default fr

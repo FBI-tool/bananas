@@ -16,6 +16,7 @@ export type SettingsData = {
   username: string
   color: string
   isMicrophoneEnabledOnConnect: boolean
+  hardwareVideoAcceleration: boolean
   iceServers: IceServer[]
 }
 

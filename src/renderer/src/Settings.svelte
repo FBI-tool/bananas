@@ -12,6 +12,8 @@
   let modalSuccessIsActive = $state(false)
   let modalFailureIsActive = $state(false)
   let isMicrophoneEnabledOnConnect = $state(true)
+  let hardwareVideoAcceleration = $state(true)
+  const isLinux = window.electron.process.platform === 'linux'
 
   const isUsernameValid = $derived(usernameValue.length > 0 && usernameValue.length < 32)
   const isColorValid = $derived(/^#[0-9A-F]{6}$/i.test(colorValue))
@@ -40,6 +42,7 @@
         color: colorValue,
         language,
         isMicrophoneEnabledOnConnect,
+        hardwareVideoAcceleration,
         iceServers: iceServersValue.split('\n').map((srv) => JSON.parse(srv))
       })
       modalSuccessIsActive = true
@@ -59,6 +62,7 @@
     colorValue = settings.color
     language = settings.language
     isMicrophoneEnabledOnConnect = settings.isMicrophoneEnabledOnConnect
+    hardwareVideoAcceleration = settings.hardwareVideoAcceleration
     iceServersValue = settings.iceServers.map((srv) => JSON.stringify(srv)).join('\n')
   })
 </script>
@@ -119,6 +123,19 @@
       />
       {L.is_microphone_active_on_connect()}
     </label>
+
+    {#if isLinux}
+      <label class="label cursor-pointer justify-start gap-2">
+        <input
+          bind:checked={hardwareVideoAcceleration}
+          class="checkbox"
+          type="checkbox"
+          id="hardware_video_acceleration"
+        />
+        {L.hardware_video_acceleration()}
+      </label>
+      <p class="label">{L.hardware_video_acceleration_description()}</p>
+    {/if}
 
     <h2 class="text-xl font-semibold mt-2">{L.advanced()}</h2>
 

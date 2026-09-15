@@ -73,6 +73,9 @@ const en = {
   vote_in_progress: '{name} wants to become the presenter',
   vote_rejected: 'Presenter request was declined',
   you: 'You',
+  hardware_video_acceleration: 'Hardware video acceleration (VA-API)',
+  hardware_video_acceleration_description:
+    'Use the GPU to encode and decode video. Turn this off if screen sharing is black or crashes. Restart the app after changing.',
 } satisfies BaseTranslation
 
 export default en

@@ -60,6 +60,7 @@ const KiwiApi = {
     color: string
     language: string
     isMicrophoneEnabledOnConnect: boolean
+    hardwareVideoAcceleration: boolean
     iceServers: IceServer[]
   }> => {
     return await ipcRenderer.invoke('getSettings')
@@ -69,6 +70,7 @@ const KiwiApi = {
     language: string
     color: string
     isMicrophoneEnabledOnConnect: boolean
+    hardwareVideoAcceleration: boolean
     iceServers: IceServer[]
   }): Promise<void> => {
     ipcRenderer.invoke('updateSettings', settings)
