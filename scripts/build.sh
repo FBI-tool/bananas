@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 if [ -z "$VERSION" ]; then echo "Error: VERSION is not set"; exit 1; fi
-if [ -z "$TARGET_PLATFORM" ]; then echo "Error: TARGET_PLATFORM is not set"; exit 1; fi
+if [ -z "$PLATFORM" ]; then echo "Error: PLATFORM is not set"; exit 1; fi
 
 update_package_json_version() {
   local tmp
@@ -38,7 +38,7 @@ build_macos() {
   bun run build && ./node_modules/.bin/electron-builder --mac --publish never
 }
 
-case $TARGET_PLATFORM in
+case $PLATFORM in
   "linux")
     build_linux
     ;;
@@ -55,7 +55,7 @@ case $TARGET_PLATFORM in
     build_windows
     ;;
   *)
-    echo "Error: TARGET_PLATFORM $TARGET_PLATFORM is not supported"
+    echo "Error: PLATFORM $PLATFORM is not supported"
     exit 1
     ;;
 esac

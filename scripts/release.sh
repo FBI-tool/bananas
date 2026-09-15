@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 if [ -z "$VERSION" ]; then echo "Error: VERSION is not set"; exit 1; fi
-if [ -z "$TARGET_PLATFORM" ]; then echo "Error: TARGET_PLATFORM is not set"; exit 1; fi
+if [ -z "$PLATFORM" ]; then echo "Error: PLATFORM is not set"; exit 1; fi
 
 BIN_NAME="p2p-kiwi"
 RELEASE_ACTION="create"
@@ -52,13 +52,13 @@ check_files_exist() {
       printf " - %s\n" "$file"
     done
     echo "This is the content of the dist directory:"
-    ls -l dist/
+    ls -l dist/ 2>/dev/null || echo "dist/ directory does not exist"
     exit 1
   fi
 }
 
 set_files_based_on_platform() {
-  case $TARGET_PLATFORM in
+  case $PLATFORM in
     linux)
       FILES=("${LINUX_FILES[@]}")
       ;;
@@ -72,7 +72,7 @@ set_files_based_on_platform() {
       FILES=("${MACOS_FILES[@]}")
       ;;
     *)
-      echo "Error: TARGET_PLATFORM $TARGET_PLATFORM is not supported"
+      echo "Error: PLATFORM $PLATFORM is not supported"
       exit 1
       ;;
   esac
