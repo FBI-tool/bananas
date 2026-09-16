@@ -13,6 +13,12 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+extraResources:
+  - from: native/overlay-sidecar/dist
+    to: sidecar
+    filter:
+      - p2p-kiwi-sidecar
+      - p2p-kiwi-sidecar.exe
 win:
   executableName: p2p-kiwi
   icon: build/icon.ico

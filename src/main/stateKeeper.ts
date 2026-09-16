@@ -15,6 +15,8 @@ export type SettingsData = {
   isMicrophoneEnabledOnConnect: boolean
   hardwareVideoAcceleration: boolean
   debugLogsEnabled: boolean
+  e2eeEnabled: boolean
+  mediaE2eeEnabled: boolean
   cameraDeviceId: string
   microphoneDeviceId: string
   iceServers: IceServer[]
@@ -44,6 +46,8 @@ export const defaultSettings: SettingsData = {
   isMicrophoneEnabledOnConnect: true,
   hardwareVideoAcceleration: true,
   debugLogsEnabled: false,
+  e2eeEnabled: true,
+  mediaE2eeEnabled: true,
   cameraDeviceId: '',
   microphoneDeviceId: '',
   iceServers: [

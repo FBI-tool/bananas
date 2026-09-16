@@ -34,4 +34,4 @@ version:
 	./scripts/set-version.sh
 
 run:
-	bun run dev
+	pnpm run dev

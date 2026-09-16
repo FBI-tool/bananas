@@ -16,6 +16,8 @@
   let isMicrophoneEnabledOnConnect = $state(true)
   let hardwareVideoAcceleration = $state(true)
   let debugLogsEnabled = $state(false)
+  let e2eeEnabled = $state(true)
+  let mediaE2eeEnabled = $state(true)
   let cameraDeviceId = $state('')
   let microphoneDeviceId = $state('')
   let cameras = $state<MediaDeviceInfo[]>([])
@@ -41,6 +43,10 @@
     }
   })
 
+  $effect(() => {
+    if (e2eeEnabled) mediaE2eeEnabled = true
+  })
+
   async function onSubmit(evt: Event): Promise<void> {
     evt.preventDefault()
     if (isUsernameValid && isColorValid && isIceServersValid) {
@@ -51,6 +57,8 @@
         isMicrophoneEnabledOnConnect,
         hardwareVideoAcceleration,
         debugLogsEnabled,
+        e2eeEnabled,
+        mediaE2eeEnabled: e2eeEnabled ? true : mediaE2eeEnabled,
         cameraDeviceId,
         microphoneDeviceId,
         iceServers: iceServersValue.split('\n').map((srv) => JSON.parse(srv))
@@ -82,6 +90,8 @@
       isMicrophoneEnabledOnConnect = settings.isMicrophoneEnabledOnConnect
       hardwareVideoAcceleration = settings.hardwareVideoAcceleration
       debugLogsEnabled = settings.debugLogsEnabled
+      e2eeEnabled = settings.e2eeEnabled !== false
+      mediaE2eeEnabled = settings.mediaE2eeEnabled !== false
       cameraDeviceId = settings.cameraDeviceId ?? ''
       microphoneDeviceId = settings.microphoneDeviceId ?? ''
       iceServersValue = settings.iceServers.map((srv) => JSON.stringify(srv)).join('\n')
@@ -223,6 +233,24 @@
       {L.debug_logs()}
     </label>
     <p class="label">{L.debug_logs_description()}</p>
+
+    <label class="label cursor-pointer justify-start gap-2">
+      <input bind:checked={e2eeEnabled} class="checkbox" type="checkbox" id="e2ee_enabled" />
+      {L.e2ee_enabled()}
+    </label>
+    <p class="label">{L.e2ee_enabled_description()}</p>
+
+    <label class="label cursor-pointer justify-start gap-2">
+      <input
+        bind:checked={mediaE2eeEnabled}
+        class="checkbox"
+        type="checkbox"
+        id="media_e2ee"
+        disabled={e2eeEnabled}
+      />
+      {L.media_e2ee()}
+    </label>
+    <p class="label">{L.media_e2ee_description()}</p>
 
     <fieldset class="fieldset">
       <legend class="fieldset-legend">{L.stun_turn_server_objects()}</legend>

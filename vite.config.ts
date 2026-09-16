@@ -42,7 +42,7 @@ export default defineConfig({
     environment: 'node',
     server: {
       deps: {
-        inline: ['sdp-compact', 'sdp-transform', 'fflate'],
+        inline: ['sdp-compact', 'sdp-transform', 'fflate', 'ts-mls'],
       },
     },
   },

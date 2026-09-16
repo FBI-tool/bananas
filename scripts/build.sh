@@ -11,31 +11,43 @@ update_package_json_version() {
 
 update_package_json_version
 
+build_sidecar() {
+  mkdir -p native/overlay-sidecar/dist
+  if command -v odin >/dev/null 2>&1; then
+    ./native/overlay-sidecar/scripts/build.sh native/overlay-sidecar/dist || {
+      echo "Warning: sidecar build failed; continuing with Electron overlay fallback"
+    }
+  else
+    echo "Warning: odin not found; packaging without native sidecar"
+  fi
+}
+
 build_windows() {
-  bun run build && ./node_modules/.bin/electron-builder --win --publish never
+  build_sidecar
+  pnpm run build && ./node_modules/.bin/electron-builder --win --publish never
 }
 
 build_linux() {
-  bun run build && ./node_modules/.bin/electron-builder --linux --publish never
+  build_sidecar
+  pnpm run build && ./node_modules/.bin/electron-builder --linux --publish never
 }
 
 build_linux_arm64() {
-  # NOTE:
-  # One might imagine we could use `electron-builder --arm64` here, but
-  # it doesn't work as expected.
-  # There is an issue when building snap packages.
-  # Instead, we build each target individually.
-  bun run build && ./node_modules/.bin/electron-builder --linux deb --publish never --arm64 && \
-    bun run build && ./node_modules/.bin/electron-builder --linux flatpak --publish never --arm64 && \
-    bun run build && ./node_modules/.bin/electron-builder --linux appimage --publish never --arm64
+  mkdir -p native/overlay-sidecar/dist
+  echo "Skipping native sidecar on linux-arm64 cross-build; Electron overlay fallback remains"
+  pnpm run build && ./node_modules/.bin/electron-builder --linux deb --publish never --arm64 && \
+    pnpm run build && ./node_modules/.bin/electron-builder --linux flatpak --publish never --arm64 && \
+    pnpm run build && ./node_modules/.bin/electron-builder --linux appimage --publish never --arm64
 }
 
 build_linux_debug() {
-  bun run build && ./node_modules/.bin/electron-builder --linux deb --publish never
+  build_sidecar
+  pnpm run build && ./node_modules/.bin/electron-builder --linux deb --publish never
 }
 
 build_macos() {
-  bun run build && ./node_modules/.bin/electron-builder --mac --publish never
+  build_sidecar
+  pnpm run build && ./node_modules/.bin/electron-builder --mac --publish never
 }
 
 case $PLATFORM in

@@ -14,9 +14,11 @@
 
   const attachStream = (node: HTMLVideoElement, stream: MediaStream): { update: (next: MediaStream) => void; destroy: () => void } => {
     node.srcObject = stream
+    void node.play?.().catch(() => undefined)
     return {
       update(next: MediaStream) {
         node.srcObject = next
+        void node.play?.().catch(() => undefined)
       },
       destroy() {
         node.srcObject = null

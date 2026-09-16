@@ -88,4 +88,50 @@ describe('PeerLink video senders', () => {
     expect(senders[0].replaceTrack).toHaveBeenCalledWith(other)
     expect(senders[1].replaceTrack).not.toHaveBeenCalled()
   })
+
+  it('applies media e2ee to remembered senders after setMediaE2ee', async () => {
+    const attachSender = vi.fn(async () => undefined)
+    const attachReceiver = vi.fn(async () => undefined)
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: true,
+      events,
+    })
+    const display = { id: 'display', kind: 'video' } as MediaStreamTrack
+    const stream = { id: 's' } as MediaStream
+    await link.setDisplayTrack(display, stream)
+    expect(attachSender).not.toHaveBeenCalled()
+    link.setMediaE2ee({ attachSender, attachReceiver } as never)
+    await link.applyMediaE2ee()
+    expect(attachSender).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        sender: 'local',
+        kind: 'screen',
+        streamId: 's',
+      }),
+    )
+  })
+
+  it('holds senders instead of sending plaintext when media e2ee is required', async () => {
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: true,
+      requireMediaE2ee: true,
+      events,
+    })
+    const display = { id: 'display', kind: 'video', enabled: true } as MediaStreamTrack
+    const stream = { id: 's' } as MediaStream
+    await link.setDisplayTrack(display, stream)
+    expect(display.enabled).toBe(false)
+    const attachSender = vi.fn(async () => undefined)
+    link.setMediaE2ee({ attachSender, attachReceiver: vi.fn() } as never)
+    await link.applyMediaE2ee()
+    expect(attachSender).toHaveBeenCalled()
+    expect(display.enabled).toBe(true)
+  })
 })

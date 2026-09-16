@@ -4,6 +4,7 @@ export type RemoteCursorData = {
   color: string
   x: number
   y: number
+  sourceId?: string
 }
 
 type IceServer = {
@@ -19,6 +20,8 @@ export type SettingsData = {
   isMicrophoneEnabledOnConnect: boolean
   hardwareVideoAcceleration: boolean
   debugLogsEnabled: boolean
+  e2eeEnabled?: boolean
+  mediaE2eeEnabled?: boolean
   cameraDeviceId?: string
   microphoneDeviceId?: string
   iceServers: IceServer[]

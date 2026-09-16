@@ -48,6 +48,12 @@
   })
 
   $effect(() => {
+    if (room.isLive && remoteScreen?.srcObject) {
+      void remoteScreen.play?.().catch(() => undefined)
+    }
+  })
+
+  $effect(() => {
     const value = appState.hostUrl
     void (async (): Promise<void> => {
       if (!showInvite || value === '') {
@@ -155,7 +161,7 @@
   const onConnectInvite = async (): Promise<void> => {
     try {
       const data = await getDataFromKiwiUrl(appState.hostUrl)
-      await room.Connect(data.rtcSessionDescription)
+      await room.Connect(data.rtcSessionDescription, { invite: data.invite })
       appState.hostUrl = ''
     } catch (error) {
       console.error(error)
@@ -298,6 +304,38 @@
 {#if room.presenterGone && !room.isPresenter && !room.sessionEndedReason}
   <div class="alert alert-warning mb-4">{L.presenter_left()}</div>
 {/if}
+
+{#if room.identityChanged}
+  <div class="alert alert-warning mb-4">{L.identity_changed()}</div>
+{/if}
+
+<div class="mb-4">
+  <h2 class="font-semibold mb-2">{L.e2ee_status()}</h2>
+  {#if room.e2eeActive && room.mediaE2eeActive}
+    <p class="badge badge-success">{L.e2ee_on()}</p>
+  {:else if room.e2eeActive}
+    <p class="badge badge-error">{L.e2ee_app_only()}</p>
+  {:else}
+    <p class="badge badge-ghost">{L.e2ee_off()}</p>
+  {/if}
+  {#if room.e2eeError}
+    <p class="text-error text-sm mt-1">{room.e2eeError}</p>
+  {/if}
+  {#if room.verification}
+    <div class="mt-2 text-sm">
+      <p><span class="font-semibold">{L.verification_code()}:</span> {room.verification.securityCode}</p>
+      <p class="opacity-70">{L.verification()}</p>
+      <ul class="mt-1">
+        {#each room.verification.members as member (member.peerId)}
+          <li class="font-mono text-xs">
+            {member.peerId === room.localPeerId ? L.you() : member.peerId.slice(0, 8)}
+            · {member.fingerprint}
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+</div>
 
 <div class="mb-4">
   <h2 class="font-semibold mb-2">{L.peer_list()}</h2>

@@ -97,6 +97,18 @@ const zh = {
   camera_device: '摄像头',
   microphone_device: '麦克风',
   default_media_device: '系统默认',
+  e2ee_enabled: '端到端加密',
+  e2ee_enabled_description:
+    '使用 MLS 保护聊天、投票、光标和媒体。若无法建立加密，流量会被丢弃，而不会以明文发送。',
+  media_e2ee: '加密媒体（SFrame）',
+  media_e2ee_description: '端到端加密开启时为必选。屏幕、摄像头和麦克风绝不会回退到明文。',
+  e2ee_on: '已端到端加密',
+  e2ee_app_only: '必须加密；媒体会暂扣，直到 SFrame 就绪',
+  e2ee_off: '未端到端加密',
+  e2ee_status: '加密',
+  verification: '请与会话中的其他人核对安全码和指纹。',
+  verification_code: '安全码',
+  identity_changed: '本次会话中有对端身份发生变化',
 } satisfies Translation
 
 export default zh

@@ -99,6 +99,20 @@ const en = {
   camera_device: 'Kamera',
   microphone_device: 'Mikrofon',
   default_media_device: 'Systemstandard',
+  e2ee_enabled: 'Ende-zu-Ende-Verschlüsselung',
+  e2ee_enabled_description:
+    'Schützt Chat, Abstimmungen, Zeiger und Medien mit MLS. Wenn die Verschlüsselung nicht aufgebaut werden kann, wird der Verkehr verworfen statt unverschlüsselt gesendet.',
+  media_e2ee: 'Medien verschlüsseln (SFrame)',
+  media_e2ee_description:
+    'Pflicht, solange die Ende-zu-Ende-Verschlüsselung an ist. Bildschirm, Kamera und Mikrofon fallen nie auf Klartext zurück.',
+  e2ee_on: 'Ende-zu-Ende verschlüsselt',
+  e2ee_app_only: 'Verschlüsselung ist Pflicht; Medien werden gehalten, bis SFrame bereit ist',
+  e2ee_off: 'Nicht ende-zu-ende verschlüsselt',
+  e2ee_status: 'Verschlüsselung',
+  verification:
+    'Vergleiche diesen Sicherheitscode und die Fingerabdrücke mit den anderen Personen.',
+  verification_code: 'Sicherheitscode',
+  identity_changed: 'Die Identität eines Teilnehmers hat sich in dieser Sitzung geändert',
 } satisfies BaseTranslation
 
 export default en

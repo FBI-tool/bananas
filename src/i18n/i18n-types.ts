@@ -395,6 +395,50 @@ type RootTranslation = {
 	 * S​y​s​t​e​m​ ​d​e​f​a​u​l​t
 	 */
 	default_media_device: string
+	/**
+	 * E​n​d​-​t​o​-​e​n​d​ ​e​n​c​r​y​p​t​i​o​n
+	 */
+	e2ee_enabled: string
+	/**
+	 * P​r​o​t​e​c​t​ ​c​h​a​t​,​ ​v​o​t​e​s​,​ ​c​u​r​s​o​r​s​,​ ​a​n​d​ ​m​e​d​i​a​ ​w​i​t​h​ ​M​L​S​.​ ​I​f​ ​e​n​c​r​y​p​t​i​o​n​ ​c​a​n​n​o​t​ ​b​e​ ​e​s​t​a​b​l​i​s​h​e​d​,​ ​t​r​a​f​f​i​c​ ​i​s​ ​d​r​o​p​p​e​d​ ​i​n​s​t​e​a​d​ ​o​f​ ​s​e​n​t​ ​i​n​ ​p​l​a​i​n​t​e​x​t​.
+	 */
+	e2ee_enabled_description: string
+	/**
+	 * E​n​c​r​y​p​t​ ​m​e​d​i​a​ ​(​S​F​r​a​m​e​)
+	 */
+	media_e2ee: string
+	/**
+	 * R​e​q​u​i​r​e​d​ ​w​h​i​l​e​ ​e​n​d​-​t​o​-​e​n​d​ ​e​n​c​r​y​p​t​i​o​n​ ​i​s​ ​o​n​.​ ​S​c​r​e​e​n​,​ ​c​a​m​e​r​a​,​ ​a​n​d​ ​m​i​c​r​o​p​h​o​n​e​ ​n​e​v​e​r​ ​f​a​l​l​ ​b​a​c​k​ ​t​o​ ​p​l​a​i​n​t​e​x​t​.
+	 */
+	media_e2ee_description: string
+	/**
+	 * E​n​d​-​t​o​-​e​n​d​ ​e​n​c​r​y​p​t​e​d
+	 */
+	e2ee_on: string
+	/**
+	 * E​n​c​r​y​p​t​i​o​n​ ​i​s​ ​r​e​q​u​i​r​e​d​;​ ​m​e​d​i​a​ ​i​s​ ​h​e​l​d​ ​u​n​t​i​l​ ​S​F​r​a​m​e​ ​i​s​ ​r​e​a​d​y
+	 */
+	e2ee_app_only: string
+	/**
+	 * N​o​t​ ​e​n​d​-​t​o​-​e​n​d​ ​e​n​c​r​y​p​t​e​d
+	 */
+	e2ee_off: string
+	/**
+	 * E​n​c​r​y​p​t​i​o​n
+	 */
+	e2ee_status: string
+	/**
+	 * C​o​m​p​a​r​e​ ​t​h​i​s​ ​s​e​c​u​r​i​t​y​ ​c​o​d​e​ ​a​n​d​ ​f​i​n​g​e​r​p​r​i​n​t​s​ ​w​i​t​h​ ​t​h​e​ ​o​t​h​e​r​ ​p​e​o​p​l​e​ ​i​n​ ​t​h​e​ ​s​e​s​s​i​o​n​.
+	 */
+	verification: string
+	/**
+	 * S​e​c​u​r​i​t​y​ ​c​o​d​e
+	 */
+	verification_code: string
+	/**
+	 * A​ ​p​e​e​r​ ​i​d​e​n​t​i​t​y​ ​c​h​a​n​g​e​d​ ​d​u​r​i​n​g​ ​t​h​i​s​ ​s​e​s​s​i​o​n
+	 */
+	identity_changed: string
 }
 
 export type TranslationFunctions = {
@@ -774,6 +818,50 @@ export type TranslationFunctions = {
 	 * System default
 	 */
 	default_media_device: () => LocalizedString
+	/**
+	 * End-to-end encryption
+	 */
+	e2ee_enabled: () => LocalizedString
+	/**
+	 * Protect chat, votes, cursors, and media with MLS. If encryption cannot be established, traffic is dropped instead of sent in plaintext.
+	 */
+	e2ee_enabled_description: () => LocalizedString
+	/**
+	 * Encrypt media (SFrame)
+	 */
+	media_e2ee: () => LocalizedString
+	/**
+	 * Required while end-to-end encryption is on. Screen, camera, and microphone never fall back to plaintext.
+	 */
+	media_e2ee_description: () => LocalizedString
+	/**
+	 * End-to-end encrypted
+	 */
+	e2ee_on: () => LocalizedString
+	/**
+	 * Encryption is required; media is held until SFrame is ready
+	 */
+	e2ee_app_only: () => LocalizedString
+	/**
+	 * Not end-to-end encrypted
+	 */
+	e2ee_off: () => LocalizedString
+	/**
+	 * Encryption
+	 */
+	e2ee_status: () => LocalizedString
+	/**
+	 * Compare this security code and fingerprints with the other people in the session.
+	 */
+	verification: () => LocalizedString
+	/**
+	 * Security code
+	 */
+	verification_code: () => LocalizedString
+	/**
+	 * A peer identity changed during this session
+	 */
+	identity_changed: () => LocalizedString
 }
 
 export type Formatters = {}

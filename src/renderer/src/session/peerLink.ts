@@ -1,6 +1,10 @@
 import type { ControlMessage } from './controlProtocol'
 import { parseControlMessage, serializeControlMessage } from './controlProtocol'
 import { ICE_GATHERING_TIMEOUT_MS } from './constants'
+import { decodeMlsFrame, encodeMlsFrame, type MlsFrame } from '../crypto/mlsWire'
+import { asBufferSource } from '../crypto/constants'
+import type { MediaE2EE } from '../crypto/mediaE2ee'
+import type { MediaStreamIdentity } from '../crypto/roomCrypto'
 
 export type PeerLinkEvents = {
   onControl: (msg: ControlMessage) => void
@@ -9,6 +13,8 @@ export type PeerLinkEvents = {
   onConnectionStateChange: (state: RTCPeerConnectionState) => void
   onControlOpen: () => void
   onNegotiationOffer: (sdp: RTCSessionDescriptionInit) => void
+  onMlsOpen?: () => void
+  onMlsFrame?: (frame: MlsFrame) => void
 }
 
 type PeerLinkOptions = {
@@ -18,6 +24,8 @@ type PeerLinkOptions = {
   isOfferer: boolean
   remotePeerId?: string | null
   events: PeerLinkEvents
+  mediaE2ee?: MediaE2EE | null
+  requireMediaE2ee?: boolean
 }
 
 export class PeerLink {
@@ -28,6 +36,7 @@ export class PeerLink {
   readonly pc: RTCPeerConnection
   established = false
   private control: RTCDataChannel | null = null
+  private mls: RTCDataChannel | null = null
   private readonly events: PeerLinkEvents
   private makingOffer = false
   private ignoreOffer = false
@@ -35,12 +44,24 @@ export class PeerLink {
   private closed = false
   private displaySender: RTCRtpSender | null = null
   private cameraSender: RTCRtpSender | null = null
+  private mediaE2ee: MediaE2EE | null
+  private requireMediaE2ee: boolean
+  private heldEnabled = new WeakMap<MediaStreamTrack, boolean>()
+  private extraSenders = new Map<RTCRtpSender, MediaStreamIdentity>()
+  private extraReceivers: Array<{
+    receiver: RTCRtpReceiver
+    streamId: string
+    trackKind: string
+    identity: MediaStreamIdentity
+  }> = []
 
   constructor(opts: PeerLinkOptions) {
     this.pendingId = opts.pendingId
     this.localPeerId = opts.localPeerId
     this.remotePeerId = opts.remotePeerId ?? null
     this.events = opts.events
+    this.mediaE2ee = opts.mediaE2ee ?? null
+    this.requireMediaE2ee = Boolean(opts.requireMediaE2ee)
     this.pc = new RTCPeerConnection(opts.rtcConfig)
     this.pc.ontrack = (event): void => {
       this.events.onTrack(event)
@@ -57,11 +78,18 @@ export class PeerLink {
     if (opts.isOfferer) {
       this.control = this.pc.createDataChannel('control')
       this.bindControl(this.control)
+      this.mls = this.pc.createDataChannel('mls')
+      this.bindMls(this.mls)
     } else {
       this.pc.ondatachannel = (event: RTCDataChannelEvent): void => {
-        if (event.channel.label !== 'control') return
-        this.control = event.channel
-        this.bindControl(event.channel)
+        if (event.channel.label === 'control') {
+          this.control = event.channel
+          this.bindControl(event.channel)
+        }
+        if (event.channel.label === 'mls') {
+          this.mls = event.channel
+          this.bindMls(event.channel)
+        }
       }
     }
   }
@@ -93,14 +121,54 @@ export class PeerLink {
 
   sendControl(msg: ControlMessage): boolean {
     if (!this.control || this.control.readyState !== 'open') return false
-    this.control.send(serializeControlMessage(msg))
+    try {
+      this.control.send(serializeControlMessage(msg))
+      return true
+    } catch (error) {
+      console.warn('control send failed', error)
+      return false
+    }
+  }
+
+  sendMls(frame: MlsFrame): boolean {
+    if (!this.mls || this.mls.readyState !== 'open') return false
+    this.mls.send(asBufferSource(encodeMlsFrame(frame)).buffer)
     return true
+  }
+
+  setMediaE2ee(media: MediaE2EE | null): void {
+    this.mediaE2ee = media
+  }
+
+  async applyMediaE2ee(
+    resolveKind?: (streamId: string, trackKind: string) => MediaStreamIdentity['kind'],
+  ): Promise<void> {
+    for (const [sender, identity] of this.extraSenders) {
+      await this.pushSender(sender, identity)
+    }
+    for (const item of this.extraReceivers) {
+      const kind = resolveKind?.(item.streamId, item.trackKind) ?? item.identity.kind
+      item.identity = {
+        ...item.identity,
+        sender: this.remotePeerId ?? item.identity.sender,
+        kind,
+      }
+      await this.pushReceiver(item.receiver, item.identity)
+    }
   }
 
   addTrack(track: MediaStreamTrack, stream: MediaStream): RTCRtpSender {
     const existing = this.pc.getSenders().find((sender) => sender.track?.id === track.id)
     if (existing) return existing
-    return this.pc.addTrack(track, stream)
+    const sender = this.pc.addTrack(track, stream)
+    if (track.kind === 'audio') {
+      void this.attachSender(sender, {
+        sender: this.localPeerId,
+        kind: 'audio',
+        streamId: stream.id,
+      })
+    }
+    return sender
   }
 
   async setVideoTrack(track: MediaStreamTrack | null, stream: MediaStream | null): Promise<void> {
@@ -123,6 +191,13 @@ export class PeerLink {
     const existing = kind === 'display' ? this.displaySender : this.cameraSender
     if (existing) {
       await existing.replaceTrack(track)
+      if (track && stream) {
+        await this.attachSender(existing, {
+          sender: this.localPeerId,
+          kind: kind === 'display' ? 'screen' : 'camera',
+          streamId: stream.id,
+        })
+      }
       return
     }
     if (kind === 'display') {
@@ -132,6 +207,13 @@ export class PeerLink {
       if (found) {
         this.displaySender = found
         await found.replaceTrack(track)
+        if (track && stream) {
+          await this.attachSender(found, {
+            sender: this.localPeerId,
+            kind: 'screen',
+            streamId: stream.id,
+          })
+        }
         return
       }
     }
@@ -139,6 +221,11 @@ export class PeerLink {
       const sender = this.pc.addTrack(track, stream)
       if (kind === 'display') this.displaySender = sender
       else this.cameraSender = sender
+      await this.attachSender(sender, {
+        sender: this.localPeerId,
+        kind: kind === 'display' ? 'screen' : 'camera',
+        streamId: stream.id,
+      })
     }
   }
 
@@ -218,6 +305,81 @@ export class PeerLink {
     }
     channel.onopen = notifyOpen
     if (channel.readyState === 'open') queueMicrotask(notifyOpen)
+  }
+
+  private bindMls(channel: RTCDataChannel): void {
+    channel.binaryType = 'arraybuffer'
+    channel.onmessage = (event: MessageEvent<ArrayBuffer | string>): void => {
+      const frame = decodeMlsFrame(event.data)
+      if (frame) this.events.onMlsFrame?.(frame)
+    }
+    const notifyOpen = (): void => {
+      this.events.onMlsOpen?.()
+    }
+    channel.onopen = notifyOpen
+    if (channel.readyState === 'open') queueMicrotask(notifyOpen)
+  }
+
+  private async attachSender(sender: RTCRtpSender, identity: MediaStreamIdentity): Promise<void> {
+    this.extraSenders.set(sender, identity)
+    await this.pushSender(sender, identity)
+  }
+
+  async attachReceiver(receiver: RTCRtpReceiver, identity: MediaStreamIdentity): Promise<void> {
+    this.extraReceivers = this.extraReceivers.filter((item) => item.receiver !== receiver)
+    this.extraReceivers.push({
+      receiver,
+      streamId: identity.streamId,
+      trackKind: identity.kind === 'audio' ? 'audio' : 'video',
+      identity,
+    })
+    await this.pushReceiver(receiver, identity)
+  }
+
+  private holdPlaintextTrack(track: MediaStreamTrack | null): void {
+    if (!track) return
+    if (!this.heldEnabled.has(track)) this.heldEnabled.set(track, track.enabled)
+    track.enabled = false
+  }
+
+  private releaseHeldTrack(track: MediaStreamTrack | null): void {
+    if (!track || !this.heldEnabled.has(track)) return
+    track.enabled = this.heldEnabled.get(track) ?? false
+    this.heldEnabled.delete(track)
+  }
+
+  private async pushSender(sender: RTCRtpSender, identity: MediaStreamIdentity): Promise<void> {
+    if (this.requireMediaE2ee && !this.mediaE2ee) {
+      this.holdPlaintextTrack(sender.track)
+      console.warn('media e2ee required; holding sender until transform is attached')
+      return
+    }
+    if (!this.mediaE2ee) return
+    try {
+      await this.mediaE2ee.attachSender(sender, identity)
+      this.releaseHeldTrack(sender.track)
+    } catch (error) {
+      if (this.requireMediaE2ee) this.holdPlaintextTrack(sender.track)
+      console.warn('media e2ee attach sender failed', error)
+    }
+  }
+
+  private async pushReceiver(
+    receiver: RTCRtpReceiver,
+    identity: MediaStreamIdentity,
+  ): Promise<void> {
+    if (this.requireMediaE2ee && !this.mediaE2ee) {
+      receiver.track?.stop()
+      console.warn('media e2ee required; dropping receiver until transform is attached')
+      return
+    }
+    if (!this.mediaE2ee) return
+    try {
+      await this.mediaE2ee.attachReceiver(receiver, identity)
+    } catch (error) {
+      if (this.requireMediaE2ee) receiver.track?.stop()
+      console.warn('media e2ee attach receiver failed', error)
+    }
   }
 
   private async onNegotiationNeeded(): Promise<void> {

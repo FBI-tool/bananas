@@ -1,0 +1,67 @@
+# p2p.kiwi process and protocol boundaries
+
+This note maps the live room, WebRTC, and native surfaces so later
+sidecar and E2EE work reuse existing names instead of replacing them.
+
+## Processes
+
+| Process                             | Owns                                                                    | Must not own                                            |
+| ----------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------- |
+| Renderer (`Room` / `WebRTCSession`) | Mesh, `control` channel, chat, votes, media tracks, collaboration state | Sidecar spawn, OS overlays, long-lived identity secrets |
+| Electron main                       | Window lifecycle, screen picker, sidecar supervisor, `safeStorage`      | MLS group state, WebRTC peer connections                |
+| Odin overlay sidecar                | Native overlay windows, display geometry, capability probes             | Room crypto, signaling, WebRTC, long-term keys          |
+| STUN/TURN                           | ICE connectivity                                                        | Application or media plaintext (after media E2EE)       |
+
+There is no application signaling server. Invite URLs (`kiwi://`) carry
+SDP out of band. TURN is optional and user-configurable.
+
+## Renderer session stack
+
+- Entry / lifecycle: `src/main/index.ts`
+- Main IPC: `src/main/ipcMainHandlers.ts`
+- Preload: `src/preload/index.ts` (`window.KiwiApi`)
+- Session orchestrator: `src/renderer/src/session/room.svelte.ts`
+- Peer connection + `control` data channel: `src/renderer/src/session/peerLink.ts`
+- JSON control schema: `src/renderer/src/session/controlProtocol.ts`
+- Invite encoding: `src/renderer/src/Utils.ts`
+- Cursor capture (normalized 0..1): `src/renderer/src/SessionStage.svelte`
+- Electron cursor fallback window: `src/main/cursors.ts`
+
+Control message types today: `hello`, `roster`, `mesh-offer`,
+`mesh-answer`, `vote-start`, `vote-cast`, `vote-result`,
+`presenter-changed`, `peer-left`, `coordinator-handoff`,
+`session-ended`, `cursor`, `cursor-ping`, `chat`, `camera-state`.
+
+## Sidecar protocol
+
+The sidecar protocol version is **independent of the application
+version**. Current value: `1` (`SIDECAR_PROTOCOL_VERSION` in
+`src/main/sidecar/protocol.ts` and `native/overlay-sidecar`).
+
+Transport is a local Unix domain socket (Linux/macOS) or a named pipe
+(Windows). Messages are little-endian length-prefixed JSON envelopes.
+A 256-bit bootstrap token is required at handshake. The sidecar never
+opens a network listener.
+
+Remote-input message types exist in the schema and are rejected.
+
+## Cursor path
+
+```
+control cursor message
+  → Room.onCursor
+  → KiwiApi.updateRemoteCursor
+  → Electron main validation + coordinate mapping
+  → Odin sidecar overlay (or Electron fallback window)
+```
+
+The sidecar never sees `RTCPeerConnection` objects or cryptographic
+keys.
+
+## E2EE insertion points (Phase B)
+
+Application E2EE wraps `control` payloads after parse/before apply.
+MLS handshake uses a dedicated `mls` data channel. Media E2EE attaches
+to `RTCRtpSender` / `RTCRtpReceiver` in `PeerLink` via encoded
+transforms. Overlay IPC still receives only decrypted, sanitized cursor
+state.

@@ -44,7 +44,9 @@ type KiwiApi = {
     color: string
     x: number
     y: number
+    sourceId?: string
   }) => Promise<void>
+  removeRemoteCursor: (peerId: string) => Promise<void>
   updateSettings: (settings: {
     username: string
     language: string
@@ -52,6 +54,8 @@ type KiwiApi = {
     isMicrophoneEnabledOnConnect: boolean
     hardwareVideoAcceleration: boolean
     debugLogsEnabled: boolean
+    e2eeEnabled?: boolean
+    mediaE2eeEnabled?: boolean
     cameraDeviceId: string
     microphoneDeviceId: string
     iceServers: IceServer[]
@@ -63,11 +67,14 @@ type KiwiApi = {
     isMicrophoneEnabledOnConnect: boolean
     hardwareVideoAcceleration: boolean
     debugLogsEnabled: boolean
+    e2eeEnabled?: boolean
+    mediaE2eeEnabled?: boolean
     cameraDeviceId: string
     microphoneDeviceId: string
     iceServers: IceServer[]
   }>
   getAppVersion: () => Promise<string>
+  getDeviceIdentity: () => Promise<{ publicKey: string; fingerprint: string; privateKey: string }>
   onSelectScreenShareSource: (
     handler: (sources: ScreenShareSource[]) => Promise<string | null>,
   ) => void

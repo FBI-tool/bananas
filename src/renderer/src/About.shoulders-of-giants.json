@@ -102,6 +102,6 @@
     "description": "Bun is an all-in-one toolkit for JavaScript and TypeScript apps.",
     "usage": "Used for installing and managing dependencies and running scripts.",
     "license": "MIT",
-    "url": "https://github.com/oven-sh/bun"
+    "url": "https://github.com/oven-sh/pnpm"
   }
 ]

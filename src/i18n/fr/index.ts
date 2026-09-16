@@ -99,6 +99,20 @@ const fr = {
   camera_device: 'Caméra',
   microphone_device: 'Microphone',
   default_media_device: 'Par défaut du système',
+  e2ee_enabled: 'Chiffrement de bout en bout',
+  e2ee_enabled_description:
+    'Protège le chat, les votes, les curseurs et les médias avec MLS. Si le chiffrement ne peut pas être établi, le trafic est abandonné au lieu d’être envoyé en clair.',
+  media_e2ee: 'Chiffrer les médias (SFrame)',
+  media_e2ee_description:
+    'Obligatoire tant que le chiffrement de bout en bout est activé. L’écran, la caméra et le micro ne retombent jamais en clair.',
+  e2ee_on: 'Chiffré de bout en bout',
+  e2ee_app_only:
+    'Le chiffrement est obligatoire ; les médias sont retenus jusqu’à ce que SFrame soit prêt',
+  e2ee_off: 'Non chiffré de bout en bout',
+  e2ee_status: 'Chiffrement',
+  verification: 'Comparez ce code de sécurité et les empreintes avec les autres participants.',
+  verification_code: 'Code de sécurité',
+  identity_changed: 'L’identité d’un pair a changé pendant cette session',
 } satisfies BaseTranslation
 
 export default fr

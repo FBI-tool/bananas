@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { PROTOCOL_VERSION, parseControlMessage, serializeControlMessage } from './controlProtocol'
+import {
+  PROTOCOL_VERSION,
+  parseControlMessage,
+  serializeControlMessage,
+  shouldEncryptControl,
+} from './controlProtocol'
 
 describe('controlProtocol', () => {
   it('round-trips a hello message', () => {
@@ -170,5 +175,138 @@ describe('controlProtocol', () => {
         }),
       ),
     ).toBeNull()
+  })
+
+  it('accepts hello crypto capabilities and e2ee envelopes', () => {
+    const hello = parseControlMessage(
+      JSON.stringify({
+        t: 'hello',
+        v: 1,
+        peerId: 'a',
+        username: 'Kiwi',
+        color: '#fff',
+        crypto: {
+          e2eeProtocol: 'mls-v1',
+          protocolVersion: 1,
+          mediaE2EE: ['sframe-rfc9605'],
+          fingerprint: 'abc',
+          joinAuth: 'auth',
+          e2eeRequired: true,
+        },
+      }),
+    )
+    expect(hello?.t).toBe('hello')
+    if (hello?.t === 'hello') expect(hello.crypto?.e2eeProtocol).toBe('mls-v1')
+    const e2ee = parseControlMessage(
+      JSON.stringify({
+        t: 'e2ee',
+        v: 1,
+        epoch: 1,
+        sender: 'a',
+        domain: 'chat',
+        seq: 1,
+        iv: 'aa',
+        ciphertext: 'bb',
+      }),
+    )
+    expect(e2ee?.t).toBe('e2ee')
+  })
+
+  it('rejects silent-downgrade hello crypto and unknown e2ee domains', () => {
+    expect(
+      parseControlMessage(
+        JSON.stringify({
+          t: 'hello',
+          v: 1,
+          peerId: 'a',
+          username: 'Kiwi',
+          color: '#fff',
+          crypto: { e2eeProtocol: 'none', protocolVersion: 1, mediaE2EE: [], fingerprint: 'x' },
+        }),
+      ),
+    ).toBeNull()
+    expect(
+      parseControlMessage(
+        JSON.stringify({
+          t: 'e2ee',
+          v: 1,
+          epoch: 1,
+          sender: 'a',
+          domain: 'other',
+          seq: 1,
+          iv: 'aa',
+          ciphertext: 'bb',
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  it('keeps mls handshake on the plaintext bootstrap channel', () => {
+    const parsed = parseControlMessage(
+      JSON.stringify({
+        t: 'mls',
+        v: 1,
+        kind: 'welcome',
+        from: 'a',
+        to: 'b',
+        body: 'abc',
+        id: 'a:welcome:3:1',
+        i: 0,
+        n: 1,
+      }),
+    )
+    expect(parsed?.t).toBe('mls')
+    expect(
+      shouldEncryptControl({
+        t: 'mls',
+        v: 1,
+        kind: 'key-package',
+        from: 'a',
+        body: 'x',
+        id: 'id',
+        i: 0,
+        n: 1,
+      }),
+    ).toBe(false)
+    expect(
+      shouldEncryptControl({
+        t: 'chat',
+        v: 1,
+        id: 'm',
+        from: 'a',
+        name: 'Kiwi',
+        text: 'hi',
+        at: 1,
+      }),
+    ).toBe(true)
+    expect(
+      shouldEncryptControl({
+        t: 'vote-start',
+        v: 1,
+        voteId: 'v',
+        candidateId: 'a',
+        expiresAt: 1,
+      }),
+    ).toBe(true)
+    expect(
+      shouldEncryptControl({
+        t: 'cursor',
+        v: 1,
+        id: 'a',
+        name: 'Kiwi',
+        color: '#fff',
+        x: 0,
+        y: 0,
+      }),
+    ).toBe(true)
+    expect(
+      shouldEncryptControl({
+        t: 'hello',
+        v: 1,
+        peerId: 'a',
+        username: 'Kiwi',
+        color: '#fff',
+      }),
+    ).toBe(false)
   })
 })

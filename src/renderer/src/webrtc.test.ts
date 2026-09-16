@@ -66,6 +66,8 @@ const getSettings = vi.fn(async () => ({
   isMicrophoneEnabledOnConnect: true,
   hardwareVideoAcceleration: true,
   debugLogsEnabled: false,
+  e2eeEnabled: false,
+  mediaE2eeEnabled: false,
   cameraDeviceId: '',
   microphoneDeviceId: '',
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -77,9 +79,15 @@ beforeEach(() => {
   vi.stubGlobal('window', {
     KiwiApi: {
       getSettings,
+      getDeviceIdentity: vi.fn(async () => ({
+        publicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        privateKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        fingerprint: 'aa'.repeat(16),
+      })),
       updateRemoteCursor: vi.fn(),
       remoteCursorPing: vi.fn(),
       toggleRemoteCursors: vi.fn(),
+      removeRemoteCursor: vi.fn(),
       toggleCallOverlay: vi.fn(),
       onCallOverlayClosed: vi.fn(),
       onCallOverlayReady: vi.fn(),
@@ -114,7 +122,12 @@ beforeEach(() => {
       controls: false,
       autoplay: false,
       srcObject: null,
+      style: {},
+      setAttribute: vi.fn(),
+      play: vi.fn(async () => undefined),
+      remove: vi.fn(),
     })),
+    body: { appendChild: vi.fn() },
   })
 })
 

@@ -1,4 +1,5 @@
 import { compact, decompact } from 'sdp-compact'
+import { appendInviteFragment, parseInviteFragment, type InviteCrypto } from './crypto/invite'
 
 export const enum ConnectionType {
   HOST = 'host',
@@ -150,6 +151,7 @@ const parseConnectionUrl = (
   username: string
   payload: string | null
   token: string | null
+  fragment: string | null
 } => {
   const url = new URL(str)
   if (!CONNECTION_PROTOCOLS.has(url.protocol)) {
@@ -157,12 +159,13 @@ const parseConnectionUrl = (
   }
   const type = TYPE_FROM_SHORT[connectionRoleFromUrl(url)]
   if (!type) throw new Error('unsupported connection type')
+  const fragment = url.hash ? url.hash.slice(1) : null
 
   const token = url.searchParams.get('token')
   if (token) {
     const username = url.searchParams.get('username')
     if (!username) throw new Error('missing username')
-    return { type, username, payload: null, token }
+    return { type, username, payload: null, token, fragment }
   }
 
   const path = url.pathname.replace(/^\//, '')
@@ -175,6 +178,7 @@ const parseConnectionUrl = (
     username: decodeURIComponent(path.slice(0, slash)),
     payload: path.slice(slash + 1),
     token: null,
+    fragment,
   }
 }
 
@@ -199,11 +203,13 @@ export const getConnectionString = async (
   offer: RTCSessionDescriptionInit,
   data: {
     username: string
+    invite?: InviteCrypto | null
   },
 ): Promise<string> => {
   const { username } = data
   const payload = encodeCompactPayload(offer, sdpTypeForConnection(ct))
-  return `kiwi://${SHORT_TYPE[ct]}/${encodeURIComponent(username)}/${payload}`
+  const url = `kiwi://${SHORT_TYPE[ct]}/${encodeURIComponent(username)}/${payload}`
+  return data.invite ? appendInviteFragment(url, data.invite) : url
 }
 
 export const getDataFromKiwiUrl = async (
@@ -212,6 +218,8 @@ export const getDataFromKiwiUrl = async (
   type: ConnectionType
   data: { username: string }
   rtcSessionDescription: RTCSessionDescriptionInit
+  invite: InviteCrypto | null
+  e2ee: boolean
 }> => {
   const parsed = parseConnectionUrl(url)
   const expectedType = sdpTypeForConnection(parsed.type)
@@ -219,12 +227,15 @@ export const getDataFromKiwiUrl = async (
     ? ((await decompressJson(parsed.token)) as RTCSessionDescriptionInit)
     : decodeCompactPayload(parsed.payload ?? '', expectedType)
   if (!parsed.token) rtcSessionDescription.type = expectedType
+  const invite = parseInviteFragment(parsed.fragment)
   return {
     type: parsed.type,
     data: {
       username: parsed.username,
     },
     rtcSessionDescription,
+    invite,
+    e2ee: invite !== null,
   }
 }
 

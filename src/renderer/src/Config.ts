@@ -4,7 +4,23 @@ type IceServer = {
   credential?: string
 }
 
-export const getRTCPeerConnectionConfig = async (): Promise<RTCConfiguration> => {
+type PeerConnectionConfig = RTCConfiguration & {
+  encodedInsertableStreams?: boolean
+}
+
+export const buildRtcPeerConnectionConfig = (
+  iceServers: IceServer[],
+  encodedInsertableStreams: boolean,
+): PeerConnectionConfig => ({
+  iceServers,
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require',
+  ...(encodedInsertableStreams ? { encodedInsertableStreams: true } : {}),
+})
+
+export const getRTCPeerConnectionConfig = async (opts?: {
+  encodedInsertableStreams?: boolean
+}): Promise<PeerConnectionConfig> => {
   const settings = await window.KiwiApi.getSettings()
   const iceServers = settings.iceServers.map((server: IceServer) => {
     return {
@@ -13,9 +29,6 @@ export const getRTCPeerConnectionConfig = async (): Promise<RTCConfiguration> =>
       credential: server.credential,
     }
   })
-  return {
-    iceServers,
-    bundlePolicy: 'max-bundle',
-    rtcpMuxPolicy: 'require',
-  }
+  const encodedInsertableStreams = opts?.encodedInsertableStreams ?? settings.e2eeEnabled !== false
+  return buildRtcPeerConnectionConfig(iceServers, encodedInsertableStreams)
 }

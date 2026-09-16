@@ -20,8 +20,14 @@ import {
   ICE_DISCONNECT_GRACE_MS,
   truncateChatText,
 } from './constants'
-import type { ControlMessage, RosterPeer } from './controlProtocol'
-import { PROTOCOL_VERSION } from './controlProtocol'
+import type { ControlMessage, HelloCrypto, RosterPeer } from './controlProtocol'
+import {
+  PROTOCOL_VERSION,
+  domainForControl,
+  parseControlMessage,
+  serializeControlMessage,
+  shouldEncryptControl,
+} from './controlProtocol'
 import { CallLoopback } from './callLoopback'
 import { PeerLink } from './peerLink'
 import {
@@ -42,7 +48,20 @@ import {
   type VoteState,
 } from './roomLogic'
 import { playSessionEndedSound } from './sessionEndedSound'
+import { dropPlaintextInbound, encryptionRequired, outboundCryptoAction } from './e2eePolicy'
 import { debugLog, summarizePc, summarizeSdp } from '../debugLog.svelte'
+import { RoomCrypto, type DeviceIdentity, type VerificationInfo } from '../crypto/roomCrypto'
+import { MediaE2EE } from '../crypto/mediaE2ee'
+import { supportsEncodedTransform } from '../crypto/sframe'
+import { defaultCryptoCapabilities, fromBase64Url, toBase64Url } from '../crypto/constants'
+import { deriveJoinAuthenticator, randomInviteCrypto, type InviteCrypto } from '../crypto/invite'
+import {
+  bodyToFrame,
+  chunkMlsFrame,
+  frameBodyBytes,
+  MlsAssembler,
+  type MlsFrame,
+} from '../crypto/mlsWire'
 
 const errorHandler = (e: unknown): void => {
   console.error(e)
@@ -69,6 +88,12 @@ export class Room {
   localVoteCast = $state<boolean | null>(null)
   voteRejectedKind = $state<VoteKind | null>(null)
   chatMessages = $state<CallChatMessage[]>([])
+  e2eeActive = $state(false)
+  mediaE2eeActive = $state(false)
+  e2eeRequired = $state(false)
+  identityChanged = $state(false)
+  verification = $state<VerificationInfo | null>(null)
+  e2eeError = $state<string | null>(null)
 
   private remoteVideo: HTMLVideoElement | null = null
   private audioStream: MediaStream | null = null
@@ -95,6 +120,17 @@ export class Room {
   private callIpcBound = false
   private overlayOpen = false
   private readonly loopback = new CallLoopback()
+  private crypto: RoomCrypto | null = null
+  private mediaE2ee: MediaE2EE | null = null
+  private identity: DeviceIdentity | null = null
+  private invite: InviteCrypto | null = null
+  private joinAuth = ''
+  private seenFingerprints = new Map<string, string>()
+  private pendingKeyPackages = new Map<string, Uint8Array>()
+  private pendingE2ee = new Map<PeerLink, ControlMessage[]>()
+  private pendingOutbound: ControlMessage[] = []
+  private addingMembers = new Set<string>()
+  private mlsAssembler = new MlsAssembler()
 
   get isCoordinator(): boolean {
     return this.localPeerId !== '' && this.localPeerId === this.coordinatorId
@@ -135,6 +171,10 @@ export class Room {
 
   ToggleMicrophone(): void {
     if (!this.audioStream) return
+    if (this.e2eeFailClosed() && !this.mediaE2ee) {
+      debugLog.warn('room', 'refusing plaintext microphone; e2ee required')
+      return
+    }
     for (const track of this.audioStream.getAudioTracks()) {
       track.enabled = !track.enabled
     }
@@ -143,6 +183,10 @@ export class Room {
 
   ToggleDisplayStream(): void {
     if (!this.displayStream) return
+    if (this.e2eeFailClosed() && !this.mediaE2ee) {
+      debugLog.warn('room', 'refusing plaintext display; e2ee required')
+      return
+    }
     for (const track of this.displayStream.getVideoTracks()) {
       track.enabled = !track.enabled
     }
@@ -197,7 +241,7 @@ export class Room {
     this.broadcast({
       t: 'cursor',
       v: PROTOCOL_VERSION,
-      id: cursorData.id,
+      id: this.localPeerId || cursorData.id,
       name: cursorData.name,
       color: cursorData.color,
       x: cursorData.x,
@@ -218,6 +262,17 @@ export class Room {
     this.sessionEndedReason = null
     this.presenterGone = false
     this.quietClose = false
+    this.e2eeError = null
+    this.identityChanged = false
+    await this.loadDeviceIdentity()
+    if (!v && this.e2eeFailClosed()) {
+      await this.initHostCrypto()
+      if (!this.e2eeActive) {
+        this.e2eeError = 'crypto-init-failed'
+        debugLog.error('room', 'e2ee is required but host crypto init failed')
+        return 'failed'
+      }
+    }
 
     try {
       this.audioStream = await navigator.mediaDevices.getUserMedia({
@@ -270,7 +325,7 @@ export class Room {
       return null
     }
     const link = await this.createLink(true)
-    this.addLocalMediaToLink(link)
+    await this.addLocalMediaToLink(link)
     debugLog.info('room', 'CreateHostUrl adding local media', summarizePc(link.pc))
     const offer = await link.createLocalOffer()
     debugLog.info('room', 'CreateHostUrl local offer', summarizeSdp(offer))
@@ -285,11 +340,12 @@ export class Room {
     const url = await getConnectionString(
       ConnectionType.HOST,
       dropTcpIceCandidates(link.localDescription ?? offer),
-      { username: this.username },
+      { username: this.username, invite: this.invite },
     )
     debugLog.info('room', 'CreateHostUrl copied host string', {
       pendingId: link.pendingId,
       urlChars: url.length,
+      e2ee: Boolean(this.invite),
     })
     return url
   }
@@ -314,7 +370,7 @@ export class Room {
       await link.setRemoteDescription(c)
       debugLog.info('room', 'CreateParticipantUrl setRemote', summarizePc(link.pc))
     }
-    this.addLocalMediaToLink(link)
+    await this.addLocalMediaToLink(link)
     if (link.pc.localDescription?.type !== 'answer') {
       const answer = await link.createLocalAnswer()
       debugLog.info('room', 'CreateParticipantUrl created answer', summarizeSdp(answer))
@@ -331,14 +387,26 @@ export class Room {
     })
     const url = await getConnectionString(ConnectionType.PARTICIPANT, dropTcpIceCandidates(local), {
       username: this.username,
+      invite: this.invite,
     })
     debugLog.info('room', 'CreateParticipantUrl copied answer string', { urlChars: url.length })
     return url
   }
 
-  async Connect(c: RTCSessionDescriptionOptions): Promise<void> {
+  async Connect(
+    c: RTCSessionDescriptionOptions,
+    opts?: { invite?: InviteCrypto | null },
+  ): Promise<void> {
     debugLog.info('room', 'Connect start', summarizeSdp(c))
     try {
+      if (opts?.invite) {
+        await this.initJoinerCrypto(opts.invite)
+        if (this.e2eeFailClosed() && !this.e2eeActive) {
+          throw new Error('e2ee is required but crypto init failed')
+        }
+      } else if (this.handshakeLink() && this.e2eeFailClosed() && !this.invite) {
+        throw new Error('e2ee is required but the invite is missing')
+      }
       const handshake = this.handshakeLink()
       if (handshake) {
         const offer: RTCSessionDescriptionInit = { type: 'offer', sdp: c.sdp }
@@ -348,7 +416,7 @@ export class Room {
         })
         await handshake.setRemoteDescription(offer)
         debugLog.info('room', 'Connect joiner after setRemote', summarizePc(handshake.pc))
-        this.addLocalMediaToLink(handshake)
+        await this.addLocalMediaToLink(handshake)
         debugLog.info('room', 'Connect joiner after addLocalMedia', summarizePc(handshake.pc))
         if (handshake.pc.localDescription?.type !== 'answer') {
           const answer = await handshake.createLocalAnswer()
@@ -600,6 +668,181 @@ export class Room {
     this.sessionEndedReason = null
   }
 
+  private async loadDeviceIdentity(): Promise<void> {
+    const raw = await window.KiwiApi.getDeviceIdentity()
+    this.identity = {
+      publicKey: fromBase64Url(
+        raw.publicKey.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''),
+      ),
+      privateKey: fromBase64Url(
+        raw.privateKey.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''),
+      ),
+      fingerprint: raw.fingerprint,
+    }
+  }
+
+  private helloCrypto(): HelloCrypto | undefined {
+    if (!this.e2eeActive || !this.identity) return undefined
+    return {
+      ...defaultCryptoCapabilities(this.mediaE2eeActive),
+      fingerprint: this.identity.fingerprint,
+      joinAuth: this.joinAuth || undefined,
+      e2eeRequired: this.e2eeRequired,
+    }
+  }
+
+  private refreshVerification(): void {
+    this.verification = this.crypto?.getVerificationInfo() ?? null
+  }
+
+  private configureMediaE2ee(): void {
+    const wants = this.e2eeFailClosed() || this.userSettings?.mediaE2eeEnabled !== false
+    const supported = supportsEncodedTransform()
+    if (wants && !supported) this.e2eeError = 'media-transform-missing'
+    this.mediaE2eeActive = wants && supported
+    this.mediaE2ee = this.mediaE2eeActive && this.crypto ? new MediaE2EE(this.crypto) : null
+  }
+
+  private async initHostCrypto(): Promise<void> {
+    if (!this.identity) return
+    this.invite = randomInviteCrypto()
+    this.joinAuth = toBase64Url(await deriveJoinAuthenticator(this.invite))
+    this.crypto = new RoomCrypto()
+    await this.crypto.createRoom(this.invite.roomId, this.localPeerId, this.identity)
+    this.e2eeActive = true
+    this.e2eeRequired = true
+    this.configureMediaE2ee()
+    this.refreshVerification()
+  }
+
+  private async initJoinerCrypto(invite: InviteCrypto): Promise<void> {
+    if (!this.identity) return
+    this.invite = invite
+    this.joinAuth = toBase64Url(await deriveJoinAuthenticator(invite))
+    this.crypto = new RoomCrypto()
+    await this.crypto.prepareJoiner(invite.roomId, this.localPeerId, this.identity)
+    this.e2eeActive = true
+    this.e2eeRequired = true
+    this.configureMediaE2ee()
+    this.handshakeLink()?.setMediaE2ee(this.mediaE2ee)
+    this.refreshVerification()
+  }
+
+  private mediaKindFor(
+    link: PeerLink,
+    streamId: string,
+    trackKind: string,
+  ): 'screen' | 'camera' | 'audio' {
+    if (trackKind === 'audio') return 'audio'
+    const peerId = link.remotePeerId ?? link.pendingId
+    const cam = this.remoteCameraState.get(peerId)
+    if (cam?.enabled && cam.streamId && cam.streamId === streamId) return 'camera'
+    if (this.remoteCameraStreams.get(peerId)?.id === streamId) return 'camera'
+    return 'screen'
+  }
+
+  private async activateMediaE2ee(): Promise<void> {
+    if (!this.mediaE2ee || !this.crypto?.isReady() || !this.crypto.hasRemoteMembers()) return
+    this.mediaE2ee.enableTransforms(true)
+    debugLog.info('room', 'media e2ee activate', {
+      epoch: this.crypto.epoch,
+      links: this.links.size,
+    })
+    for (const link of this.links.values()) {
+      link.setMediaE2ee(this.mediaE2ee)
+      await link.applyMediaE2ee((streamId, trackKind) =>
+        this.mediaKindFor(link, streamId, trackKind),
+      )
+    }
+  }
+
+  private e2eeFailClosed(): boolean {
+    return encryptionRequired(this.e2eeRequired, this.userSettings?.e2eeEnabled)
+  }
+
+  private appCryptoReady(): boolean {
+    return Boolean(this.crypto?.isReady() && this.crypto.hasRemoteMembers())
+  }
+
+  private async wrapControl(msg: ControlMessage): Promise<ControlMessage | null> {
+    const action = outboundCryptoAction({
+      encryptable: shouldEncryptControl(msg),
+      required: this.e2eeFailClosed(),
+      ready: this.appCryptoReady(),
+    })
+    if (action === 'passthrough') return msg
+    if (action === 'queue') {
+      this.pendingOutbound.push(msg)
+      debugLog.info('room', 'queued encrypted control until mls ready', { t: msg.t })
+      return null
+    }
+    try {
+      const domain = domainForControl(msg)
+      const encoded = new TextEncoder().encode(serializeControlMessage(msg))
+      const sealed = await this.crypto!.encryptApplication(domain, encoded)
+      return {
+        t: 'e2ee',
+        v: PROTOCOL_VERSION,
+        ...sealed,
+      }
+    } catch (error) {
+      debugLog.error('room', 'refusing plaintext control; encrypt failed', { t: msg.t, error })
+      this.e2eeError = this.e2eeError ?? 'control-encrypt-failed'
+      return null
+    }
+  }
+
+  private async unwrapControl(link: PeerLink, msg: ControlMessage): Promise<ControlMessage | null> {
+    if (msg.t !== 'e2ee') {
+      if (
+        dropPlaintextInbound({
+          encryptable: shouldEncryptControl(msg),
+          required: this.e2eeFailClosed(),
+        })
+      ) {
+        debugLog.warn('room', 'dropped plaintext control in e2ee room', { t: msg.t })
+        return null
+      }
+      return msg
+    }
+    if (!this.crypto?.isReady()) {
+      const queued = this.pendingE2ee.get(link) ?? []
+      queued.push(msg)
+      this.pendingE2ee.set(link, queued)
+      return null
+    }
+    try {
+      const plaintext = await this.crypto.decryptApplication(msg)
+      return parseControlMessage(new TextDecoder().decode(plaintext))
+    } catch (error) {
+      debugLog.warn('room', 'dropped unauthenticated control', error)
+      return null
+    }
+  }
+
+  private async flushPendingE2ee(link: PeerLink): Promise<void> {
+    const queued = this.pendingE2ee.get(link)
+    if (!queued?.length) return
+    this.pendingE2ee.delete(link)
+    for (const msg of queued) {
+      await this.onControl(link, msg)
+    }
+  }
+
+  private async flushPendingOutbound(): Promise<void> {
+    if (!this.pendingOutbound.length || !this.appCryptoReady()) return
+    const queued = this.pendingOutbound
+    this.pendingOutbound = []
+    for (const msg of queued) {
+      await this.broadcastEncrypted(msg)
+    }
+  }
+
+  private async flushAfterMls(link: PeerLink): Promise<void> {
+    await this.flushPendingE2ee(link)
+    await this.flushPendingOutbound()
+  }
+
   private handshakeLink(): PeerLink | null {
     if (!this.handshakeKey) return null
     return this.links.get(this.handshakeKey) ?? null
@@ -629,7 +872,9 @@ export class Room {
   }
 
   private async createLink(isOfferer: boolean, remotePeerId?: string): Promise<PeerLink> {
-    const rtcConfig = await getRTCPeerConnectionConfig()
+    const rtcConfig = await getRTCPeerConnectionConfig({
+      encodedInsertableStreams: this.e2eeFailClosed() && supportsEncodedTransform(),
+    })
     const pendingId = getUUIDv4()
     const link = new PeerLink({
       rtcConfig,
@@ -637,6 +882,8 @@ export class Room {
       pendingId,
       isOfferer,
       remotePeerId: remotePeerId ?? null,
+      mediaE2ee: this.mediaE2ee,
+      requireMediaE2ee: this.e2eeFailClosed(),
       events: {
         onControl: (msg) => {
           void this.onControl(link, msg)
@@ -664,7 +911,18 @@ export class Room {
           }
         },
         onControlOpen: () => {
+          debugLog.info('room', 'control open', {
+            pendingId: link.pendingId,
+            remotePeerId: link.remotePeerId,
+          })
           this.sendHello(link)
+          this.onMlsOpen(link)
+        },
+        onMlsOpen: () => {
+          debugLog.info('room', 'mls channel open', { pendingId: link.pendingId })
+        },
+        onMlsFrame: (frame) => {
+          void this.onMlsFrame(link, frame)
         },
         onNegotiationOffer: (sdp) => {
           if (!link.remotePeerId) return
@@ -685,7 +943,7 @@ export class Room {
     return link
   }
 
-  private addLocalMediaToLink(link: PeerLink): void {
+  private async addLocalMediaToLink(link: PeerLink): Promise<void> {
     if (this.audioStream) {
       for (const track of this.audioStream.getAudioTracks()) {
         link.addTrack(track, this.audioStream)
@@ -693,12 +951,12 @@ export class Room {
     }
     if (this.isPresenter && this.displayStream) {
       for (const track of this.displayStream.getVideoTracks()) {
-        void link.setDisplayTrack(track, this.displayStream)
+        await link.setDisplayTrack(track, this.displayStream)
       }
     }
     if (this.cameraStream) {
       const track = this.cameraStream.getVideoTracks()[0]
-      if (track) void link.setCameraTrack(track, this.cameraStream)
+      if (track) await link.setCameraTrack(track, this.cameraStream)
     }
   }
 
@@ -709,55 +967,212 @@ export class Room {
       peerId: this.localPeerId,
       username: this.username,
       color: this.color,
+      crypto: this.helloCrypto(),
     })
   }
 
+  private onMlsOpen(link: PeerLink): void {
+    if (!this.e2eeActive || !this.crypto) return
+    const encoded = this.crypto.encodeKeyPackage()
+    if (!encoded) {
+      debugLog.warn('room', 'mls key-package missing')
+      return
+    }
+    this.sendMlsFrame(
+      link,
+      bodyToFrame('key-package', this.localPeerId, encoded, {
+        fingerprint: this.identity?.fingerprint,
+      }),
+    )
+  }
+
+  private sendMlsFrame(link: PeerLink, frame: MlsFrame): void {
+    const chunks = chunkMlsFrame(frame)
+    debugLog.info('room', 'mls send', {
+      kind: frame.kind,
+      bodyChars: frame.body.length,
+      chunks: chunks.length,
+    })
+    for (const chunk of chunks) {
+      const ok = link.sendControl({
+        t: 'mls',
+        v: PROTOCOL_VERSION,
+        kind: chunk.kind,
+        from: chunk.from,
+        to: chunk.to,
+        fingerprint: chunk.fingerprint,
+        body: chunk.part,
+        id: chunk.id,
+        i: chunk.i,
+        n: chunk.n,
+      })
+      if (!ok) {
+        debugLog.warn('room', 'mls chunk send failed', { kind: frame.kind, i: chunk.i, n: chunk.n })
+      }
+    }
+  }
+
+  private ingestMlsControl(link: PeerLink, msg: Extract<ControlMessage, { t: 'mls' }>): void {
+    const frame = this.mlsAssembler.push({
+      id: msg.id,
+      i: msg.i,
+      n: msg.n,
+      kind: msg.kind,
+      from: msg.from,
+      to: msg.to,
+      fingerprint: msg.fingerprint,
+      part: msg.body,
+    })
+    if (!frame) return
+    debugLog.info('room', 'mls received', {
+      kind: frame.kind,
+      from: frame.from,
+      bodyChars: frame.body.length,
+    })
+    void this.onMlsFrame(link, frame)
+  }
+
+  private async onMlsFrame(link: PeerLink, frame: MlsFrame): Promise<void> {
+    if (!this.crypto) return
+    try {
+      const bytes = frameBodyBytes(frame)
+      if (frame.kind === 'key-package') {
+        this.pendingKeyPackages.set(frame.from, bytes)
+        if (frame.fingerprint) this.crypto.rememberMember(frame.from, frame.fingerprint)
+        debugLog.info('room', 'mls key-package', { from: frame.from, bytes: bytes.byteLength })
+        if (this.isCoordinator) await this.commitAdd(link, frame.from, bytes, frame.fingerprint)
+        return
+      }
+      if (frame.kind === 'welcome') {
+        if (frame.to && frame.to !== this.localPeerId) return
+        if (frame.fingerprint) this.crypto.rememberMember(frame.from, frame.fingerprint)
+        await this.crypto.handleHandshakeMessage(bytes)
+        debugLog.info('room', 'mls welcome', { epoch: this.crypto.epoch, from: frame.from })
+        this.refreshVerification()
+        await this.activateMediaE2ee()
+        await this.flushAfterMls(link)
+        return
+      }
+      if (frame.kind === 'commit') {
+        await this.crypto.handleHandshakeMessage(bytes)
+        debugLog.info('room', 'mls commit', { epoch: this.crypto.epoch, from: frame.from })
+        this.refreshVerification()
+        await this.mediaE2ee?.rotateEpoch(this.crypto.epoch)
+        await this.activateMediaE2ee()
+        await this.flushAfterMls(link)
+      }
+    } catch (error) {
+      debugLog.error('room', 'mls handshake failed', error)
+    }
+  }
+
+  private async commitAdd(
+    link: PeerLink,
+    peerId: string,
+    keyPackageBytes: Uint8Array,
+    fingerprint?: string,
+  ): Promise<void> {
+    if (!this.crypto?.isReady()) return
+    if (this.addingMembers.has(peerId) || this.crypto.leafOf(peerId) !== undefined) {
+      debugLog.info('room', 'mls member already present', { peerId })
+      return
+    }
+    this.addingMembers.add(peerId)
+    try {
+      const keyPackage = this.crypto.decodeKeyPackage(keyPackageBytes)
+      if (!keyPackage) {
+        debugLog.warn('room', 'mls key-package decode failed', {
+          peerId,
+          bytes: keyPackageBytes.byteLength,
+        })
+        return
+      }
+      const bundle = await this.crypto.addMember(keyPackage, peerId, fingerprint ?? '')
+      if (!bundle) {
+        debugLog.warn('room', 'mls addMember failed', { peerId })
+        return
+      }
+      debugLog.info('room', 'mls addMember', {
+        peerId,
+        epoch: this.crypto.epoch,
+        hasWelcome: Boolean(bundle.welcome),
+      })
+      this.refreshVerification()
+      if (bundle.welcome) {
+        this.sendMlsFrame(
+          link,
+          bodyToFrame('welcome', this.localPeerId, bundle.welcome, {
+            to: peerId,
+            fingerprint: this.identity?.fingerprint,
+          }),
+        )
+      }
+      this.broadcastMls(bodyToFrame('commit', this.localPeerId, bundle.commit), link)
+      await this.activateMediaE2ee()
+      await this.flushAfterMls(link)
+    } finally {
+      this.addingMembers.delete(peerId)
+    }
+  }
+
+  private broadcastMls(frame: MlsFrame, except?: PeerLink): void {
+    for (const item of this.links.values()) {
+      if (item === except) continue
+      this.sendMlsFrame(item, frame)
+    }
+  }
+
   private async onControl(link: PeerLink, msg: ControlMessage): Promise<void> {
-    switch (msg.t) {
+    const inner = await this.unwrapControl(link, msg)
+    if (!inner) return
+    switch (inner.t) {
       case 'hello':
-        await this.onHello(link, msg)
+        await this.onHello(link, inner)
+        break
+      case 'mls':
+        this.ingestMlsControl(link, inner)
         break
       case 'roster':
-        await this.onRoster(msg)
+        await this.onRoster(inner)
         break
       case 'mesh-offer':
-        await this.onMeshOffer(link, msg)
+        await this.onMeshOffer(link, inner)
         break
       case 'mesh-answer':
-        await this.onMeshAnswer(link, msg)
+        await this.onMeshAnswer(link, inner)
         break
       case 'vote-start':
-        this.onVoteStart(msg)
+        this.onVoteStart(inner)
         break
       case 'vote-cast':
-        await this.onVoteCast(msg)
+        await this.onVoteCast(inner)
         break
       case 'vote-result':
-        await this.onVoteResult(msg)
+        await this.onVoteResult(inner)
         break
       case 'presenter-changed':
-        await this.onPresenterChanged(msg.presenterId)
+        await this.onPresenterChanged(inner.presenterId)
         break
       case 'peer-left':
-        await this.onPeerLeftMessage(msg.peerId)
+        await this.onPeerLeftMessage(inner.peerId)
         break
       case 'coordinator-handoff':
-        this.onCoordinatorHandoff(msg.coordinatorId)
+        this.onCoordinatorHandoff(inner.coordinatorId)
         break
       case 'session-ended':
         this.onSessionEnded()
         break
       case 'cursor':
-        this.onCursor(msg)
+        this.onCursor(inner)
         break
       case 'cursor-ping':
-        this.onCursorPing(msg.cursorId)
+        this.onCursorPing(inner.cursorId)
         break
       case 'chat':
-        this.onChat(msg)
+        this.onChat(inner)
         break
       case 'camera-state':
-        this.onCameraState(msg)
+        this.onCameraState(inner)
         break
     }
   }
@@ -766,6 +1181,22 @@ export class Room {
     link: PeerLink,
     msg: Extract<ControlMessage, { t: 'hello' }>,
   ): Promise<void> {
+    if (!this.acceptHelloCrypto(msg.crypto)) {
+      debugLog.warn('room', 'rejected hello: e2ee mismatch', { peerId: msg.peerId })
+      this.closing.add(link.pendingId)
+      if (link.remotePeerId) this.closing.add(link.remotePeerId)
+      link.close()
+      this.deleteLink(link)
+      this.isLive = this.establishedRemoteIds().length > 0
+      if (!this.isLive) this.setConnectionState('failed')
+      return
+    }
+    if (msg.crypto?.fingerprint) {
+      const previous = this.seenFingerprints.get(msg.peerId)
+      if (previous && previous !== msg.crypto.fingerprint) this.identityChanged = true
+      this.seenFingerprints.set(msg.peerId, msg.crypto.fingerprint)
+      this.crypto?.rememberMember(msg.peerId, msg.crypto.fingerprint)
+    }
     this.rekeyLink(link, msg.peerId)
     this.upsertPeer({ id: msg.peerId, username: msg.username, color: msg.color })
     if (!this.coordinatorId) this.coordinatorId = msg.peerId
@@ -774,6 +1205,18 @@ export class Room {
     this.markLive(link)
     if (this.isCoordinator) this.broadcastRoster()
     this.sendCameraStateTo(link)
+    this.refreshVerification()
+    await this.activateMediaE2ee()
+  }
+
+  private acceptHelloCrypto(crypto: HelloCrypto | undefined): boolean {
+    if (this.e2eeFailClosed()) {
+      if (!crypto || crypto.e2eeProtocol !== 'mls-v1') return false
+      if (this.joinAuth && crypto.joinAuth && crypto.joinAuth !== this.joinAuth) return false
+      if (this.mediaE2eeActive && !crypto.mediaE2EE.includes('sframe-rfc9605')) return false
+    }
+    if (crypto?.e2eeRequired && !this.e2eeActive) return false
+    return true
   }
 
   private async onRoster(msg: Extract<ControlMessage, { t: 'roster' }>): Promise<void> {
@@ -797,7 +1240,7 @@ export class Room {
     if (this.findLinkByRemote(targetId)) return
     const link = await this.createLink(true, targetId)
     this.links.set(targetId, link)
-    this.addLocalMediaToLink(link)
+    await this.addLocalMediaToLink(link)
     const offer = await link.createLocalOffer()
     await link.waitForIceGatheringComplete()
     this.sendRouted(
@@ -850,7 +1293,7 @@ export class Room {
     const link = await this.createLink(false, msg.from)
     this.links.set(msg.from, link)
     await link.setRemoteDescription(msg.sdp)
-    this.addLocalMediaToLink(link)
+    await this.addLocalMediaToLink(link)
     const answer = await link.createLocalAnswer()
     await link.waitForIceGatheringComplete()
     link.markEstablished()
@@ -978,6 +1421,15 @@ export class Room {
   private async applyKick(peerId: string): Promise<void> {
     if (!peerId) return
     debugLog.info('room', 'applyKick', { peerId, localPeerId: this.localPeerId })
+    if (this.crypto?.isReady() && peerId !== this.localPeerId) {
+      const commit = await this.crypto.removeMember(peerId)
+      if (commit) {
+        this.broadcastMls(bodyToFrame('commit', this.localPeerId, commit))
+        await this.mediaE2ee?.rotateEpoch(this.crypto.epoch)
+        this.refreshVerification()
+        await this.activateMediaE2ee()
+      }
+    }
     if (peerId === this.localPeerId) {
       this.sessionEndedReason = 'removed'
       playSessionEndedSound()
@@ -987,6 +1439,7 @@ export class Room {
     const link = this.findLinkByRemote(peerId)
     if (link) await this.handleRemoteDeparted(link, false)
     else this.removePeerById(peerId)
+    window.KiwiApi.removeRemoteCursor?.(peerId)
     this.syncCallOverlay()
   }
 
@@ -1056,6 +1509,7 @@ export class Room {
       color: msg.color,
       x: msg.x,
       y: msg.y,
+      sourceId: msg.sourceId,
     })
   }
 
@@ -1079,11 +1533,42 @@ export class Room {
     this.remoteCameraState.set(msg.peerId, { enabled: msg.enabled, streamId: msg.streamId })
     if (!msg.enabled) this.remoteCameraStreams.delete(msg.peerId)
     this.classifyRemoteVideos(msg.peerId)
+    const link = this.findLinkByRemote(msg.peerId)
+    if (link) {
+      void link.applyMediaE2ee((streamId, trackKind) =>
+        this.mediaKindFor(link, streamId, trackKind),
+      )
+    }
   }
 
   private onTrack(link: PeerLink, event: RTCTrackEvent): void {
     const peerId = link.remotePeerId ?? link.pendingId
     const stream = event.streams[0] ?? new MediaStream([event.track])
+    const receiver = event.receiver
+    debugLog.info('room', 'onTrack', {
+      kind: event.track.kind,
+      peerId,
+      streamId: stream.id,
+      muted: event.track.muted,
+      enabled: event.track.enabled,
+      readyState: event.track.readyState,
+    })
+    if (this.e2eeFailClosed() && !this.mediaE2ee) {
+      debugLog.warn('room', 'dropped media track; e2ee required', {
+        kind: event.track.kind,
+        peerId,
+      })
+      event.track.enabled = false
+      event.track.stop()
+      return
+    }
+    if (receiver) {
+      void link.attachReceiver(receiver, {
+        sender: peerId,
+        kind: this.mediaKindFor(link, stream.id, event.track.kind),
+        streamId: stream.id,
+      })
+    }
     if (event.track.kind === 'video') {
       this.remoteVideoByStreamId.set(stream.id, { peerId, stream })
       this.classifyRemoteVideos(peerId)
@@ -1091,6 +1576,15 @@ export class Room {
     if (event.track.kind === 'audio') {
       this.attachRemoteAudio(peerId, stream)
     }
+    event.track.addEventListener('unmute', () => {
+      debugLog.info('room', 'track unmuted', {
+        kind: event.track.kind,
+        peerId,
+        streamId: stream.id,
+      })
+      if (event.track.kind === 'video') this.attachPresenterVideo()
+      if (event.track.kind === 'audio') this.attachRemoteAudio(peerId, stream)
+    })
   }
 
   private classifyRemoteVideos(peerId: string): void {
@@ -1121,6 +1615,11 @@ export class Room {
     if (stream && this.remoteVideo.srcObject !== stream) {
       this.remoteVideo.srcObject = stream
     }
+    if (this.remoteVideo.srcObject) {
+      void this.remoteVideo.play?.().catch((error) => {
+        debugLog.warn('room', 'remote video play failed', error)
+      })
+    }
   }
 
   private attachRemoteAudio(peerId: string, stream: MediaStream): void {
@@ -1128,9 +1627,15 @@ export class Room {
     if (!audio) {
       audio = document.createElement('audio')
       audio.autoplay = true
+      audio.setAttribute('playsinline', '')
+      audio.style.display = 'none'
+      document.body?.appendChild(audio)
       this.remoteAudioElements.set(peerId, audio)
     }
-    audio.srcObject = stream
+    if (audio.srcObject !== stream) audio.srcObject = stream
+    void audio.play?.().catch((error) => {
+      debugLog.warn('room', 'remote audio play failed', error)
+    })
   }
 
   private onIceState(link: PeerLink, state: RTCIceConnectionState): void {
@@ -1181,6 +1686,7 @@ export class Room {
     this.deleteLink(link)
     if (peerId) {
       this.removePeerById(peerId)
+      window.KiwiApi.removeRemoteCursor?.(peerId)
       this.remoteVideoStreams.delete(peerId)
       this.remoteCameraStreams.delete(peerId)
       this.remoteCameraState.delete(peerId)
@@ -1198,6 +1704,7 @@ export class Room {
     const reason = sessionEndedReasonAfterDeparture({
       sessionEndedBroadcast,
       remainingRemoteCount: remaining,
+      wasEstablished: Boolean(peerId),
     })
     if (reason) {
       this.sessionEndedReason = reason
@@ -1207,6 +1714,10 @@ export class Room {
       return
     }
     this.isLive = remaining > 0
+    if (!peerId && remaining === 0) {
+      this.setConnectionState('failed')
+      return
+    }
     if (peerId && peerId === this.presenterId) {
       this.presenterId = ''
       this.presenterGone = true
@@ -1354,20 +1865,33 @@ export class Room {
   }
 
   private broadcast(msg: ControlMessage): void {
+    void this.broadcastEncrypted(msg)
+  }
+
+  private async broadcastEncrypted(msg: ControlMessage): Promise<void> {
+    const wrapped = await this.wrapControl(msg)
+    if (!wrapped) return
     for (const link of this.links.values()) {
-      link.sendControl(msg)
+      link.sendControl(wrapped)
     }
   }
 
   private sendTo(peerId: string, msg: ControlMessage): boolean {
     const link = this.findLinkByRemote(peerId)
     if (!link) return false
-    return link.sendControl(msg)
+    void this.sendEncrypted(link, msg)
+    return true
+  }
+
+  private async sendEncrypted(link: PeerLink, msg: ControlMessage): Promise<void> {
+    const wrapped = await this.wrapControl(msg)
+    if (!wrapped) return
+    link.sendControl(wrapped)
   }
 
   private sendRouted(to: string, msg: ControlMessage, fallback: PeerLink): void {
     if (this.sendTo(to, msg)) return
-    fallback.sendControl(msg)
+    void this.sendEncrypted(fallback, msg)
     if (this.coordinatorId && this.coordinatorId !== this.localPeerId) {
       this.sendTo(this.coordinatorId, msg)
     }
@@ -1483,6 +2007,7 @@ export class Room {
     window.KiwiApi.toggleCallOverlay?.(false)
     for (const audio of this.remoteAudioElements.values()) {
       audio.srcObject = null
+      audio.remove()
     }
     this.remoteAudioElements.clear()
     this.hasAudioInput = false
@@ -1499,6 +2024,22 @@ export class Room {
     this.coordinatorId = ''
     this.presenterId = ''
     this.closing.clear()
+    this.e2eeActive = false
+    this.mediaE2eeActive = false
+    this.e2eeRequired = false
+    this.verification = null
+    this.invite = null
+    this.joinAuth = ''
+    this.seenFingerprints.clear()
+    this.pendingKeyPackages.clear()
+    this.pendingE2ee.clear()
+    this.pendingOutbound = []
+    this.addingMembers.clear()
+    this.mlsAssembler = new MlsAssembler()
+    this.mediaE2ee?.detach()
+    this.mediaE2ee = null
+    await this.crypto?.dispose()
+    this.crypto = null
     window.KiwiApi.toggleRemoteCursors(false)
     appState.isCoordinator = false
     this.setConnectionState('disconnected')
@@ -1598,7 +2139,7 @@ export class Room {
 
   private sendCameraStateTo(link: PeerLink): void {
     if (!this.cameraActive) return
-    link.sendControl({
+    void this.sendEncrypted(link, {
       t: 'camera-state',
       v: PROTOCOL_VERSION,
       peerId: this.localPeerId,

@@ -66,7 +66,7 @@
         sdpType: data.rtcSessionDescription.type,
         sdpChars: data.rtcSessionDescription.sdp?.length ?? 0,
       })
-      await room.Connect(data.rtcSessionDescription)
+      await room.Connect(data.rtcSessionDescription, { invite: data.invite })
       isConnected = true
       appState.isWatching = true
       appState.navigationEnabled = false

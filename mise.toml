@@ -1,0 +1,4 @@
+[tools]
+odin = "latest"
+pnpm = "12.3.4"
+task = "3.53.1"

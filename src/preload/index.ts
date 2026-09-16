@@ -100,6 +100,8 @@ const KiwiApi = {
     isMicrophoneEnabledOnConnect: boolean
     hardwareVideoAcceleration: boolean
     debugLogsEnabled: boolean
+    e2eeEnabled?: boolean
+    mediaE2eeEnabled?: boolean
     cameraDeviceId: string
     microphoneDeviceId: string
     iceServers: IceServer[]
@@ -113,11 +115,20 @@ const KiwiApi = {
     isMicrophoneEnabledOnConnect: boolean
     hardwareVideoAcceleration: boolean
     debugLogsEnabled: boolean
+    e2eeEnabled?: boolean
+    mediaE2eeEnabled?: boolean
     cameraDeviceId: string
     microphoneDeviceId: string
     iceServers: IceServer[]
   }): Promise<void> => {
     ipcRenderer.invoke('updateSettings', settings)
+  },
+  getDeviceIdentity: async (): Promise<{
+    publicKey: string
+    fingerprint: string
+    privateKey: string
+  }> => {
+    return await ipcRenderer.invoke('getDeviceIdentity')
   },
   toggleRemoteCursors: async (state: boolean): Promise<void> => {
     ipcRenderer.invoke('toggleRemoteCursors', state)
@@ -131,8 +142,12 @@ const KiwiApi = {
     color: string
     x: number
     y: number
+    sourceId?: string
   }): Promise<void> => {
     ipcRenderer.invoke('updateRemoteCursor', state)
+  },
+  removeRemoteCursor: async (peerId: string): Promise<void> => {
+    ipcRenderer.invoke('removeRemoteCursor', peerId)
   },
   onSelectScreenShareSource: (handler: SelectScreenShareSourceHandler): void => {
     selectScreenShareSourceHandler = handler

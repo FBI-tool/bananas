@@ -99,6 +99,19 @@ const en = {
   camera_device: 'Camera',
   microphone_device: 'Microphone',
   default_media_device: 'System default',
+  e2ee_enabled: 'End-to-end encryption',
+  e2ee_enabled_description:
+    'Protect chat, votes, cursors, and media with MLS. If encryption cannot be established, traffic is dropped instead of sent in plaintext.',
+  media_e2ee: 'Encrypt media (SFrame)',
+  media_e2ee_description:
+    'Required while end-to-end encryption is on. Screen, camera, and microphone never fall back to plaintext.',
+  e2ee_on: 'End-to-end encrypted',
+  e2ee_app_only: 'Encryption is required; media is held until SFrame is ready',
+  e2ee_off: 'Not end-to-end encrypted',
+  e2ee_status: 'Encryption',
+  verification: 'Compare this security code and fingerprints with the other people in the session.',
+  verification_code: 'Security code',
+  identity_changed: 'A peer identity changed during this session',
 } satisfies BaseTranslation
 
 export default en

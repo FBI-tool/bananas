@@ -99,6 +99,19 @@ const pt_br = {
   camera_device: 'Câmera',
   microphone_device: 'Microfone',
   default_media_device: 'Padrão do sistema',
+  e2ee_enabled: 'Criptografia de ponta a ponta',
+  e2ee_enabled_description:
+    'Protege chat, votos, cursores e mídia com MLS. Se a criptografia não puder ser estabelecida, o tráfego é descartado em vez de enviado em texto puro.',
+  media_e2ee: 'Criptografar mídia (SFrame)',
+  media_e2ee_description:
+    'Obrigatório enquanto a criptografia de ponta a ponta estiver ligada. Tela, câmera e microfone nunca voltam a texto puro.',
+  e2ee_on: 'Criptografado de ponta a ponta',
+  e2ee_app_only: 'A criptografia é obrigatória; a mídia é retida até o SFrame ficar pronto',
+  e2ee_off: 'Sem criptografia de ponta a ponta',
+  e2ee_status: 'Criptografia',
+  verification: 'Compare este código de segurança e as impressões com as outras pessoas da sessão.',
+  verification_code: 'Código de segurança',
+  identity_changed: 'A identidade de um participante mudou durante esta sessão',
 } satisfies BaseTranslation
 
 export default pt_br

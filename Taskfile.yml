@@ -11,8 +11,8 @@ tasks:
   install-dependencies:
     desc: Installs all dependencies
     cmds:
-      - bun install
-      - bun install:electron
+      - pnpm install
+      - pnpm install:electron
     silent: true
   generate-icons:
     desc: Generates application icons
@@ -22,12 +22,12 @@ tasks:
   dev:
     desc: Runs the app in development mode
     cmds:
-      - bun run dev
+      - pnpm run dev
     silent: true
   build:
     desc: Builds the app
     cmds:
-      - bun run build
+      - pnpm run build
     silent: true
   build-arch:
     desc: Builds an Arch Linux package (.pkg.tar.zst) from sources or a .deb
@@ -37,20 +37,32 @@ tasks:
   fmt:
     desc: Formats all files
     cmds:
-      - bun run format
+      - pnpm run format
     silent: true
   lint:
     desc: Runs lint on all files
     cmds:
-      - bun run lint
+      - pnpm run lint
     silent: true
   check:
     desc: Formats, lints, and type-checks
     cmds:
-      - bun run check
+      - pnpm run check
     silent: true
-  test:
-    desc: Runs tests
+  sidecar:build:
+    desc: Builds the native overlay sidecar
     cmds:
-      - bun run test
+      - ./native/overlay-sidecar/scripts/build.sh native/overlay-sidecar/dist
+  sidecar:test:
+    desc: Tests the native overlay sidecar
+    cmds:
+      - ./native/overlay-sidecar/scripts/test.sh
+  sidecar:dev:
+    desc: Builds the sidecar for local development
+    cmds:
+      - ./native/overlay-sidecar/scripts/build.sh native/overlay-sidecar/dist
+  sidecar:package:
+    desc: Builds the sidecar into extraResources
+    cmds:
+      - ./native/overlay-sidecar/scripts/build.sh native/overlay-sidecar/dist
     silent: true

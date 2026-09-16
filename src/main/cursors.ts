@@ -2,7 +2,10 @@ import { BrowserWindow, screen } from 'electron'
 import { loadWindowContents } from './utils'
 import { join } from 'path'
 
-const overlayBounds = (): Electron.Rectangle => screen.getPrimaryDisplay().bounds
+export type OverlayBounds = Electron.Rectangle
+
+const overlayBounds = (bounds?: OverlayBounds): Electron.Rectangle =>
+  bounds ?? screen.getPrimaryDisplay().bounds
 
 const applyOverlayBehavior = (win: BrowserWindow): void => {
   win.setIgnoreMouseEvents(true, { forward: true })
@@ -10,8 +13,8 @@ const applyOverlayBehavior = (win: BrowserWindow): void => {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 }
 
-export const createCursorsWindow = async (): Promise<BrowserWindow> => {
-  const bounds = overlayBounds()
+export const createCursorsWindow = async (boundsInput?: OverlayBounds): Promise<BrowserWindow> => {
+  const bounds = overlayBounds(boundsInput)
   const win = new BrowserWindow({
     ...bounds,
     show: false,

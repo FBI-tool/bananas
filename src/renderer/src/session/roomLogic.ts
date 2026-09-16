@@ -135,8 +135,10 @@ export const nextCoordinator = (params: {
 export const sessionEndedReasonAfterDeparture = (params: {
   sessionEndedBroadcast: boolean
   remainingRemoteCount: number
+  wasEstablished?: boolean
 }): SessionEndedReason | null => {
   if (params.sessionEndedBroadcast) return 'host-ended'
+  if (params.wasEstablished === false) return null
   if (params.remainingRemoteCount <= 0) return 'everyone-left'
   return null
 }

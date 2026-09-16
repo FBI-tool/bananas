@@ -4,8 +4,8 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { applyChromiumFlags } from './chromiumFlags'
-import { windowStateKeeper } from './stateKeeper'
-import { ipcMainHandlersInit } from './ipcMainHandlers'
+import { windowStateKeeper, settingsKeeper } from './stateKeeper'
+import { ipcMainHandlersInit, sidecarManager } from './ipcMainHandlers'
 import { installDisplayMediaHandler } from './screenPicker'
 import { isInProductionMode } from './utils'
 
@@ -116,6 +116,10 @@ app.whenReady().then(async () => {
 
   ipcMainHandlersInit()
 
+  const settings = await settingsKeeper()
+  sidecarManager.setDebugLogs(Boolean(settings.get().debugLogsEnabled))
+  void sidecarManager.start()
+
   await createWindow()
   const coldStartUrl = process.argv.find(
     (arg) => arg.startsWith(CUSTOM_PROTOCOL + '://') || arg.startsWith('bananas://'),
@@ -133,4 +137,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  void sidecarManager.stop()
 })

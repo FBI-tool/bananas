@@ -1,5 +1,6 @@
-import { BrowserWindow, desktopCapturer, ipcMain, session } from 'electron'
+import { BrowserWindow, desktopCapturer, ipcMain, screen, session } from 'electron'
 import type { DesktopCapturerSource, NativeImage } from 'electron'
+import type { OverlaySource } from './sidecar/protocol'
 
 const isWayland =
   process.platform === 'linux' &&
@@ -22,6 +23,33 @@ const SELECTED_CHANNEL = 'screenShareSourceSelected'
 const PICKER_TIMEOUT_MS = 120000
 
 let pickerRequestId = 0
+let rememberedShareSource: OverlaySource | null = null
+
+export const lastShareSource = (): OverlaySource | null => rememberedShareSource
+
+const overlaySourceFromCapturer = (source: DesktopCapturerSource): OverlaySource => {
+  const displays = screen.getAllDisplays()
+  const matched = source.display_id
+    ? displays.find((display) => String(display.id) === source.display_id)
+    : undefined
+  const display = matched ?? screen.getPrimaryDisplay()
+  return {
+    displayId: source.display_id || String(display.id),
+    sourceId: source.id,
+    bounds: {
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+    },
+    scaleFactor: display.scaleFactor,
+    rotation: display.rotation,
+  }
+}
+
+export const rememberShareSource = (source: DesktopCapturerSource | null): void => {
+  rememberedShareSource = source ? overlaySourceFromCapturer(source) : null
+}
 
 const nativeImageToDataUrl = (image?: NativeImage | null): string | null => {
   if (!image || image.isEmpty()) return null
@@ -145,6 +173,11 @@ export const installDisplayMediaHandler = (getMainWindow: () => BrowserWindow): 
     const respond = respondOnce(callback)
     try {
       if (isWayland) {
+        rememberShareSource({
+          id: WAYLAND_VIDEO_SOURCE.id,
+          name: WAYLAND_VIDEO_SOURCE.name,
+          display_id: String(screen.getPrimaryDisplay().id),
+        } as DesktopCapturerSource)
         respond({ video: WAYLAND_VIDEO_SOURCE })
         return
       }
@@ -158,9 +191,11 @@ export const installDisplayMediaHandler = (getMainWindow: () => BrowserWindow): 
       const selectedId = await askRendererToPickSource(win, capturerSources.map(serializeSource))
       const selected = capturerSources.find((source) => source.id === selectedId)
       if (!selected) {
+        rememberShareSource(null)
         respond({})
         return
       }
+      rememberShareSource(selected)
       respond({ video: selected })
     } catch (err) {
       console.error('display media request failed', err)

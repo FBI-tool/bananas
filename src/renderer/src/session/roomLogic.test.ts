@@ -226,6 +226,16 @@ describe('session ended reason', () => {
     ).toBe('everyone-left')
   })
 
+  it('does not end the session when a handshake never established', () => {
+    expect(
+      sessionEndedReasonAfterDeparture({
+        sessionEndedBroadcast: false,
+        remainingRemoteCount: 0,
+        wasEstablished: false,
+      }),
+    ).toBeNull()
+  })
+
   it('keeps the room up when peers remain', () => {
     expect(
       sessionEndedReasonAfterDeparture({

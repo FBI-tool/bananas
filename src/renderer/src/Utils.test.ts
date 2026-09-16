@@ -183,6 +183,7 @@ describe('connection strings', () => {
 
     expect(compactUrl.length).toBeLessThan(2000)
     expect(compactUrl.length).toBeLessThan(legacyUrl.length)
+    expect(compactUrl).not.toContain('#')
 
     const parsed = await getDataFromKiwiUrl(compactUrl)
     expect(parsed.rtcSessionDescription.type).toBe('offer')
@@ -256,5 +257,30 @@ describe('debounce', () => {
     expect(calls).toBe(0)
     await new Promise((resolve) => setTimeout(resolve, 40))
     expect(calls).toBe(1)
+  })
+})
+
+describe('e2ee invite fragments', () => {
+  it('appends and parses a fragment without sending it as a query param', async () => {
+    const { randomInviteCrypto } = await import('./crypto/invite')
+    const invite = randomInviteCrypto()
+    const url = await getConnectionString(ConnectionType.HOST, MINIMAL_OFFER, {
+      username: 'Kiwi',
+      invite,
+    })
+    expect(url).toContain('#')
+    expect(url).not.toMatch(/[?&]secret=/)
+    expect(mayBeConnectionString(ConnectionType.HOST, url)).toBe(true)
+    const parsed = await getDataFromKiwiUrl(url)
+    expect(parsed.e2ee).toBe(true)
+    expect(parsed.invite).toEqual(invite)
+    expect(parsed.rtcSessionDescription.type).toBe('offer')
+  })
+
+  it('treats legacy URLs without a fragment as visibly non-E2EE', async () => {
+    const url = await getConnectionString(ConnectionType.HOST, MINIMAL_OFFER, { username: 'Kiwi' })
+    const parsed = await getDataFromKiwiUrl(url)
+    expect(parsed.e2ee).toBe(false)
+    expect(parsed.invite).toBeNull()
   })
 })

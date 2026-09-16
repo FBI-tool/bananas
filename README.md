@@ -15,8 +15,15 @@
 easy-to-use screen sharing tool for Mac, Windows, and Linux.
 
 It utilizes a peer-to-peer connection to share your screen with others,
-without the need for an account or any server infrastructure
-(except for the stun, turn and signaling servers that are needed for exchanging the initial connection information)
+without the need for an account. STUN and optional TURN servers are still
+used to exchange ICE connectivity information. That is not a signaling
+server for chat or media keys.
+
+End-to-end encryption is application-level MLS (RFC 9420) plus SFrame
+(RFC 9605). DTLS-SRTP alone is not the E2EE indicator. Invite secrets live
+in the `kiwi://` URL fragment and are never logged. Rooms whose invite has
+no fragment stay visibly unencrypted. ts-mls is not a formal audit of
+p2p.kiwi.
 
 <p></p>
 

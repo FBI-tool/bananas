@@ -1,6 +1,26 @@
 import { truncateChatText } from './constants'
+import type { AppDomain, CryptoCapabilities } from '../crypto/constants'
 
 export const PROTOCOL_VERSION = 1 as const
+
+export const PLAINTEXT_CONTROL_TYPES = new Set([
+  'hello',
+  'roster',
+  'mesh-offer',
+  'mesh-answer',
+  'e2ee',
+  'mls',
+])
+
+export const APP_DOMAINS: AppDomain[] = [
+  'chat',
+  'cursor',
+  'control',
+  'drawing',
+  'remote-input',
+  'camera-state',
+  'media',
+]
 
 export type RosterPeer = {
   id: string
@@ -13,11 +33,18 @@ type Envelope = {
   v: typeof PROTOCOL_VERSION
 }
 
+export type HelloCrypto = CryptoCapabilities & {
+  fingerprint: string
+  joinAuth?: string
+  e2eeRequired?: boolean
+}
+
 export type HelloMessage = Envelope & {
   t: 'hello'
   peerId: string
   username: string
   color: string
+  crypto?: HelloCrypto
 }
 
 export type RosterMessage = Envelope & {
@@ -95,6 +122,17 @@ export type CursorMessage = Envelope & {
   color: string
   x: number
   y: number
+  sourceId?: string
+}
+
+export type E2eeMessage = Envelope & {
+  t: 'e2ee'
+  epoch: number
+  sender: string
+  domain: AppDomain
+  seq: number
+  iv: string
+  ciphertext: string
 }
 
 export type CursorPingMessage = Envelope & {
@@ -118,6 +156,18 @@ export type CameraStateMessage = Envelope & {
   streamId: string
 }
 
+export type MlsControlMessage = Envelope & {
+  t: 'mls'
+  kind: 'key-package' | 'welcome' | 'commit'
+  from: string
+  to?: string
+  fingerprint?: string
+  body: string
+  id: string
+  i: number
+  n: number
+}
+
 export type ControlMessage =
   | HelloMessage
   | RosterMessage
@@ -134,6 +184,8 @@ export type ControlMessage =
   | CursorPingMessage
   | ChatMessage
   | CameraStateMessage
+  | E2eeMessage
+  | MlsControlMessage
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -152,6 +204,22 @@ const isRosterPeer = (value: unknown): value is RosterPeer => {
 
 const isVoteKind = (value: unknown): value is VoteKind => value === 'presenter' || value === 'kick'
 
+const isAppDomain = (value: unknown): value is AppDomain =>
+  typeof value === 'string' && (APP_DOMAINS as string[]).includes(value)
+
+const isHelloCrypto = (value: unknown): value is HelloCrypto => {
+  if (!isRecord(value)) return false
+  return (
+    value.e2eeProtocol === 'mls-v1' &&
+    typeof value.protocolVersion === 'number' &&
+    Array.isArray(value.mediaE2EE) &&
+    value.mediaE2EE.every(isString) &&
+    isString(value.fingerprint) &&
+    (value.joinAuth === undefined || isString(value.joinAuth)) &&
+    (value.e2eeRequired === undefined || typeof value.e2eeRequired === 'boolean')
+  )
+}
+
 const hasOptionalVoteKind = (value: Record<string, unknown>): boolean =>
   value.kind === undefined || isVoteKind(value.kind)
 
@@ -160,7 +228,12 @@ export const isControlMessage = (value: unknown): value is ControlMessage => {
   if (value.v !== PROTOCOL_VERSION || !isString(value.t)) return false
   switch (value.t) {
     case 'hello':
-      return isString(value.peerId) && isString(value.username) && isString(value.color)
+      return (
+        isString(value.peerId) &&
+        isString(value.username) &&
+        isString(value.color) &&
+        (value.crypto === undefined || isHelloCrypto(value.crypto))
+      )
     case 'roster':
       return (
         Array.isArray(value.peers) &&
@@ -203,7 +276,8 @@ export const isControlMessage = (value: unknown): value is ControlMessage => {
         isString(value.name) &&
         isString(value.color) &&
         typeof value.x === 'number' &&
-        typeof value.y === 'number'
+        typeof value.y === 'number' &&
+        (value.sourceId === undefined || isString(value.sourceId))
       )
     case 'cursor-ping':
       return isString(value.cursorId)
@@ -218,6 +292,26 @@ export const isControlMessage = (value: unknown): value is ControlMessage => {
     case 'camera-state':
       return (
         isString(value.peerId) && typeof value.enabled === 'boolean' && isString(value.streamId)
+      )
+    case 'e2ee':
+      return (
+        typeof value.epoch === 'number' &&
+        isString(value.sender) &&
+        isAppDomain(value.domain) &&
+        typeof value.seq === 'number' &&
+        isString(value.iv) &&
+        isString(value.ciphertext)
+      )
+    case 'mls':
+      return (
+        (value.kind === 'key-package' || value.kind === 'welcome' || value.kind === 'commit') &&
+        isString(value.from) &&
+        isString(value.body) &&
+        isString(value.id) &&
+        typeof value.i === 'number' &&
+        typeof value.n === 'number' &&
+        (value.to === undefined || isString(value.to)) &&
+        (value.fingerprint === undefined || isString(value.fingerprint))
       )
     default:
       return false
@@ -238,3 +332,20 @@ export const parseControlMessage = (raw: string): ControlMessage | null => {
     return null
   }
 }
+
+export const domainForControl = (msg: ControlMessage): AppDomain => {
+  switch (msg.t) {
+    case 'chat':
+      return 'chat'
+    case 'cursor':
+    case 'cursor-ping':
+      return 'cursor'
+    case 'camera-state':
+      return 'camera-state'
+    default:
+      return 'control'
+  }
+}
+
+export const shouldEncryptControl = (msg: ControlMessage): boolean =>
+  !PLAINTEXT_CONTROL_TYPES.has(msg.t)

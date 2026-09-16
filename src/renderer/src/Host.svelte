@@ -55,7 +55,7 @@
   const onConnectClick = async (): Promise<void> => {
     try {
       const data = await getDataFromKiwiUrl(appState.hostUrl)
-      await room.Connect(data.rtcSessionDescription)
+      await room.Connect(data.rtcSessionDescription, { invite: data.invite })
       appState.hostUrl = ''
     } catch (error) {
       console.error(error)

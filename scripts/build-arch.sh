@@ -133,10 +133,10 @@ find_built_deb() {
 
 build_deb_from_source() {
   local want_arch="$1"
-  need_cmd bun "Install bun, then run: bun install && bun run install:electron"
+  need_cmd pnpm "Install pnpm, then run: pnpm install && pnpm run install:electron"
   need_cmd jq "Install jq (pacman -S jq)"
   if [[ ! -x "$ROOT/node_modules/.bin/electron-builder" ]]; then
-    echo "Error: electron-builder is missing. Run: bun install" >&2
+    echo "Error: electron-builder is missing. Run: pnpm install" >&2
     exit 1
   fi
 
@@ -149,7 +149,7 @@ build_deb_from_source() {
   fi
 
   echo "Building Linux .deb from sources (version $version, arch $want_arch)..."
-  bun run build
+  pnpm run build
   ./node_modules/.bin/electron-builder --linux deb --publish never "${eb_arch[@]}"
 }
 

@@ -1,3 +1,5 @@
+import { redactText, redactUnknown } from './crypto/redact'
+
 export type DebugLogLevel = 'info' | 'warn' | 'error'
 
 export type DebugLogEntry = {
@@ -34,21 +36,22 @@ class DebugLog {
 
   log(level: DebugLogLevel, scope: string, message: string, detail?: unknown): void {
     if (!this.enabled) return
+    const safeDetail = detail === undefined ? undefined : redactUnknown(detail)
     const entry: DebugLogEntry = {
       id: this.nextId,
       at: Date.now(),
       level,
       scope,
-      message,
-      detail: detail === undefined ? undefined : formatDetail(detail),
+      message: redactText(message),
+      detail: safeDetail === undefined ? undefined : formatDetail(safeDetail),
     }
     this.nextId += 1
     const next = [...this.entries, entry]
     this.entries = next.length > MAX_ENTRIES ? next.slice(-MAX_ENTRIES) : next
-    const line = `[${scope}] ${message}`
-    if (level === 'error') console.error(line, detail ?? '')
-    else if (level === 'warn') console.warn(line, detail ?? '')
-    else console.log(line, detail ?? '')
+    const line = `[${scope}] ${entry.message}`
+    if (level === 'error') console.error(line, safeDetail ?? '')
+    else if (level === 'warn') console.warn(line, safeDetail ?? '')
+    else console.log(line, safeDetail ?? '')
   }
 
   info(scope: string, message: string, detail?: unknown): void {
