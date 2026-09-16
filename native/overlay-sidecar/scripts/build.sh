@@ -12,6 +12,54 @@ if ! command -v "$ODIN" >/dev/null 2>&1; then
   exit 1
 fi
 
+gen_cursor_png_h() {
+  local png="$ROOT/../../assets/cursor.png"
+  local out="$ROOT/c/cursor_png.h"
+  if [[ ! -f "$png" ]]; then
+    echo "missing cursor asset: $png" >&2
+    exit 1
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$png" "$out" <<'PY'
+import sys
+png, out = sys.argv[1], sys.argv[2]
+data = open(png, "rb").read()
+parts = []
+line = []
+for b in data:
+    line.append("0x%02x" % b)
+    if len(line) == 12:
+        parts.append(", ".join(line))
+        line = []
+if line:
+    parts.append(", ".join(line))
+open(out, "w").write(
+    "#ifndef P2P_KIWI_CURSOR_PNG_H\n"
+    "#define P2P_KIWI_CURSOR_PNG_H\n"
+    "static const unsigned char cursor_png[] = {\n  "
+    + ",\n  ".join(parts)
+    + "\n};\n"
+    "static const unsigned int cursor_png_len = %d;\n"
+    "#endif\n" % len(data)
+)
+PY
+    return
+  fi
+  if command -v xxd >/dev/null 2>&1; then
+    {
+      echo '#ifndef P2P_KIWI_CURSOR_PNG_H'
+      echo '#define P2P_KIWI_CURSOR_PNG_H'
+      xxd -i "$png" | sed -e 's/unsigned char .*\[\]/static const unsigned char cursor_png[]/' -e 's/unsigned int .*_len/static const unsigned int cursor_png_len/'
+      echo '#endif'
+    } > "$out"
+    return
+  fi
+  echo "python3 or xxd required to embed assets/cursor.png" >&2
+  exit 1
+}
+
+gen_cursor_png_h
+
 EXTRA_FLAGS=()
 UNAME="$(uname -s)"
 ARCH="$(uname -m)"
