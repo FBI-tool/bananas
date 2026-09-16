@@ -5,6 +5,14 @@ import "core:os"
 import "core:strings"
 import "core:time"
 
+when ODIN_OS == .Windows {
+	foreign import winlibs {
+		"system:gdi32.lib",
+		"system:user32.lib",
+		"system:dwmapi.lib",
+	}
+}
+
 heartbeat_interval :: 2 * time.Second
 
 Session :: struct {

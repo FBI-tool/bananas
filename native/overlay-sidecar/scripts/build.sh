@@ -141,34 +141,39 @@ case "$UNAME" in
     SKIP_FINAL_BUILD=1
     ;;
   MINGW*|MSYS*|CYGWIN*|Windows_NT)
-    DRAW_OBJ="$OUT_DIR/overlay_draw.obj"
-    WIN_OBJ="$OUT_DIR/overlay_win32.obj"
+    WIN_CC="${WIN_CC:-clang}"
 
-    # Use the native Windows clang explicitly. It emits MSVC-compatible COFF
-    # object files while still accepting normal Unix-style compiler args.
-    WIN_CC="${CC:-clang}"
+    # Build from the Odin package directory so linker inputs can stay relative.
+    pushd "$ROOT" >/dev/null
 
-    "$WIN_CC" \
-      -c "$ROOT/c/overlay_draw.c" \
-      -o "$DRAW_OBJ" \
-      -O2 \
-      -I"$ROOT/c"
+    mkdir -p dist
 
     "$WIN_CC" \
-      -c "$ROOT/c/overlay_win32.c" \
-      -o "$WIN_OBJ" \
+      -c c/overlay_draw.c \
+      -o dist/overlay_draw.obj \
       -O2 \
-      -I"$ROOT/c"
+      -Ic
 
-    # extra-linker-flags are passed through to the native Windows linker.
-    # Convert Git Bash /d/... paths into D:\... paths.
-    DRAW_OBJ_WIN="$(cygpath -w "$DRAW_OBJ")"
-    WIN_OBJ_WIN="$(cygpath -w "$WIN_OBJ")"
+    "$WIN_CC" \
+      -c c/overlay_win32.c \
+      -o dist/overlay_win32.obj \
+      -O2 \
+      -Ic
 
     EXTRA_FLAGS+=(
-      "-extra-linker-flags:\"$DRAW_OBJ_WIN\" \"$WIN_OBJ_WIN\" gdi32.lib user32.lib dwmapi.lib"
+      "-extra-linker-flags:dist/overlay_draw.obj dist/overlay_win32.obj"
     )
+
     BIN_NAME="${BIN_NAME}.exe"
+
+    "$ODIN" build . \
+      -out:"dist/$BIN_NAME" \
+      -o:speed \
+      "${EXTRA_FLAGS[@]}"
+
+    popd >/dev/null
+
+    SKIP_FINAL_BUILD=1
     ;;
 esac
 
