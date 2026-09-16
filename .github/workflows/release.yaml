@@ -31,19 +31,15 @@ jobs:
             --user \
             --if-not-exists \
             flathub https://flathub.org/repo/flathub.flatpakrepo
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - uses: jdx/mise-action@v4
         with:
-          version: 10
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+          install: true
+          cache: true
+          env: true
+          export_path: true
+      - run: shellcheck scripts/*.sh
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install Odin
-        run: ./scripts/ci-install-odin.sh
       - name: Build Linux
         run: make linux
         env:
@@ -78,15 +74,12 @@ jobs:
             --user \
             --if-not-exists \
             flathub https://flathub.org/repo/flathub.flatpakrepo
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - uses: jdx/mise-action@v4
         with:
-          version: 10
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+          install: true
+          cache: true
+          env: true
+          export_path: true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build Linux ARM64
@@ -142,22 +135,16 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - uses: jdx/mise-action@v4
         with:
-          version: 10
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+          install: true
+          cache: true
+          env: true
+          export_path: true
       - name: Install make
         run: choco install make --no-progress --yes
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install Odin
-        shell: bash
-        run: ./scripts/ci-install-odin.sh
       - name: Build Windows
         shell: bash
         run: make windows
@@ -181,19 +168,14 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - uses: jdx/mise-action@v4
         with:
-          version: 10
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+          install: true
+          cache: true
+          env: true
+          export_path: true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install Odin
-        run: ./scripts/ci-install-odin.sh
       - name: Install the Apple certificate and API key
         id: keychain
         env:
