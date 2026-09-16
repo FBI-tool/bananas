@@ -141,11 +141,33 @@ case "$UNAME" in
     SKIP_FINAL_BUILD=1
     ;;
   MINGW*|MSYS*|CYGWIN*|Windows_NT)
-    DRAW_OBJ="$OUT_DIR/overlay_draw.o"
-    WIN_OBJ="$OUT_DIR/overlay_win32.o"
-    "$CC" -c "$ROOT/c/overlay_draw.c" -o "$DRAW_OBJ" -O2 -I"$ROOT/c"
-    "$CC" -c "$ROOT/c/overlay_win32.c" -o "$WIN_OBJ" -O2 -I"$ROOT/c"
-    EXTRA_FLAGS+=("-extra-linker-flags:$DRAW_OBJ $WIN_OBJ -lgdi32 -luser32 -ldwmapi")
+    DRAW_OBJ="$OUT_DIR/overlay_draw.obj"
+    WIN_OBJ="$OUT_DIR/overlay_win32.obj"
+
+    # Use the native Windows clang explicitly. It emits MSVC-compatible COFF
+    # object files while still accepting normal Unix-style compiler args.
+    WIN_CC="${CC:-clang}"
+
+    "$WIN_CC" \
+      -c "$ROOT/c/overlay_draw.c" \
+      -o "$DRAW_OBJ" \
+      -O2 \
+      -I"$ROOT/c"
+
+    "$WIN_CC" \
+      -c "$ROOT/c/overlay_win32.c" \
+      -o "$WIN_OBJ" \
+      -O2 \
+      -I"$ROOT/c"
+
+    # extra-linker-flags are passed through to the native Windows linker.
+    # Convert Git Bash /d/... paths into D:\... paths.
+    DRAW_OBJ_WIN="$(cygpath -w "$DRAW_OBJ")"
+    WIN_OBJ_WIN="$(cygpath -w "$WIN_OBJ")"
+
+    EXTRA_FLAGS+=(
+      "-extra-linker-flags:\"$DRAW_OBJ_WIN\" \"$WIN_OBJ_WIN\" gdi32.lib user32.lib dwmapi.lib"
+    )
     BIN_NAME="${BIN_NAME}.exe"
     ;;
 esac
