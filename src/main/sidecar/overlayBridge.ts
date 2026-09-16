@@ -5,6 +5,8 @@ import { isRemoteCursor } from './protocol'
 import { SidecarManager } from './sidecarManager'
 
 const COALESCE_MS = 16
+const PING_MS = 500
+const PING_TICK_MS = 16
 
 export type CursorUpdate = {
   id: string
@@ -32,6 +34,8 @@ const isCursorUpdate = (value: unknown): value is CursorUpdate => {
 export class OverlayBridge {
   private cursors = new Map<string, RemoteCursor>()
   private pings = new Set<string>()
+  private pingStarted = new Map<string, number>()
+  private pingTimer: ReturnType<typeof setInterval> | null = null
   private source: OverlaySource | null = null
   private electronWindow: BrowserWindow | null = null
   private electronActive = false
@@ -90,6 +94,7 @@ export class OverlayBridge {
       label: raw.name,
       appearance: { color: raw.color },
       ping: this.pings.has(peerId),
+      pingScale: this.pingScaleFor(peerId),
     })
     if (this.electronActive && this.electronWindow && !this.electronWindow.isDestroyed()) {
       const source = this.currentSource()
@@ -107,24 +112,29 @@ export class OverlayBridge {
   async ping(cursorId: unknown): Promise<void> {
     if (typeof cursorId !== 'string') return
     this.pings.add(cursorId)
+    this.pingStarted.set(cursorId, Date.now())
     const existing = this.cursors.get(cursorId)
-    if (existing) this.cursors.set(cursorId, { ...existing, ping: true })
+    if (existing) {
+      this.cursors.set(cursorId, {
+        ...existing,
+        ping: true,
+        pingScale: this.pingScaleFor(cursorId),
+      })
+    }
     if (this.electronActive && this.electronWindow && !this.electronWindow.isDestroyed()) {
       this.electronWindow.webContents.send('remoteCursorPing', cursorId)
     }
-    this.scheduleFlush()
-    setTimeout(() => {
-      this.pings.delete(cursorId)
-      const cur = this.cursors.get(cursorId)
-      if (cur) this.cursors.set(cursorId, { ...cur, ping: false })
-      this.scheduleFlush()
-    }, 1000)
+    this.tickPing()
+    if (!this.pingTimer) {
+      this.pingTimer = setInterval(() => this.tickPing(), PING_TICK_MS)
+    }
   }
 
   async removeCursor(peerId: unknown): Promise<void> {
     if (typeof peerId !== 'string') return
     this.cursors.delete(peerId)
     this.pings.delete(peerId)
+    this.pingStarted.delete(peerId)
     this.scheduleFlush()
   }
 
@@ -134,6 +144,40 @@ export class OverlayBridge {
     const id = await this.sidecar.createOverlay(this.spec())
     this.sidecarOverlayCreated = id !== null
     await this.flushSidecar()
+  }
+
+  private pingScaleFor(id: string): number {
+    const start = this.pingStarted.get(id)
+    if (start === undefined) return 1
+    const elapsed = Date.now() - start
+    if (elapsed >= PING_MS) return 1
+    return 1 + Math.sin((Math.PI * elapsed) / PING_MS)
+  }
+
+  private tickPing(): void {
+    const now = Date.now()
+    for (const [id, start] of [...this.pingStarted.entries()]) {
+      const elapsed = now - start
+      const cur = this.cursors.get(id)
+      if (elapsed >= PING_MS) {
+        this.pingStarted.delete(id)
+        this.pings.delete(id)
+        if (cur) this.cursors.set(id, { ...cur, ping: false, pingScale: 1 })
+        continue
+      }
+      if (cur) {
+        this.cursors.set(id, {
+          ...cur,
+          ping: true,
+          pingScale: 1 + Math.sin((Math.PI * elapsed) / PING_MS),
+        })
+      }
+    }
+    if (this.sidecarOverlayCreated) void this.flushSidecar()
+    if (this.pingStarted.size === 0 && this.pingTimer) {
+      clearInterval(this.pingTimer)
+      this.pingTimer = null
+    }
   }
 
   private spec(): OverlaySpec {
@@ -187,8 +231,13 @@ export class OverlayBridge {
       clearTimeout(this.coalesceTimer)
       this.coalesceTimer = null
     }
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer)
+      this.pingTimer = null
+    }
     this.cursors.clear()
     this.pings.clear()
+    this.pingStarted.clear()
     if (this.sidecarOverlayCreated) {
       await this.sidecar.destroyOverlay()
       this.sidecarOverlayCreated = false

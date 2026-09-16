@@ -195,7 +195,6 @@ void overlay_draw_cursors(
   if (!source || !cursors || n <= 0) return;
   int size = cursor_size_for(width, height);
   int have_asset = load_cursor_png();
-  if (have_asset) ensure_mask(size);
   for (int i = 0; i < n; i++) {
     float nx = cursors[i].x;
     float ny = cursors[i].y;
@@ -206,16 +205,13 @@ void overlay_draw_cursors(
     int x = (int)lroundf(nx * (float)(width - 1));
     int y = (int)lroundf(ny * (float)(height - 1));
     uint32_t rgb = overlay_parse_color(cursors[i].color);
-    if (cursors[i].ping) {
-      int r = size;
-      uint32_t ring = premul(rgb, 180);
-      for (int yy = -r; yy <= r; yy++) {
-        for (int xx = -r; xx <= r; xx++) {
-          int d = xx * xx + yy * yy;
-          if (d >= (r - 2) * (r - 2) && d <= r * r) put_px(px, width, height, x + xx, y + yy, ring);
-        }
-      }
-    }
+    float ping_scale = cursors[i].ping_scale;
+    if (ping_scale < 1.f) ping_scale = 1.f;
+    if (ping_scale > 2.f) ping_scale = 2.f;
+    int draw_size = (int)lroundf((float)size * ping_scale);
+    if (draw_size < 16) draw_size = 16;
+    if (draw_size > 128) draw_size = 128;
+    if (have_asset) ensure_mask(draw_size);
     int ox;
     int oy;
     if (have_asset && g_mask) {
@@ -225,8 +221,8 @@ void overlay_draw_cursors(
     } else {
       ox = x;
       oy = y;
-      draw_pointer_fallback(px, width, height, x, y, rgb, size);
+      draw_pointer_fallback(px, width, height, x, y, rgb, draw_size);
     }
-    draw_label(px, width, height, ox, oy + size + 2, cursors[i].label, rgb);
+    draw_label(px, width, height, ox, oy + draw_size + 2, cursors[i].label, rgb);
   }
 }

@@ -63,4 +63,33 @@ describe('OverlayBridge', () => {
     await vi.advanceTimersByTimeAsync(20)
     expect(vi.mocked(sidecar.updateOverlay).mock.calls.length).toBe(1)
   })
+
+  it('pulses pingScale from 1 to 2 and back during ping', async () => {
+    const sidecar = fakeSidecar()
+    const bridge = new OverlayBridge(sidecar)
+    await bridge.toggle(true)
+    await bridge.updateCursor({ id: 'a', name: 'A', color: '#fff', x: 0.1, y: 0.2 })
+    await vi.advanceTimersByTimeAsync(20)
+    vi.mocked(sidecar.updateOverlay).mockClear()
+    await bridge.ping('a')
+    await vi.advanceTimersByTimeAsync(16)
+    const mid = vi.mocked(sidecar.updateOverlay).mock.calls.at(-1)?.[0] as {
+      content?: { cursors?: Array<{ pingScale?: number; ping?: boolean }> }
+    }
+    const midScale = mid?.content?.cursors?.[0]?.pingScale ?? 1
+    expect(midScale).toBeGreaterThan(1)
+    expect(midScale).toBeLessThanOrEqual(2)
+    await vi.advanceTimersByTimeAsync(250)
+    const peak = vi.mocked(sidecar.updateOverlay).mock.calls.at(-1)?.[0] as {
+      content?: { cursors?: Array<{ pingScale?: number }> }
+    }
+    expect(peak?.content?.cursors?.[0]?.pingScale ?? 1).toBeGreaterThan(1.5)
+    await vi.advanceTimersByTimeAsync(300)
+    const done = vi.mocked(sidecar.updateOverlay).mock.calls.at(-1)?.[0] as {
+      content?: { cursors?: Array<{ pingScale?: number; ping?: boolean }> }
+    }
+    expect(done?.content?.cursors?.[0]?.ping).toBe(false)
+    expect(done?.content?.cursors?.[0]?.pingScale).toBe(1)
+    expect(vi.mocked(sidecar.updateOverlay).mock.calls.length).toBeGreaterThan(5)
+  })
 })

@@ -44,6 +44,12 @@ export default defineConfig({
         },
       }),
     ],
+    assetsInclude: ['**/*.mp3'],
+    server: {
+      fs: {
+        allow: ['..', '../..'],
+      },
+    },
     optimizeDeps: {
       include: ['sdp-compact', 'sdp-transform', 'fflate'],
     },

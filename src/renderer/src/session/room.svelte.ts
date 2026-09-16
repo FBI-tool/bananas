@@ -48,6 +48,7 @@ import {
   type VoteState,
 } from './roomLogic'
 import { playSessionEndedSound } from './sessionEndedSound'
+import { playCursorPingSound } from './cursorPingSound'
 import {
   dropPlaintextInbound,
   encryptionRequired,
@@ -1568,6 +1569,7 @@ export class Room {
 
   private onCursorPing(cursorId: string): void {
     if (!this.isPresenter || !this.cursorsEnabled) return
+    playCursorPingSound()
     window.KiwiApi.remoteCursorPing(cursorId)
   }
 

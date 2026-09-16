@@ -18,9 +18,10 @@ NativeCursor :: struct {
 	id:    [128]u8,
 	label: [64]u8,
 	color: [16]u8,
-	x:     f32,
-	y:     f32,
-	ping:  i32,
+	x:          f32,
+	y:          f32,
+	ping:       i32,
+	ping_scale: f32,
 }
 
 NativeSource :: struct {

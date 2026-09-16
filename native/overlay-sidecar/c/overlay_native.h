@@ -28,6 +28,7 @@ typedef struct {
   float x;
   float y;
   int ping;
+  float ping_scale;
 } NativeCursor;
 
 typedef struct {

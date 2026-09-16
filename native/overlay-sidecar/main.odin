@@ -69,6 +69,7 @@ parse_cursors :: proc(content: json.Object, cursors: []NativeCursor) -> i32 {
 		obj, is_obj := item.(json.Object)
 		if !is_obj do continue
 		cur := NativeCursor{}
+		cur.ping_scale = 1
 		if id, iok := object_string(obj, "peerId"); iok {
 			copy_cstr(cur.id[:], id)
 		}
@@ -86,6 +87,12 @@ parse_cursors :: proc(content: json.Object, cursors: []NativeCursor) -> i32 {
 		}
 		if ping, ping_ok := object_bool(obj, "ping"); ping_ok && ping {
 			cur.ping = 1
+		}
+		if scale, scale_ok := object_f64(obj, "pingScale"); scale_ok {
+			s := f32(scale)
+			if s < 1 do s = 1
+			if s > 2 do s = 2
+			cur.ping_scale = s
 		}
 		cursors[n] = cur
 		n += 1

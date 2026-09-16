@@ -89,6 +89,7 @@ export type RemoteCursor = {
     color: string
   }
   ping?: boolean
+  pingScale?: number
 }
 
 export type OverlayScene = {
@@ -213,6 +214,12 @@ export const isRemoteCursor = (value: unknown): value is RemoteCursor => {
   if (typeof value.label !== 'string') return false
   if (!isRecord(value.appearance) || typeof value.appearance.color !== 'string') return false
   if (value.ping !== undefined && typeof value.ping !== 'boolean') return false
+  if (
+    value.pingScale !== undefined &&
+    (!isFiniteNumber(value.pingScale) || value.pingScale < 1 || value.pingScale > 2)
+  ) {
+    return false
+  }
   return true
 }
 
