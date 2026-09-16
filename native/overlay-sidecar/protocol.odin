@@ -191,5 +191,14 @@ make_capabilities_payload :: proc(caps: NativeCaps) -> json.Value {
 	obj["keyboardInjection"] = false
 	obj["displayEnumeration"] = caps.display_enumeration != 0
 	obj["permissions"] = perms
+	backend := caps.backend
+	if backend[0] != 0 {
+		n := 0
+		for b, i in backend {
+			if b == 0 { break }
+			n = i + 1
+		}
+		obj["backend"] = strings.clone(string(backend[:n]))
+	}
 	return obj
 }

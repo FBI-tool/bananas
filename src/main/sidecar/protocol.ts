@@ -52,6 +52,7 @@ export type SidecarCapabilities = {
   pointerInjection: boolean
   keyboardInjection: boolean
   displayEnumeration: boolean
+  backend?: 'wayland' | 'x11' | 'none' | string
   permissions: {
     accessibility?: PermissionState
     screenRecording?: PermissionState

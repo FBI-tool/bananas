@@ -11,6 +11,7 @@ NativeCaps :: struct {
 	accessibility:                i32,
 	screen_recording:             i32,
 	input_monitoring:             i32,
+	backend:                      [16]u8,
 }
 
 NativeCursor :: struct {

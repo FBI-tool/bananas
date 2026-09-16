@@ -21,15 +21,23 @@ window. Calls still work.
 
 ## Linux compositor notes
 
-Wayland and X11 are separate backends.
+Wayland and X11 are separate backends. Capabilities include an optional
+`backend` field (`wayland`, `x11`, or `none`).
 
-**X11 (and XWayland):** override-redirect, always-on-top, empty input
-shape. This is the reliable Linux overlay path.
+**Wayland (preferred):** `zwlr_layer_shell_v1` overlay layer, no keyboard
+interactivity, `exclusive_zone = 0`, and an empty `wl_surface` input
+region re-applied on every commit. This is the koverlay-equivalent path
+on compositors that implement layer-shell (KWin, Hyprland, Sway, and
+similar).
 
-**Wayland:** `zwlr_layer_shell_v1` overlay layer with an empty input
-region. Compositors that do not implement layer-shell (typical GNOME
-Shell) report `overlays: false`. There is no silent fallback to global
-input grabs or X11-on-Wayland hacks.
+**X11 / XWayland (GNOME and other non-layer-shell sessions):**
+override-redirect notification window, empty Shape/XFixes input region
+after map, ARGB visual. Weaker than layer-shell: stacking and
+click-through are best-effort, and XWayland passthrough is compositor-
+dependent. Used only when layer-shell is missing but `DISPLAY` works.
+
+There is no fallback to global input grabs. If neither layer-shell nor
+X11 is usable, `overlays` is false and Electron keeps the cursor window.
 
 PipeWire/xdg-desktop-portal are used only for screen capture in
 Electron. They are not used to draw overlays.

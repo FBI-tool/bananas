@@ -18,6 +18,7 @@ typedef struct {
   int accessibility;     /* 0 unknown, 1 granted, 2 denied */
   int screen_recording;
   int input_monitoring;
+  char backend[16]; /* "wayland", "x11", or "none" */
 } NativeCaps;
 
 typedef struct {

@@ -37,6 +37,7 @@ export const defaultCapabilities = (): SidecarCapabilities => ({
   pointerInjection: false,
   keyboardInjection: false,
   displayEnumeration: false,
+  backend: 'none',
   permissions: {
     accessibility: 'unknown',
     screenRecording: 'unknown',
@@ -200,7 +201,10 @@ export class SidecarManager {
       this.heartbeat = setInterval(() => {
         void this.request('heartbeat', {}).catch(() => undefined)
       }, SIDECAR_HEARTBEAT_INTERVAL_MS)
-      this.logger.info('sidecar started', { overlays: this.capabilities.overlays })
+      this.logger.info('sidecar started', {
+        overlays: this.capabilities.overlays,
+        backend: this.capabilities.backend ?? 'none',
+      })
     } catch (error) {
       this.logger.warn('sidecar start failed', error)
       await this.stop()
