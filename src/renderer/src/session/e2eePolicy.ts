@@ -17,3 +17,8 @@ export const outboundCryptoAction = (opts: {
 
 export const dropPlaintextInbound = (opts: { encryptable: boolean; required: boolean }): boolean =>
   opts.required && opts.encryptable
+
+export const shouldPrepareJoinerCrypto = (opts: {
+  hasGroup: boolean
+  isJoinerHandshake: boolean
+}): boolean => !opts.hasGroup && opts.isJoinerHandshake

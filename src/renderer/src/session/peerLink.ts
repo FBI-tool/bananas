@@ -300,7 +300,10 @@ export class PeerLink {
       const msg = parseControlMessage(String(event.data))
       if (msg) this.events.onControl(msg)
     }
+    let opened = false
     const notifyOpen = (): void => {
+      if (opened) return
+      opened = true
       this.events.onControlOpen()
     }
     channel.onopen = notifyOpen
@@ -313,7 +316,10 @@ export class PeerLink {
       const frame = decodeMlsFrame(event.data)
       if (frame) this.events.onMlsFrame?.(frame)
     }
+    let opened = false
     const notifyOpen = (): void => {
+      if (opened) return
+      opened = true
       this.events.onMlsOpen?.()
     }
     channel.onopen = notifyOpen

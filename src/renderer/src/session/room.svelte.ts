@@ -48,7 +48,12 @@ import {
   type VoteState,
 } from './roomLogic'
 import { playSessionEndedSound } from './sessionEndedSound'
-import { dropPlaintextInbound, encryptionRequired, outboundCryptoAction } from './e2eePolicy'
+import {
+  dropPlaintextInbound,
+  encryptionRequired,
+  outboundCryptoAction,
+  shouldPrepareJoinerCrypto,
+} from './e2eePolicy'
 import { debugLog, summarizePc, summarizeSdp } from '../debugLog.svelte'
 import { RoomCrypto, type DeviceIdentity, type VerificationInfo } from '../crypto/roomCrypto'
 import { MediaE2EE } from '../crypto/mediaE2ee'
@@ -131,6 +136,7 @@ export class Room {
   private pendingOutbound: ControlMessage[] = []
   private addingMembers = new Set<string>()
   private mlsAssembler = new MlsAssembler()
+  private mlsTail: Promise<void> = Promise.resolve()
 
   get isCoordinator(): boolean {
     return this.localPeerId !== '' && this.localPeerId === this.coordinatorId
@@ -400,7 +406,23 @@ export class Room {
     debugLog.info('room', 'Connect start', summarizeSdp(c))
     try {
       if (opts?.invite) {
-        await this.initJoinerCrypto(opts.invite)
+        if (
+          shouldPrepareJoinerCrypto({
+            hasGroup: Boolean(this.crypto?.isReady()),
+            isJoinerHandshake: Boolean(this.handshakeLink()),
+          })
+        ) {
+          await this.initJoinerCrypto(opts.invite)
+          debugLog.info('room', 'initialized joiner mls')
+        } else {
+          if (this.invite && opts.invite.roomId !== this.invite.roomId) {
+            throw new Error('e2ee invite does not match this room')
+          }
+          debugLog.info('room', 'keeping existing mls group', {
+            groupReady: Boolean(this.crypto?.isReady()),
+            epoch: this.crypto?.epoch ?? 0,
+          })
+        }
         if (this.e2eeFailClosed() && !this.e2eeActive) {
           throw new Error('e2ee is required but crypto init failed')
         }
@@ -772,7 +794,7 @@ export class Room {
     })
     if (action === 'passthrough') return msg
     if (action === 'queue') {
-      this.pendingOutbound.push(msg)
+      this.enqueueOutbound(msg)
       debugLog.info('room', 'queued encrypted control until mls ready', { t: msg.t })
       return null
     }
@@ -841,6 +863,20 @@ export class Room {
   private async flushAfterMls(link: PeerLink): Promise<void> {
     await this.flushPendingE2ee(link)
     await this.flushPendingOutbound()
+  }
+
+  private enqueueOutbound(msg: ControlMessage): void {
+    if (msg.t === 'cursor') {
+      this.pendingOutbound = this.pendingOutbound.filter((item) => item.t !== 'cursor')
+    }
+    this.pendingOutbound.push(msg)
+  }
+
+  private async flushPendingKeyPackages(link: PeerLink): Promise<void> {
+    if (!this.crypto?.isReady()) return
+    for (const [peerId, bytes] of this.pendingKeyPackages) {
+      await this.commitAdd(link, peerId, bytes, this.seenFingerprints.get(peerId))
+    }
   }
 
   private handshakeLink(): PeerLink | null {
@@ -1029,7 +1065,13 @@ export class Room {
       from: frame.from,
       bodyChars: frame.body.length,
     })
-    void this.onMlsFrame(link, frame)
+    this.enqueueMls(() => this.onMlsFrame(link, frame))
+  }
+
+  private enqueueMls(task: () => Promise<void>): void {
+    this.mlsTail = this.mlsTail.then(task).catch((error) => {
+      debugLog.error('room', 'mls task failed', error)
+    })
   }
 
   private async onMlsFrame(link: PeerLink, frame: MlsFrame): Promise<void> {
@@ -1039,8 +1081,14 @@ export class Room {
       if (frame.kind === 'key-package') {
         this.pendingKeyPackages.set(frame.from, bytes)
         if (frame.fingerprint) this.crypto.rememberMember(frame.from, frame.fingerprint)
-        debugLog.info('room', 'mls key-package', { from: frame.from, bytes: bytes.byteLength })
-        if (this.isCoordinator) await this.commitAdd(link, frame.from, bytes, frame.fingerprint)
+        debugLog.info('room', 'mls key-package', {
+          from: frame.from,
+          bytes: bytes.byteLength,
+          groupReady: this.crypto.isReady(),
+        })
+        if (this.crypto.isReady()) {
+          await this.commitAdd(link, frame.from, bytes, frame.fingerprint)
+        }
         return
       }
       if (frame.kind === 'welcome') {
@@ -1072,7 +1120,10 @@ export class Room {
     keyPackageBytes: Uint8Array,
     fingerprint?: string,
   ): Promise<void> {
-    if (!this.crypto?.isReady()) return
+    if (!this.crypto?.isReady()) {
+      debugLog.warn('room', 'mls commitAdd skipped; group not ready', { peerId })
+      return
+    }
     if (this.addingMembers.has(peerId) || this.crypto.leafOf(peerId) !== undefined) {
       debugLog.info('room', 'mls member already present', { peerId })
       return
@@ -1097,6 +1148,7 @@ export class Room {
         epoch: this.crypto.epoch,
         hasWelcome: Boolean(bundle.welcome),
       })
+      this.pendingKeyPackages.delete(peerId)
       this.refreshVerification()
       if (bundle.welcome) {
         this.sendMlsFrame(
@@ -1207,6 +1259,7 @@ export class Room {
     this.sendCameraStateTo(link)
     this.refreshVerification()
     await this.activateMediaE2ee()
+    await this.flushPendingKeyPackages(link)
   }
 
   private acceptHelloCrypto(crypto: HelloCrypto | undefined): boolean {
@@ -2036,6 +2089,7 @@ export class Room {
     this.pendingOutbound = []
     this.addingMembers.clear()
     this.mlsAssembler = new MlsAssembler()
+    this.mlsTail = Promise.resolve()
     this.mediaE2ee?.detach()
     this.mediaE2ee = null
     await this.crypto?.dispose()

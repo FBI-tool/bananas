@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { dropPlaintextInbound, encryptionRequired, outboundCryptoAction } from './e2eePolicy'
+import {
+  dropPlaintextInbound,
+  encryptionRequired,
+  outboundCryptoAction,
+  shouldPrepareJoinerCrypto,
+} from './e2eePolicy'
 
 describe('e2ee fail-closed policy', () => {
   it('treats encryption as on by default', () => {
@@ -24,5 +29,12 @@ describe('e2ee fail-closed policy', () => {
     expect(dropPlaintextInbound({ encryptable: true, required: true })).toBe(true)
     expect(dropPlaintextInbound({ encryptable: false, required: true })).toBe(false)
     expect(dropPlaintextInbound({ encryptable: true, required: false })).toBe(false)
+  })
+
+  it('does not rebuild MLS as a joiner when a group already exists', () => {
+    expect(shouldPrepareJoinerCrypto({ hasGroup: true, isJoinerHandshake: false })).toBe(false)
+    expect(shouldPrepareJoinerCrypto({ hasGroup: true, isJoinerHandshake: true })).toBe(false)
+    expect(shouldPrepareJoinerCrypto({ hasGroup: false, isJoinerHandshake: true })).toBe(true)
+    expect(shouldPrepareJoinerCrypto({ hasGroup: false, isJoinerHandshake: false })).toBe(false)
   })
 })
