@@ -156,7 +156,7 @@ export class OverlayBridge {
 
   private tickPing(): void {
     const now = Date.now()
-    for (const [id, start] of [...this.pingStarted.entries()]) {
+    for (const [id, start] of this.pingStarted.entries()) {
       const elapsed = now - start
       const cur = this.cursors.get(id)
       if (elapsed >= PING_MS) {
