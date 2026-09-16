@@ -6,7 +6,7 @@ if [ -z "${VERSION:-}" ]; then echo "Error: VERSION is not set"; exit 1; fi
 BIN_NAME="p2p-kiwi"
 RELEASE_ACTION="create"
 GH_TAG="v$VERSION"
-PLATFORM="${PLATFORM:-all}"
+TARGET_PLATFORM="${TARGET_PLATFORM:-all}"
 FILES=()
 
 LINUX_FILES=(
@@ -66,7 +66,7 @@ check_files_exist() {
 }
 
 set_files_based_on_platform() {
-  case $PLATFORM in
+  case $TARGET_PLATFORM in
     all)
       FILES=("${ALL_FILES[@]}")
       ;;
@@ -83,7 +83,7 @@ set_files_based_on_platform() {
       FILES=("${MACOS_FILES[@]}")
       ;;
     *)
-      echo "Error: PLATFORM $PLATFORM is not supported"
+      echo "Error: TARGET_PLATFORM $TARGET_PLATFORM is not supported"
       exit 1
       ;;
   esac
@@ -97,7 +97,7 @@ print_files() {
 }
 
 do_gh_release() {
-  if [ "$PLATFORM" == "all" ]; then
+  if [ "$TARGET_PLATFORM" == "all" ]; then
     echo "Creating new release $GH_TAG"
     print_files
     gh release create --generate-notes "$GH_TAG" "${FILES[@]}"
@@ -124,7 +124,7 @@ do_gh_release() {
 release() {
   set_files_based_on_platform
   check_files_exist
-  if [ "$PLATFORM" != "all" ]; then
+  if [ "$TARGET_PLATFORM" != "all" ]; then
     set_release_action
   fi
   do_gh_release

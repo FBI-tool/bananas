@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [ -z "${VERSION:-}" ]; then echo "Error: VERSION is not set"; exit 1; fi
-if [ -z "${PLATFORM:-}" ]; then echo "Error: PLATFORM is not set"; exit 1; fi
+if [ -z "${TARGET_PLATFORM:-}" ]; then echo "Error: TARGET_PLATFORM is not set"; exit 1; fi
 
 update_package_json_version() {
   local tmp
@@ -11,7 +11,7 @@ update_package_json_version() {
 }
 
 sidecar_binary_name() {
-  if [ "$PLATFORM" = "windows" ]; then
+  if [ "$TARGET_PLATFORM" = "windows" ]; then
     echo "p2p-kiwi-sidecar.exe"
   else
     echo "p2p-kiwi-sidecar"
@@ -25,7 +25,7 @@ require_sidecar_binary() {
     echo "Error: sidecar binary missing: $bin" >&2
     exit 1
   fi
-  if [ "$PLATFORM" = "macos" ]; then
+  if [ "$TARGET_PLATFORM" = "macos" ]; then
     local archs
     archs="$(lipo -archs "$bin")"
     echo "sidecar architectures: $archs"
@@ -44,11 +44,12 @@ update_package_json_version
 
 build_sidecar() {
   mkdir -p native/overlay-sidecar/dist
-  if ! command -v odin >/dev/null 2>&1; then
+  local odin="${ODIN:-odin}"
+  if ! command -v "$odin" >/dev/null 2>&1 && [[ ! -x "$odin" ]]; then
     echo "Error: odin compiler not found; native sidecar is required for this platform" >&2
     exit 1
   fi
-  ./native/overlay-sidecar/scripts/build.sh native/overlay-sidecar/dist
+  ODIN="$odin" ./native/overlay-sidecar/scripts/build.sh native/overlay-sidecar/dist
   require_sidecar_binary
 }
 
@@ -80,7 +81,7 @@ build_macos() {
   pnpm run build && ./node_modules/.bin/electron-builder --mac --publish never
 }
 
-case $PLATFORM in
+case $TARGET_PLATFORM in
   "linux")
     build_linux
     ;;
@@ -97,7 +98,7 @@ case $PLATFORM in
     build_windows
     ;;
   *)
-    echo "Error: PLATFORM $PLATFORM is not supported"
+    echo "Error: TARGET_PLATFORM $TARGET_PLATFORM is not supported"
     exit 1
     ;;
 esac

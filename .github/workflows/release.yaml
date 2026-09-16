@@ -146,7 +146,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build Windows
         shell: bash
-        run: mise x -- make windows
+        run: |
+          export ODIN="$(cygpath -u "$(mise which odin)")"
+          make windows
         env:
           VERSION: ${{ env.VERSION }}
       - name: Upload Windows artifacts
