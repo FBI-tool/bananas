@@ -19,7 +19,8 @@ sidecar_binary_name() {
 }
 
 require_sidecar_binary() {
-  local bin="native/overlay-sidecar/dist/$(sidecar_binary_name)"
+  local bin
+  bin="native/overlay-sidecar/dist/$(sidecar_binary_name)"
   if [ ! -f "$bin" ]; then
     echo "Error: sidecar binary missing: $bin" >&2
     exit 1

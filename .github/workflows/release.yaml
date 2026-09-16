@@ -37,7 +37,6 @@ jobs:
           cache: true
           env: true
           export_path: true
-      - run: shellcheck scripts/*.sh
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build Linux
@@ -147,7 +146,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build Windows
         shell: bash
-        run: make windows
+        run: mise x -- make windows
         env:
           VERSION: ${{ env.VERSION }}
       - name: Upload Windows artifacts
