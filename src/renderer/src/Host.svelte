@@ -5,10 +5,8 @@
   import { toast } from './toastState.svelte'
   import { debugLog } from './debugLog.svelte'
   import { mayBeConnectionString, getDataFromKiwiUrl, ConnectionType } from './Utils'
-  import { Room } from './session/room.svelte'
+  import { sessionRoom as room } from './session/sessionStore.svelte'
   import SessionStage from './SessionStage.svelte'
-
-  const room = new Room()
 
   let sessionStarted = $state(false)
   let connectionStringIsValid = $state<boolean | null>(null)

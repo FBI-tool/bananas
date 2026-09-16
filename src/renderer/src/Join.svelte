@@ -5,10 +5,8 @@
   import { appState } from './appState.svelte'
   import { toast } from './toastState.svelte'
   import { debugLog } from './debugLog.svelte'
-  import { Room } from './session/room.svelte'
+  import { sessionRoom as room } from './session/sessionStore.svelte'
   import SessionStage from './SessionStage.svelte'
-
-  const room = new Room()
 
   let remoteScreen: HTMLVideoElement | undefined = $state()
   let isConnected = $state(false)

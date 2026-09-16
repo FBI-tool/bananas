@@ -36,6 +36,19 @@
       </span>
       <strong>{!appState.isHosting ? L.host_a_session() : L.hosting_a_session()}</strong>
     </button>
+    {#if appState.bonjourEnabled}
+      <button
+        class="btn {appState.activeView === 'bonjour' ? 'btn-primary' : 'btn-ghost'}"
+        data-action="bonjour"
+        onclick={handleTopButtonsClick}
+        disabled={!appState.navigationEnabled}
+      >
+        <span class="icon">
+          <i class="fa-solid fa-address-book"></i>
+        </span>
+        <strong>{L.bonjour()}</strong>
+      </button>
+    {/if}
     <button
       class="btn {appState.activeView === 'settings' ? 'btn-primary' : 'btn-ghost'}"
       data-action="settings"

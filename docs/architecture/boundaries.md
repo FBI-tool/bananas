@@ -5,15 +5,18 @@ sidecar and E2EE work reuse existing names instead of replacing them.
 
 ## Processes
 
-| Process                             | Owns                                                                    | Must not own                                            |
-| ----------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------- |
-| Renderer (`Room` / `WebRTCSession`) | Mesh, `control` channel, chat, votes, media tracks, collaboration state | Sidecar spawn, OS overlays, long-lived identity secrets |
-| Electron main                       | Window lifecycle, screen picker, sidecar supervisor, `safeStorage`      | MLS group state, WebRTC peer connections                |
-| Odin overlay sidecar                | Native overlay windows, display geometry, capability probes             | Room crypto, signaling, WebRTC, long-term keys          |
-| STUN/TURN                           | ICE connectivity                                                        | Application or media plaintext (after media E2EE)       |
+| Process                             | Owns                                                                     | Must not own                                            |
+| ----------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| Renderer (`Room` / `WebRTCSession`) | Mesh, `control` channel, chat, votes, media tracks, collaboration state  | Sidecar spawn, OS overlays, long-lived identity secrets |
+| Electron main                       | Window lifecycle, screen picker, sidecar supervisor, `safeStorage`       | MLS group state, WebRTC peer connections                |
+| Odin overlay sidecar                | Native overlay windows, display geometry, capability probes              | Room crypto, signaling, WebRTC, long-term keys          |
+| STUN/TURN                           | ICE connectivity                                                         | Application or media plaintext (after media E2EE)       |
+| Bonjour (opt-in)                    | SSO, contacts, presence, encrypted offer/answer/ICE/MLS-invite envelopes | Media, MLS group secrets, sidecar                       |
 
-There is no application signaling server. Invite URLs (`kiwi://`) carry
-SDP out of band. TURN is optional and user-configurable.
+Clipboard invite URLs (`kiwi://`) carry SDP out of band when Bonjour is off.
+When Bonjour is enabled, `Room.startBonjourCall` / `acceptBonjourCall` use
+trickle ICE and MLS invite envelopes instead of compact URLs. TURN is optional
+and user-configurable.
 
 ## Renderer session stack
 
@@ -24,6 +27,7 @@ SDP out of band. TURN is optional and user-configurable.
 - Peer connection + `control` data channel: `src/renderer/src/session/peerLink.ts`
 - JSON control schema: `src/renderer/src/session/controlProtocol.ts`
 - Invite encoding: `src/renderer/src/Utils.ts`
+- Bonjour signaling: `src/main/bonjour/`, `src/renderer/src/session/bonjourSignal.ts`
 - Cursor capture (normalized 0..1): `src/renderer/src/SessionStage.svelte`
 - Electron cursor fallback window: `src/main/cursors.ts`
 

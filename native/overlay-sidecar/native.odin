@@ -67,7 +67,17 @@ when ODIN_TEST {
 	native_overlay_pump :: proc() {}
 	native_shutdown :: proc() {}
 } else {
-	foreign import native_overlay "system:c"
+	when ODIN_OS == .Windows {
+		foreign import native_overlay {
+			"dist/overlay_draw.obj",
+			"dist/overlay_win32.obj",
+			"system:gdi32.lib",
+			"system:user32.lib",
+			"system:dwmapi.lib",
+		}
+	} else {
+		foreign import native_overlay "system:c"
+	}
 
 	@(default_calling_convention = "c")
 	foreign native_overlay {

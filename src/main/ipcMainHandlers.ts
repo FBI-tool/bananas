@@ -7,6 +7,8 @@ import { createAppSidecarManager } from './sidecar/sidecarManager'
 import { lastShareSource } from './screenPicker'
 import type { OverlaySource } from './sidecar/protocol'
 import { loadOrCreateIdentity } from './identityStore'
+import { bonjourClient } from './bonjour/client'
+import type { CallKind, PresenceStatus, SignalType } from './bonjour/types'
 
 export const sidecarManager = createAppSidecarManager()
 const overlayBridge = new OverlayBridge(sidecarManager)
@@ -63,6 +65,9 @@ export const ipcMainHandlersInit = (): void => {
     const settingsKeeperInstance = await settingsKeeper()
     settingsKeeperInstance.set(settings)
     sidecarManager.setDebugLogs(Boolean(settings?.debugLogsEnabled))
+    if (settings?.bonjourEnabled && settings?.bonjourServerUrl) {
+      bonjourClient.configured(String(settings.bonjourServerUrl))
+    }
   })
   ipcMain.handle('getSettings', async (): Promise<SettingsData> => {
     const settingsKeeperInstance = await settingsKeeper()
@@ -146,5 +151,70 @@ export const ipcMainHandlersInit = (): void => {
   ipcMain.on('call-camera-mids', (event, mids: unknown) => {
     if (!fromCallMain(event)) return
     callOverlayWindow?.webContents.send('call-camera-mids', mids)
+  })
+
+  ipcMain.handle('bonjour:login', async () => {
+    bonjourClient.login()
+  })
+  ipcMain.handle('bonjour:logout', async () => {
+    bonjourClient.logout()
+  })
+  ipcMain.handle('bonjour:me', async () => bonjourClient.me())
+  ipcMain.handle('bonjour:claimUsername', async (_, username: string) =>
+    bonjourClient.claimUsername(username),
+  )
+  ipcMain.handle('bonjour:setAcceptRequests', async (_, enabled: boolean) =>
+    bonjourClient.setAcceptRequests(enabled),
+  )
+  ipcMain.handle('bonjour:setAcceptCallJoins', async (_, enabled: boolean) =>
+    bonjourClient.setAcceptCallJoins(enabled),
+  )
+  ipcMain.handle('bonjour:contacts', async () => bonjourClient.contacts())
+  ipcMain.handle('bonjour:incoming', async () => bonjourClient.incoming())
+  ipcMain.handle('bonjour:outgoing', async () => bonjourClient.outgoing())
+  ipcMain.handle('bonjour:request', async (_, username: string) => bonjourClient.request(username))
+  ipcMain.handle('bonjour:retract', async (_, requestId: string) =>
+    bonjourClient.retract(requestId),
+  )
+  ipcMain.handle('bonjour:respond', async (_, requestId: string, action: 'accept' | 'decline') =>
+    bonjourClient.respond(requestId, action),
+  )
+  ipcMain.handle('bonjour:ignore', async (_, requestId: string) => bonjourClient.ignore(requestId))
+  ipcMain.handle('bonjour:unignore', async (_, userId: string) => bonjourClient.unignore(userId))
+  ipcMain.handle('bonjour:ignored', async () => bonjourClient.ignored())
+  ipcMain.handle('bonjour:removeContact', async (_, peerId: string) =>
+    bonjourClient.removeContact(peerId),
+  )
+  ipcMain.handle('bonjour:lists', async () => bonjourClient.lists())
+  ipcMain.handle('bonjour:createList', async (_, name: string) => bonjourClient.createList(name))
+  ipcMain.handle('bonjour:renameList', async (_, listId: string, name: string) =>
+    bonjourClient.renameList(listId, name),
+  )
+  ipcMain.handle('bonjour:deleteList', async (_, listId: string) =>
+    bonjourClient.deleteList(listId),
+  )
+  ipcMain.handle('bonjour:addListMember', async (_, listId: string, peerId: string) =>
+    bonjourClient.addListMember(listId, peerId),
+  )
+  ipcMain.handle('bonjour:removeListMember', async (_, listId: string, peerId: string) =>
+    bonjourClient.removeListMember(listId, peerId),
+  )
+  ipcMain.handle('bonjour:startCall', async (_, peerId: string, kind: CallKind) =>
+    bonjourClient.startCall(peerId, kind),
+  )
+  ipcMain.handle('bonjour:acceptCall', async (_, callId: string) =>
+    bonjourClient.acceptCall(callId),
+  )
+  ipcMain.handle('bonjour:rejectCall', async (_, callId: string) =>
+    bonjourClient.rejectCall(callId),
+  )
+  ipcMain.handle('bonjour:hangup', async (_, callId: string) => bonjourClient.hangup(callId))
+  ipcMain.handle(
+    'bonjour:signal',
+    async (_, callId: string, type: SignalType, peerPublicKey: string, payload: unknown) =>
+      bonjourClient.signal(callId, type, peerPublicKey, payload as never),
+  )
+  ipcMain.handle('bonjour:setPresence', async (_, status: PresenceStatus) => {
+    bonjourClient.setPresence(status)
   })
 }

@@ -5,6 +5,7 @@
   import Settings from './Settings.svelte'
   import About from './About.svelte'
   import Debug from './Debug.svelte'
+  import Bonjour from './Bonjour.svelte'
   import ScreenPicker from './ScreenPicker.svelte'
   import Toast from './Toast.svelte'
   import { appState } from './appState.svelte'
@@ -20,6 +21,7 @@
     )
     const settings = await window.KiwiApi.getSettings()
     appState.debugLogsEnabled = settings.debugLogsEnabled
+    appState.bonjourEnabled = settings.bonjourEnabled === true
     debugLog.setEnabled(settings.debugLogsEnabled)
     if (settings.debugLogsEnabled) debugLog.info('app', 'debug logs enabled')
   })
@@ -54,6 +56,10 @@
   <About />
 {:else if appState.activeView === 'debug'}
   <Debug />
+{/if}
+
+{#if appState.bonjourEnabled}
+  <Bonjour />
 {/if}
 
 <ScreenPicker bind:this={screenPicker} />

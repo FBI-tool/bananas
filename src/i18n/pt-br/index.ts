@@ -112,6 +112,35 @@ const pt_br = {
   verification: 'Compare este código de segurança e as impressões com as outras pessoas da sessão.',
   verification_code: 'Código de segurança',
   identity_changed: 'A identidade de um participante mudou durante esta sessão',
+  bonjour: 'Bonjour',
+  bonjour_sign_in: 'Entrar',
+  bonjour_sign_out: 'Sair',
+  bonjour_sign_in_description:
+    'Bonjour é opcional. Entre com SSO no servidor configurado para adicionar contatos e ligar sem links kiwi://.',
+  bonjour_choose_username:
+    'Escolha um nome de usuário único para que outras pessoas possam adicionar você.',
+  bonjour_accept_requests: 'Aceitar pedidos de contato (por tempo limitado)',
+  bonjour_accept_call_joins: 'Permitir que contatos peçam para entrar durante uma chamada',
+  bonjour_add_contact: 'Adicionar contato',
+  bonjour_send_request: 'Enviar pedido',
+  bonjour_incoming: 'Pedidos recebidos',
+  bonjour_outgoing: 'Pedidos enviados',
+  bonjour_contacts: 'Contatos',
+  bonjour_call: 'Ligar',
+  bonjour_ask_to_join: 'Pedir para entrar',
+  bonjour_remove: 'Remover',
+  bonjour_lists: 'Listas',
+  bonjour_create_list: 'Criar lista',
+  bonjour_delete_list: 'Excluir',
+  bonjour_ignored: 'Ignorados',
+  bonjour_ignore: 'Ignorar',
+  bonjour_unignore: 'Deixar de ignorar',
+  bonjour_incoming_call: 'Chamada Bonjour recebida',
+  bonjour_error: 'Falha na solicitação Bonjour',
+  bonjour_enabled: 'Ativar Bonjour (servidor de contatos opcional)',
+  bonjour_enabled_description:
+    'Quando ativado, o app fala com o servidor Bonjour configurado. Mídia e chaves MLS ficam no dispositivo. Desligado por padrão.',
+  bonjour_server_url: 'URL do servidor Bonjour',
 } satisfies BaseTranslation
 
 export default pt_br

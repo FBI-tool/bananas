@@ -58,6 +58,10 @@ linux:
   maintainer: p2p.kiwi
   category: Utility
   icon: build/
+protocols:
+  name: p2p.kiwi
+  schemes:
+    - kiwi
 appImage:
   artifactName: p2p-kiwi_${arch}.${ext}
 snap:

@@ -105,6 +105,8 @@ const KiwiApi = {
     cameraDeviceId: string
     microphoneDeviceId: string
     iceServers: IceServer[]
+    bonjourEnabled?: boolean
+    bonjourServerUrl?: string
   }> => {
     return await ipcRenderer.invoke('getSettings')
   },
@@ -120,6 +122,8 @@ const KiwiApi = {
     cameraDeviceId: string
     microphoneDeviceId: string
     iceServers: IceServer[]
+    bonjourEnabled?: boolean
+    bonjourServerUrl?: string
   }): Promise<void> => {
     ipcRenderer.invoke('updateSettings', settings)
   },
@@ -190,6 +194,51 @@ const KiwiApi = {
   },
   sendCallPeers: (peers: CallPeerInfo[]): void => {
     ipcRenderer.send('call-peers', peers)
+  },
+  bonjour: {
+    login: () => ipcRenderer.invoke('bonjour:login'),
+    logout: () => ipcRenderer.invoke('bonjour:logout'),
+    me: () => ipcRenderer.invoke('bonjour:me'),
+    claimUsername: (username: string) => ipcRenderer.invoke('bonjour:claimUsername', username),
+    setAcceptRequests: (enabled: boolean) =>
+      ipcRenderer.invoke('bonjour:setAcceptRequests', enabled),
+    setAcceptCallJoins: (enabled: boolean) =>
+      ipcRenderer.invoke('bonjour:setAcceptCallJoins', enabled),
+    contacts: () => ipcRenderer.invoke('bonjour:contacts'),
+    incoming: () => ipcRenderer.invoke('bonjour:incoming'),
+    outgoing: () => ipcRenderer.invoke('bonjour:outgoing'),
+    request: (username: string) => ipcRenderer.invoke('bonjour:request', username),
+    retract: (requestId: string) => ipcRenderer.invoke('bonjour:retract', requestId),
+    respond: (requestId: string, action: 'accept' | 'decline') =>
+      ipcRenderer.invoke('bonjour:respond', requestId, action),
+    ignore: (requestId: string) => ipcRenderer.invoke('bonjour:ignore', requestId),
+    unignore: (userId: string) => ipcRenderer.invoke('bonjour:unignore', userId),
+    ignored: () => ipcRenderer.invoke('bonjour:ignored'),
+    removeContact: (peerId: string) => ipcRenderer.invoke('bonjour:removeContact', peerId),
+    lists: () => ipcRenderer.invoke('bonjour:lists'),
+    createList: (name: string) => ipcRenderer.invoke('bonjour:createList', name),
+    renameList: (listId: string, name: string) =>
+      ipcRenderer.invoke('bonjour:renameList', listId, name),
+    deleteList: (listId: string) => ipcRenderer.invoke('bonjour:deleteList', listId),
+    addListMember: (listId: string, peerId: string) =>
+      ipcRenderer.invoke('bonjour:addListMember', listId, peerId),
+    removeListMember: (listId: string, peerId: string) =>
+      ipcRenderer.invoke('bonjour:removeListMember', listId, peerId),
+    startCall: (peerId: string, kind: 'start' | 'join') =>
+      ipcRenderer.invoke('bonjour:startCall', peerId, kind),
+    acceptCall: (callId: string) => ipcRenderer.invoke('bonjour:acceptCall', callId),
+    rejectCall: (callId: string) => ipcRenderer.invoke('bonjour:rejectCall', callId),
+    hangup: (callId: string) => ipcRenderer.invoke('bonjour:hangup', callId),
+    signal: (callId: string, type: string, peerPublicKey: string, payload: unknown) =>
+      ipcRenderer.invoke('bonjour:signal', callId, type, peerPublicKey, payload),
+    setPresence: (status: 'available' | 'busy' | 'offline') =>
+      ipcRenderer.invoke('bonjour:setPresence', status),
+    onAuth: (handler: (me: unknown) => void) => {
+      onIpc('bonjour:auth', (me) => handler(me))
+    },
+    onEvent: (handler: (event: unknown) => void) => {
+      onIpc('bonjour:event', (event) => handler(event))
+    },
   },
 }
 

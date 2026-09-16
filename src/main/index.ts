@@ -8,6 +8,8 @@ import { windowStateKeeper, settingsKeeper } from './stateKeeper'
 import { ipcMainHandlersInit, sidecarManager } from './ipcMainHandlers'
 import { installDisplayMediaHandler } from './screenPicker'
 import { isInProductionMode } from './utils'
+import { bonjourClient } from './bonjour/client'
+import { isBonjourAuthUrl } from './bonjour/urls'
 
 applyChromiumFlags()
 
@@ -39,6 +41,10 @@ if (isInProductionMode()) {
 }
 
 const sendOpenKiwiUrlToRenderer = (url: string): void => {
+  if (isBonjourAuthUrl(url)) {
+    void bonjourClient.handleAuthUrl(url)
+    return
+  }
   MAIN_WINDOW.webContents.send('openKiwiURL', url)
 }
 
@@ -119,8 +125,11 @@ app.whenReady().then(async () => {
   const settings = await settingsKeeper()
   sidecarManager.setDebugLogs(Boolean(settings.get().debugLogsEnabled))
   void sidecarManager.start()
+  const prefs = settings.get()
+  if (prefs.bonjourEnabled) bonjourClient.configured(prefs.bonjourServerUrl)
 
   await createWindow()
+  bonjourClient.attachWindow(MAIN_WINDOW)
   const coldStartUrl = process.argv.find(
     (arg) => arg.startsWith(CUSTOM_PROTOCOL + '://') || arg.startsWith('bananas://'),
   )

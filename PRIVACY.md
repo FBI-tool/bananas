@@ -13,9 +13,9 @@ By using the App, you agree to the terms of this Privacy Policy.
 We do not collect, store, or process any personal or usage data from users of the App.
 The App functions solely to establish a peer-to-peer connection between users.
 No personal information, identifiers, or activity data are transmitted to us or any third-party,
-excluding STUN and TURN servers for negotiation of connection details like IP addresses and ports.
-
-Invite bootstrap secrets stay in the URL fragment. They are not sent as HTTP query
+excluding STUN and TURN servers for ICE, and an optional Bonjour server if you enable it.
+Invite bootstrap secrets stay in the URL fragment for clipboard invites, or in an
+encrypted Bonjour envelope for Bonjour calls. They are not sent as HTTP query
 parameters and are not written to debug logs.
 
 ### 2. Data Usage
@@ -49,16 +49,17 @@ available.
 
 The App only communicates with the STUN or TURN servers
 that you can configure yourself,
-for the purpose of establishing a peer-to-peer connection and
-does not expose your data to any other services or entities.
+for the purpose of establishing a peer-to-peer connection.
+An optional Bonjour contacts server (off by default) is used only if you enable
+it in Settings and sign in. Bonjour stores your SSO identity, username, contact
+graph, and presence, and relays encrypted call-signaling blobs. It does not
+receive media, MLS group keys, or plaintext SDP.
 
 ### 5. User Consent
 
 By using the App,
 you consent to the interaction between the configured STUN or TURN servers and the App,
-as described in this policy.
-
-You understand that the App does not collect or store any personal data.
+as described in this policy. Enabling Bonjour is a separate, explicit choice.
 
 ### 6. Changes to the Privacy Policy
 

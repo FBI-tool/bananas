@@ -113,6 +113,35 @@ const en = {
     'Vergleiche diesen Sicherheitscode und die Fingerabdrücke mit den anderen Personen.',
   verification_code: 'Sicherheitscode',
   identity_changed: 'Die Identität eines Teilnehmers hat sich in dieser Sitzung geändert',
+  bonjour: 'Bonjour',
+  bonjour_sign_in: 'Anmelden',
+  bonjour_sign_out: 'Abmelden',
+  bonjour_sign_in_description:
+    'Bonjour ist optional. Melde dich per SSO am konfigurierten Server an, um Kontakte hinzuzufügen und Anrufe ohne kiwi://-Links zu starten.',
+  bonjour_choose_username:
+    'Wähle einen eindeutigen Benutzernamen, damit andere dich hinzufügen können.',
+  bonjour_accept_requests: 'Kontaktanfragen annehmen (zeitlich begrenzt)',
+  bonjour_accept_call_joins: 'Kontakte dürfen während eines Anrufs um Beitritt bitten',
+  bonjour_add_contact: 'Kontakt hinzufügen',
+  bonjour_send_request: 'Anfrage senden',
+  bonjour_incoming: 'Eingehende Anfragen',
+  bonjour_outgoing: 'Gesendete Anfragen',
+  bonjour_contacts: 'Kontakte',
+  bonjour_call: 'Anrufen',
+  bonjour_ask_to_join: 'Um Beitritt bitten',
+  bonjour_remove: 'Entfernen',
+  bonjour_lists: 'Listen',
+  bonjour_create_list: 'Liste erstellen',
+  bonjour_delete_list: 'Löschen',
+  bonjour_ignored: 'Ignoriert',
+  bonjour_ignore: 'Ignorieren',
+  bonjour_unignore: 'Nicht mehr ignorieren',
+  bonjour_incoming_call: 'Eingehender Bonjour-Anruf',
+  bonjour_error: 'Bonjour-Anfrage fehlgeschlagen',
+  bonjour_enabled: 'Bonjour aktivieren (optionaler Kontakt-Server)',
+  bonjour_enabled_description:
+    'Wenn aktiv, spricht die App mit dem konfigurierten Bonjour-Server. Medien und MLS-Schlüssel bleiben auf dem Gerät. Standardmäßig aus.',
+  bonjour_server_url: 'Bonjour-Server-URL',
 } satisfies BaseTranslation
 
 export default en

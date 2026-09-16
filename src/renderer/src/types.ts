@@ -25,6 +25,8 @@ export type SettingsData = {
   cameraDeviceId?: string
   microphoneDeviceId?: string
   iceServers: IceServer[]
+  bonjourEnabled?: boolean
+  bonjourServerUrl?: string
 }
 
 export type ScreenShareSource = {
@@ -35,4 +37,4 @@ export type ScreenShareSource = {
   isScreen: boolean
 }
 
-export type ViewName = 'join' | 'host' | 'settings' | 'about' | 'debug'
+export type ViewName = 'join' | 'host' | 'settings' | 'about' | 'debug' | 'bonjour'

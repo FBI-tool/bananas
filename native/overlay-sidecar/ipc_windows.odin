@@ -1,14 +1,6 @@
 #+build windows
 package main
 
-foreign import native_windows {
-	"dist/overlay_draw.obj",
-	"dist/overlay_win32.obj",
-	"system:gdi32.lib",
-	"system:user32.lib",
-	"system:dwmapi.lib",
-}
-
 import "core:os"
 import "core:strings"
 import win "core:sys/windows"

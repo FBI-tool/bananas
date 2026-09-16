@@ -141,30 +141,46 @@ case "$UNAME" in
     SKIP_FINAL_BUILD=1
     ;;
   MINGW*|MSYS*|CYGWIN*|Windows_NT)
-    WIN_CC="${WIN_CC:-clang}"
+    if [[ -z "${WIN_CC:-}" ]]; then
+      if command -v cl >/dev/null 2>&1 || command -v cl.exe >/dev/null 2>&1; then
+        WIN_CC="cl"
+      else
+        WIN_CC="clang"
+      fi
+    fi
+
+    compile_win_obj() {
+      local src="$1"
+      local obj="$2"
+      case "$(basename "${WIN_CC%.exe}")" in
+        cl|clang-cl)
+          # Hyphen flags so Git bash does not rewrite /c as a drive path.
+          "$WIN_CC" -nologo -c -Fo"$obj" -O2 -I"c" "$src"
+          ;;
+        *)
+          "$WIN_CC" -c "$src" -o "$obj" -O2 -I"c"
+          ;;
+      esac
+    }
 
     pushd "$ROOT" >/dev/null
 
     mkdir -p dist
 
-    "$WIN_CC" \
-      -c c/overlay_draw.c \
-      -o dist/overlay_draw.obj \
-      -O2 \
-      -Ic
-
-    "$WIN_CC" \
-      -c c/overlay_win32.c \
-      -o dist/overlay_win32.obj \
-      -O2 \
-      -Ic
+    compile_win_obj c/overlay_draw.c dist/overlay_draw.obj
+    compile_win_obj c/overlay_win32.c dist/overlay_win32.obj
 
     BIN_NAME="${BIN_NAME}.exe"
 
-    "$ODIN" build . \
-      -out:"dist/$BIN_NAME" \
+    # Odin on Windows emits per-package .obj files next to -out but
+    # invokes link.exe with bare filenames, so CWD must be the output dir.
+    pushd dist >/dev/null
+    "$ODIN" build .. \
+      -out:"$BIN_NAME" \
       -o:speed
+    popd >/dev/null
 
+    echo "built $ROOT/dist/$BIN_NAME ($UNAME $ARCH)"
     popd >/dev/null
 
     SKIP_FINAL_BUILD=1

@@ -20,6 +20,8 @@ export type SettingsData = {
   cameraDeviceId: string
   microphoneDeviceId: string
   iceServers: IceServer[]
+  bonjourEnabled: boolean
+  bonjourServerUrl: string
 }
 
 type Settings = {
@@ -55,6 +57,8 @@ export const defaultSettings: SettingsData = {
       urls: 'stun:stun.l.google.com:19302',
     },
   ],
+  bonjourEnabled: false,
+  bonjourServerUrl: 'https://bonjour.p2p.kiwi',
 }
 
 export const settingsKeeper = async (): Promise<Settings> => {

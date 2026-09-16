@@ -20,6 +20,10 @@ jobs:
         shell: bash
         run: |
           echo "VERSION=1.0.0" >> $GITHUB_ENV
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - uses: jdx/mise-action@v4
         with:
           install: true

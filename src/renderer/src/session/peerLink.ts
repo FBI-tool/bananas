@@ -1,3 +1,4 @@
+import { cloneSessionDescription } from '../Utils'
 import type { ControlMessage } from './controlProtocol'
 import { parseControlMessage, serializeControlMessage } from './controlProtocol'
 import { ICE_GATHERING_TIMEOUT_MS } from './constants'
@@ -15,6 +16,7 @@ export type PeerLinkEvents = {
   onNegotiationOffer: (sdp: RTCSessionDescriptionInit) => void
   onMlsOpen?: () => void
   onMlsFrame?: (frame: MlsFrame) => void
+  onIceCandidate?: (candidate: RTCIceCandidateInit | null) => void
 }
 
 type PeerLinkOptions = {
@@ -71,6 +73,9 @@ export class PeerLink {
     }
     this.pc.oniceconnectionstatechange = (): void => {
       this.events.onIceConnectionStateChange(this.pc.iceConnectionState)
+    }
+    this.pc.onicecandidate = (event: RTCPeerConnectionIceEvent): void => {
+      this.events.onIceCandidate?.(event.candidate ? event.candidate.toJSON() : null)
     }
     this.pc.onnegotiationneeded = (): void => {
       void this.onNegotiationNeeded()
@@ -243,18 +248,22 @@ export class PeerLink {
     this.suppressNegotiation = true
     const offer = await this.pc.createOffer()
     await this.pc.setLocalDescription(offer)
-    return this.pc.localDescription ?? offer
+    return cloneSessionDescription(this.pc.localDescription ?? offer)
   }
 
   async createLocalAnswer(): Promise<RTCSessionDescriptionInit> {
     this.suppressNegotiation = true
     const answer = await this.pc.createAnswer()
     await this.pc.setLocalDescription(answer)
-    return this.pc.localDescription ?? answer
+    return cloneSessionDescription(this.pc.localDescription ?? answer)
   }
 
   async setRemoteDescription(desc: RTCSessionDescriptionInit): Promise<void> {
     await this.pc.setRemoteDescription(desc)
+  }
+
+  async addIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
+    await this.pc.addIceCandidate(candidate)
   }
 
   async handleRemoteSdp(

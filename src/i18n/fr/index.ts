@@ -113,6 +113,35 @@ const fr = {
   verification: 'Comparez ce code de sécurité et les empreintes avec les autres participants.',
   verification_code: 'Code de sécurité',
   identity_changed: 'L’identité d’un pair a changé pendant cette session',
+  bonjour: 'Bonjour',
+  bonjour_sign_in: 'Connexion',
+  bonjour_sign_out: 'Déconnexion',
+  bonjour_sign_in_description:
+    'Bonjour est facultatif. Connectez-vous via SSO au serveur configuré pour ajouter des contacts et appeler sans liens kiwi://.',
+  bonjour_choose_username:
+    'Choisissez un nom d’utilisateur unique pour que les autres puissent vous ajouter.',
+  bonjour_accept_requests: 'Accepter les demandes de contact (durée limitée)',
+  bonjour_accept_call_joins: 'Autoriser les contacts à demander à rejoindre pendant un appel',
+  bonjour_add_contact: 'Ajouter un contact',
+  bonjour_send_request: 'Envoyer la demande',
+  bonjour_incoming: 'Demandes reçues',
+  bonjour_outgoing: 'Demandes envoyées',
+  bonjour_contacts: 'Contacts',
+  bonjour_call: 'Appeler',
+  bonjour_ask_to_join: 'Demander à rejoindre',
+  bonjour_remove: 'Retirer',
+  bonjour_lists: 'Listes',
+  bonjour_create_list: 'Créer une liste',
+  bonjour_delete_list: 'Supprimer',
+  bonjour_ignored: 'Ignorés',
+  bonjour_ignore: 'Ignorer',
+  bonjour_unignore: 'Ne plus ignorer',
+  bonjour_incoming_call: 'Appel Bonjour entrant',
+  bonjour_error: 'Échec de la requête Bonjour',
+  bonjour_enabled: 'Activer Bonjour (serveur de contacts facultatif)',
+  bonjour_enabled_description:
+    'Une fois activé, l’application contacte le serveur Bonjour configuré. Les médias et les clés MLS restent sur l’appareil. Désactivé par défaut.',
+  bonjour_server_url: 'URL du serveur Bonjour',
 } satisfies BaseTranslation
 
 export default fr

@@ -59,6 +59,8 @@ type KiwiApi = {
     cameraDeviceId: string
     microphoneDeviceId: string
     iceServers: IceServer[]
+    bonjourEnabled?: boolean
+    bonjourServerUrl?: string
   }) => Promise<void>
   getSettings: () => Promise<{
     username: string
@@ -72,6 +74,8 @@ type KiwiApi = {
     cameraDeviceId: string
     microphoneDeviceId: string
     iceServers: IceServer[]
+    bonjourEnabled?: boolean
+    bonjourServerUrl?: string
   }>
   getAppVersion: () => Promise<string>
   getDeviceIdentity: () => Promise<{ publicKey: string; fingerprint: string; privateKey: string }>
@@ -91,6 +95,57 @@ type KiwiApi = {
   sendCallCameraMids: (mids: CallCameraMid[]) => void
   sendCallChat: (messages: CallChatMessage[]) => void
   sendCallPeers: (peers: CallPeerInfo[]) => void
+  bonjour: {
+    login: () => Promise<void>
+    logout: () => Promise<void>
+    me: () => Promise<{
+      userId: string
+      username: string | null
+      acceptRequestsUntil: string | null
+      acceptCallJoins: boolean
+      devicePublicKey: string | null
+    } | null>
+    claimUsername: (username: string) => Promise<unknown>
+    setAcceptRequests: (enabled: boolean) => Promise<{ acceptRequestsUntil: string | null }>
+    setAcceptCallJoins: (enabled: boolean) => Promise<{ acceptCallJoins: boolean }>
+    contacts: () => Promise<
+      Array<{
+        userId: string
+        username: string
+        devicePublicKey: string | null
+        presence: 'available' | 'busy' | 'offline'
+        acceptCallJoins: boolean
+      }>
+    >
+    incoming: () => Promise<Array<{ id: string; fromUserId: string; username: string }>>
+    outgoing: () => Promise<Array<{ id: string; toUserId: string; username: string }>>
+    request: (username: string) => Promise<unknown>
+    retract: (requestId: string) => Promise<unknown>
+    respond: (requestId: string, action: 'accept' | 'decline') => Promise<unknown>
+    ignore: (requestId: string) => Promise<unknown>
+    unignore: (userId: string) => Promise<unknown>
+    ignored: () => Promise<Array<{ userId: string; username: string }>>
+    removeContact: (peerId: string) => Promise<unknown>
+    lists: () => Promise<Array<{ id: string; name: string; memberIds: string[] }>>
+    createList: (name: string) => Promise<unknown>
+    renameList: (listId: string, name: string) => Promise<unknown>
+    deleteList: (listId: string) => Promise<unknown>
+    addListMember: (listId: string, peerId: string) => Promise<unknown>
+    removeListMember: (listId: string, peerId: string) => Promise<unknown>
+    startCall: (peerId: string, kind: 'start' | 'join') => Promise<{ callId: string }>
+    acceptCall: (callId: string) => Promise<unknown>
+    rejectCall: (callId: string) => Promise<unknown>
+    hangup: (callId: string) => Promise<unknown>
+    signal: (
+      callId: string,
+      type: string,
+      peerPublicKey: string,
+      payload: unknown,
+    ) => Promise<unknown>
+    setPresence: (status: 'available' | 'busy' | 'offline') => Promise<void>
+    onAuth: (handler: (me: unknown) => void) => void
+    onEvent: (handler: (event: unknown) => void) => void
+  }
 }
 
 type CallApi = {

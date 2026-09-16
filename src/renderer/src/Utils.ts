@@ -68,6 +68,13 @@ export const cloneSessionDescription = (
   sdp: desc.sdp,
 })
 
+export const cloneIceCandidate = (candidate: RTCIceCandidateInit): RTCIceCandidateInit => ({
+  candidate: candidate.candidate,
+  sdpMid: candidate.sdpMid ?? undefined,
+  sdpMLineIndex: candidate.sdpMLineIndex ?? undefined,
+  usernameFragment: candidate.usernameFragment ?? undefined,
+})
+
 export const dropTcpIceCandidates = (
   desc: RTCSessionDescriptionInit,
 ): RTCSessionDescriptionInit => {

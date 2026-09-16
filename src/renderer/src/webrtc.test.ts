@@ -12,6 +12,7 @@ class MockDataChannel {
 
 class MockRTCPeerConnection {
   localDescription: RTCSessionDescriptionInit | null = null
+  remoteDescription: RTCSessionDescriptionInit | null = null
   iceGatheringState = 'complete'
   connectionState = 'new'
   iceConnectionState = 'new'
@@ -30,7 +31,10 @@ class MockRTCPeerConnection {
   setLocalDescription = vi.fn(async (desc?: RTCSessionDescriptionInit) => {
     if (desc) this.localDescription = desc
   })
-  setRemoteDescription = vi.fn(async () => undefined)
+  setRemoteDescription = vi.fn(async (desc?: RTCSessionDescriptionInit) => {
+    if (desc) this.remoteDescription = desc
+    this.signalingState = desc?.type === 'offer' ? 'have-remote-offer' : 'stable'
+  })
   addTrack = vi.fn((track: MediaStreamTrack, _stream: MediaStream) => {
     const sender = {
       track,
@@ -76,6 +80,7 @@ const getSettings = vi.fn(async () => ({
 beforeEach(() => {
   vi.stubGlobal('RTCPeerConnection', MockRTCPeerConnection)
   vi.stubGlobal('RTCSessionDescription', MockRTCSessionDescription)
+  vi.stubGlobal('RTCRtpSender', { prototype: {} })
   vi.stubGlobal('window', {
     KiwiApi: {
       getSettings,
@@ -100,6 +105,9 @@ beforeEach(() => {
       sendCallCameraMids: vi.fn(),
       sendCallChat: vi.fn(),
       sendCallPeers: vi.fn(),
+      bonjour: {
+        hangup: vi.fn(async () => undefined),
+      },
     },
   })
   vi.stubGlobal('navigator', {
@@ -150,5 +158,116 @@ describe('WebRTCSession', () => {
     await session.Setup()
     await session.Disconnect()
     expect(session.IsConnected()).toBe(false)
+  })
+
+  it('Setup can skip the display picker', async () => {
+    const { WebRTCSession } = await import('./webrtc.svelte')
+    const session = new WebRTCSession()
+    const result = await session.Setup(null, { captureDisplay: false })
+    expect(result).toBe('ok')
+    expect(navigator.mediaDevices.getDisplayMedia).not.toHaveBeenCalled()
+  })
+
+  it('startBonjourCall signals an offer without a kiwi URL', async () => {
+    const { WebRTCSession } = await import('./webrtc.svelte')
+    const { PeerLink } = await import('./session/peerLink')
+    const session = new WebRTCSession()
+    await session.Setup()
+    const sent: Array<{ type: string }> = []
+    session.bindBonjour((payload) => sent.push(payload))
+    const waitIce = vi.spyOn(PeerLink.prototype, 'waitForIceGatheringComplete')
+    await session.startBonjourCall({ callId: 'call-1', peerId: 'peer-1' })
+    expect(session.bonjourCallId).toBe('call-1')
+    expect(session.signalingKind).toBe('bonjour')
+    expect(session.isPresenter).toBe(true)
+    const offer = sent.find((item) => item.type === 'offer')
+    expect(offer).toBeTruthy()
+    expect('invite' in (offer ?? {})).toBe(true)
+    expect(sent.every((item) => !('url' in item))).toBe(true)
+    expect(waitIce).not.toHaveBeenCalled()
+    const offerAt = sent.findIndex((item) => item.type === 'offer')
+    const iceAt = sent.findIndex((item) => item.type === 'ice')
+    if (iceAt >= 0) expect(offerAt).toBeLessThan(iceAt)
+  })
+
+  it('requestBonjourJoin waits for the host offer without a kiwi URL', async () => {
+    const { WebRTCSession } = await import('./webrtc.svelte')
+    const session = new WebRTCSession()
+    const video = document.createElement('video') as HTMLVideoElement
+    await session.Setup(video)
+    const sent: Array<{ type: string }> = []
+    session.bindBonjour((payload) => sent.push(payload))
+    await session.requestBonjourJoin({ callId: 'join-1', peerId: 'host-1' })
+    expect(session.bonjourCallId).toBe('join-1')
+    expect(session.signalingKind).toBe('bonjour')
+    expect(session.isPresenter).toBe(false)
+    expect(sent).toEqual([])
+  })
+
+  it('acceptBonjourCall answers without emitting a kiwi URL', async () => {
+    const { WebRTCSession } = await import('./webrtc.svelte')
+    const session = new WebRTCSession()
+    const video = document.createElement('video') as HTMLVideoElement
+    await session.Setup(video)
+    const sent: Array<{ type: string }> = []
+    session.bindBonjour((payload) => sent.push(payload))
+    await session.acceptBonjourCall({
+      callId: 'call-3',
+      peerId: 'host-1',
+      offer: { type: 'offer', sdp: 'v=0' },
+      invite: null,
+    })
+    expect(sent.some((item) => item.type === 'answer')).toBe(true)
+    expect(sent.every((item) => !('url' in item))).toBe(true)
+    expect(session.signalingKind).toBe('bonjour')
+    const answerAt = sent.findIndex((item) => item.type === 'answer')
+    const iceAt = sent.findIndex((item) => item.type === 'ice')
+    if (iceAt >= 0) expect(answerAt).toBeLessThan(iceAt)
+  })
+
+  it('acceptBonjourCall still answers after Setup wipes the peer connection', async () => {
+    const { WebRTCSession } = await import('./webrtc.svelte')
+    const session = new WebRTCSession()
+    const sent: Array<{ type: string }> = []
+    session.bindBonjour((payload) => sent.push(payload))
+    const video = document.createElement('video') as HTMLVideoElement
+    await session.Setup(video)
+    await session.acceptBonjourCall({
+      callId: 'call-4',
+      peerId: 'host-1',
+      offer: { type: 'offer', sdp: 'v=0' },
+      invite: null,
+    })
+    expect(sent.some((item) => item.type === 'answer')).toBe(true)
+    expect(session.signalingKind).toBe('bonjour')
+  })
+
+  it('acceptBonjourCall fails closed without an mls-invite when e2ee is required', async () => {
+    getSettings.mockResolvedValueOnce({
+      username: 'Kiwi',
+      color: '#ffffff',
+      language: 'en',
+      isMicrophoneEnabledOnConnect: true,
+      hardwareVideoAcceleration: true,
+      debugLogsEnabled: false,
+      e2eeEnabled: true,
+      mediaE2eeEnabled: true,
+      cameraDeviceId: '',
+      microphoneDeviceId: '',
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    })
+    const { WebRTCSession } = await import('./webrtc.svelte')
+    const session = new WebRTCSession()
+    const video = document.createElement('video') as HTMLVideoElement
+    await session.Setup(video)
+    session.bindBonjour(() => undefined)
+    await expect(
+      session.acceptBonjourCall({
+        callId: 'call-2',
+        peerId: 'host-1',
+        offer: { type: 'offer', sdp: 'v=0' },
+        invite: null,
+      }),
+    ).rejects.toThrow(/invite is missing/)
   })
 })

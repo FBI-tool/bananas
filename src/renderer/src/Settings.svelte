@@ -20,6 +20,8 @@
   let mediaE2eeEnabled = $state(true)
   let cameraDeviceId = $state('')
   let microphoneDeviceId = $state('')
+  let bonjourEnabled = $state(false)
+  let bonjourServerUrl = $state('https://bonjour.p2p.kiwi')
   let cameras = $state<MediaDeviceInfo[]>([])
   let microphones = $state<MediaDeviceInfo[]>([])
   const isLinux = window.electron.process.platform === 'linux'
@@ -61,11 +63,15 @@
         mediaE2eeEnabled: e2eeEnabled ? true : mediaE2eeEnabled,
         cameraDeviceId,
         microphoneDeviceId,
-        iceServers: iceServersValue.split('\n').map((srv) => JSON.parse(srv))
+        iceServers: iceServersValue.split('\n').map((srv) => JSON.parse(srv)),
+        bonjourEnabled,
+        bonjourServerUrl
       })
       appState.debugLogsEnabled = debugLogsEnabled
+      appState.bonjourEnabled = bonjourEnabled
       debugLog.setEnabled(debugLogsEnabled)
       if (!debugLogsEnabled && appState.activeView === 'debug') appState.activeView = 'settings'
+      if (!bonjourEnabled && appState.activeView === 'bonjour') appState.activeView = 'settings'
       if (debugLogsEnabled) debugLog.info('settings', 'debug logs enabled')
       modalSuccessIsActive = true
       setTimeout(() => {
@@ -95,6 +101,8 @@
       cameraDeviceId = settings.cameraDeviceId ?? ''
       microphoneDeviceId = settings.microphoneDeviceId ?? ''
       iceServersValue = settings.iceServers.map((srv) => JSON.stringify(srv)).join('\n')
+      bonjourEnabled = settings.bonjourEnabled === true
+      bonjourServerUrl = settings.bonjourServerUrl || 'https://bonjour.p2p.kiwi'
       await refreshMediaDevices()
     })()
     navigator.mediaDevices.addEventListener('devicechange', onDeviceChange)
@@ -227,6 +235,17 @@
     {/if}
 
     <h2 class="text-xl font-semibold mt-2">{L.advanced()}</h2>
+
+    <label class="label cursor-pointer justify-start gap-2">
+      <input bind:checked={bonjourEnabled} class="checkbox" type="checkbox" id="bonjour_enabled" />
+      {L.bonjour_enabled()}
+    </label>
+    <p class="label">{L.bonjour_enabled_description()}</p>
+
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">{L.bonjour_server_url()}</legend>
+      <input bind:value={bonjourServerUrl} class="input w-full" type="url" id="bonjour_server_url" />
+    </fieldset>
 
     <label class="label cursor-pointer justify-start gap-2">
       <input bind:checked={debugLogsEnabled} class="checkbox" type="checkbox" id="debug_logs" />

@@ -26,4 +26,11 @@ describe('appState', () => {
     appState.navigationEnabled = true
     appState.hostUrl = ''
   })
+
+  it('hides bonjour until enabled', () => {
+    expect(appState.bonjourEnabled).toBe(false)
+    appState.bonjourEnabled = true
+    expect(appState.bonjourEnabled).toBe(true)
+    appState.bonjourEnabled = false
+  })
 })

@@ -46,6 +46,7 @@ class MockRTCPeerConnection {
   getTransceivers = vi.fn(() => [])
   addEventListener = vi.fn()
   removeEventListener = vi.fn()
+  addIceCandidate = vi.fn(async () => undefined)
   close = vi.fn()
 }
 
@@ -134,5 +135,19 @@ describe('PeerLink video senders', () => {
     await link.applyMediaE2ee()
     expect(attachSender).toHaveBeenCalled()
     expect(display.enabled).toBe(true)
+  })
+
+  it('emits trickle ICE candidates when wired', () => {
+    const onIceCandidate = vi.fn()
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: true,
+      events: { ...events, onIceCandidate },
+    })
+    const pc = link.pc as unknown as { onicecandidate: ((e: { candidate: null }) => void) | null }
+    pc.onicecandidate?.({ candidate: null })
+    expect(onIceCandidate).toHaveBeenCalledWith(null)
   })
 })

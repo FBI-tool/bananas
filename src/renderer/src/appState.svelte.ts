@@ -7,6 +7,7 @@ class AppState {
   isWatching = $state(false)
   isCoordinator = $state(false)
   debugLogsEnabled = $state(false)
+  bonjourEnabled = $state(false)
   hostUrl = $state('')
   participantUrl = $state('')
 }

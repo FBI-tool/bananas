@@ -439,6 +439,110 @@ type RootTranslation = {
 	 * A​ ​p​e​e​r​ ​i​d​e​n​t​i​t​y​ ​c​h​a​n​g​e​d​ ​d​u​r​i​n​g​ ​t​h​i​s​ ​s​e​s​s​i​o​n
 	 */
 	identity_changed: string
+	/**
+	 * B​o​n​j​o​u​r
+	 */
+	bonjour: string
+	/**
+	 * S​i​g​n​ ​i​n
+	 */
+	bonjour_sign_in: string
+	/**
+	 * S​i​g​n​ ​o​u​t
+	 */
+	bonjour_sign_out: string
+	/**
+	 * B​o​n​j​o​u​r​ ​i​s​ ​o​p​t​i​o​n​a​l​.​ ​S​i​g​n​ ​i​n​ ​w​i​t​h​ ​S​S​O​ ​o​n​ ​y​o​u​r​ ​c​o​n​f​i​g​u​r​e​d​ ​s​e​r​v​e​r​ ​t​o​ ​a​d​d​ ​c​o​n​t​a​c​t​s​ ​a​n​d​ ​p​l​a​c​e​ ​c​a​l​l​s​ ​w​i​t​h​o​u​t​ ​e​x​c​h​a​n​g​i​n​g​ ​k​i​w​i​:​/​/​ ​l​i​n​k​s​.
+	 */
+	bonjour_sign_in_description: string
+	/**
+	 * C​h​o​o​s​e​ ​a​ ​u​n​i​q​u​e​ ​u​s​e​r​n​a​m​e​ ​s​o​ ​o​t​h​e​r​s​ ​c​a​n​ ​a​d​d​ ​y​o​u​.
+	 */
+	bonjour_choose_username: string
+	/**
+	 * A​c​c​e​p​t​ ​c​o​n​t​a​c​t​ ​r​e​q​u​e​s​t​s​ ​(​t​i​m​e​-​l​i​m​i​t​e​d​)
+	 */
+	bonjour_accept_requests: string
+	/**
+	 * A​l​l​o​w​ ​c​o​n​t​a​c​t​s​ ​t​o​ ​a​s​k​ ​t​o​ ​j​o​i​n​ ​w​h​i​l​e​ ​I​ ​a​m​ ​i​n​ ​a​ ​c​a​l​l
+	 */
+	bonjour_accept_call_joins: string
+	/**
+	 * A​d​d​ ​c​o​n​t​a​c​t
+	 */
+	bonjour_add_contact: string
+	/**
+	 * S​e​n​d​ ​r​e​q​u​e​s​t
+	 */
+	bonjour_send_request: string
+	/**
+	 * I​n​c​o​m​i​n​g​ ​r​e​q​u​e​s​t​s
+	 */
+	bonjour_incoming: string
+	/**
+	 * S​e​n​t​ ​r​e​q​u​e​s​t​s
+	 */
+	bonjour_outgoing: string
+	/**
+	 * C​o​n​t​a​c​t​s
+	 */
+	bonjour_contacts: string
+	/**
+	 * C​a​l​l
+	 */
+	bonjour_call: string
+	/**
+	 * A​s​k​ ​t​o​ ​j​o​i​n
+	 */
+	bonjour_ask_to_join: string
+	/**
+	 * R​e​m​o​v​e
+	 */
+	bonjour_remove: string
+	/**
+	 * L​i​s​t​s
+	 */
+	bonjour_lists: string
+	/**
+	 * C​r​e​a​t​e​ ​l​i​s​t
+	 */
+	bonjour_create_list: string
+	/**
+	 * D​e​l​e​t​e
+	 */
+	bonjour_delete_list: string
+	/**
+	 * I​g​n​o​r​e​d
+	 */
+	bonjour_ignored: string
+	/**
+	 * I​g​n​o​r​e
+	 */
+	bonjour_ignore: string
+	/**
+	 * U​n​-​i​g​n​o​r​e
+	 */
+	bonjour_unignore: string
+	/**
+	 * I​n​c​o​m​i​n​g​ ​B​o​n​j​o​u​r​ ​c​a​l​l
+	 */
+	bonjour_incoming_call: string
+	/**
+	 * B​o​n​j​o​u​r​ ​r​e​q​u​e​s​t​ ​f​a​i​l​e​d
+	 */
+	bonjour_error: string
+	/**
+	 * E​n​a​b​l​e​ ​B​o​n​j​o​u​r​ ​(​o​p​t​i​o​n​a​l​ ​c​o​n​t​a​c​t​s​ ​s​e​r​v​e​r​)
+	 */
+	bonjour_enabled: string
+	/**
+	 * W​h​e​n​ ​e​n​a​b​l​e​d​,​ ​t​h​i​s​ ​a​p​p​ ​t​a​l​k​s​ ​t​o​ ​t​h​e​ ​B​o​n​j​o​u​r​ ​s​e​r​v​e​r​ ​y​o​u​ ​c​o​n​f​i​g​u​r​e​.​ ​M​e​d​i​a​ ​a​n​d​ ​M​L​S​ ​k​e​y​s​ ​s​t​a​y​ ​o​n​ ​y​o​u​r​ ​d​e​v​i​c​e​.​ ​O​f​f​ ​b​y​ ​d​e​f​a​u​l​t​.
+	 */
+	bonjour_enabled_description: string
+	/**
+	 * B​o​n​j​o​u​r​ ​s​e​r​v​e​r​ ​U​R​L
+	 */
+	bonjour_server_url: string
 }
 
 export type TranslationFunctions = {
@@ -862,6 +966,110 @@ export type TranslationFunctions = {
 	 * A peer identity changed during this session
 	 */
 	identity_changed: () => LocalizedString
+	/**
+	 * Bonjour
+	 */
+	bonjour: () => LocalizedString
+	/**
+	 * Sign in
+	 */
+	bonjour_sign_in: () => LocalizedString
+	/**
+	 * Sign out
+	 */
+	bonjour_sign_out: () => LocalizedString
+	/**
+	 * Bonjour is optional. Sign in with SSO on your configured server to add contacts and place calls without exchanging kiwi:// links.
+	 */
+	bonjour_sign_in_description: () => LocalizedString
+	/**
+	 * Choose a unique username so others can add you.
+	 */
+	bonjour_choose_username: () => LocalizedString
+	/**
+	 * Accept contact requests (time-limited)
+	 */
+	bonjour_accept_requests: () => LocalizedString
+	/**
+	 * Allow contacts to ask to join while I am in a call
+	 */
+	bonjour_accept_call_joins: () => LocalizedString
+	/**
+	 * Add contact
+	 */
+	bonjour_add_contact: () => LocalizedString
+	/**
+	 * Send request
+	 */
+	bonjour_send_request: () => LocalizedString
+	/**
+	 * Incoming requests
+	 */
+	bonjour_incoming: () => LocalizedString
+	/**
+	 * Sent requests
+	 */
+	bonjour_outgoing: () => LocalizedString
+	/**
+	 * Contacts
+	 */
+	bonjour_contacts: () => LocalizedString
+	/**
+	 * Call
+	 */
+	bonjour_call: () => LocalizedString
+	/**
+	 * Ask to join
+	 */
+	bonjour_ask_to_join: () => LocalizedString
+	/**
+	 * Remove
+	 */
+	bonjour_remove: () => LocalizedString
+	/**
+	 * Lists
+	 */
+	bonjour_lists: () => LocalizedString
+	/**
+	 * Create list
+	 */
+	bonjour_create_list: () => LocalizedString
+	/**
+	 * Delete
+	 */
+	bonjour_delete_list: () => LocalizedString
+	/**
+	 * Ignored
+	 */
+	bonjour_ignored: () => LocalizedString
+	/**
+	 * Ignore
+	 */
+	bonjour_ignore: () => LocalizedString
+	/**
+	 * Un-ignore
+	 */
+	bonjour_unignore: () => LocalizedString
+	/**
+	 * Incoming Bonjour call
+	 */
+	bonjour_incoming_call: () => LocalizedString
+	/**
+	 * Bonjour request failed
+	 */
+	bonjour_error: () => LocalizedString
+	/**
+	 * Enable Bonjour (optional contacts server)
+	 */
+	bonjour_enabled: () => LocalizedString
+	/**
+	 * When enabled, this app talks to the Bonjour server you configure. Media and MLS keys stay on your device. Off by default.
+	 */
+	bonjour_enabled_description: () => LocalizedString
+	/**
+	 * Bonjour server URL
+	 */
+	bonjour_server_url: () => LocalizedString
 }
 
 export type Formatters = {}
