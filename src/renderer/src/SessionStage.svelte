@@ -170,7 +170,7 @@
   }
 
   const onRemoteScreenDblClick = (): void => {
-    room.PingRemoteCursor('cursor-' + UUID)
+    room.PingRemoteCursor(room.localPeerId || 'cursor-' + UUID)
   }
 
   const onRemoteScreenMouseMove = (e: MouseEvent): void => {

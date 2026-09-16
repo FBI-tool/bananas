@@ -92,4 +92,20 @@ describe('OverlayBridge', () => {
     expect(done?.content?.cursors?.[0]?.pingScale).toBe(1)
     expect(vi.mocked(sidecar.updateOverlay).mock.calls.length).toBeGreaterThan(5)
   })
+
+  it('ignores ping when the id does not match a live cursor', async () => {
+    const sidecar = fakeSidecar()
+    const bridge = new OverlayBridge(sidecar)
+    await bridge.toggle(true)
+    await bridge.updateCursor({ id: 'peer-a', name: 'A', color: '#fff', x: 0.1, y: 0.2 })
+    await vi.advanceTimersByTimeAsync(20)
+    vi.mocked(sidecar.updateOverlay).mockClear()
+    await bridge.ping('cursor-uuid')
+    await vi.advanceTimersByTimeAsync(250)
+    const mid = vi.mocked(sidecar.updateOverlay).mock.calls.at(-1)?.[0] as {
+      content?: { cursors?: Array<{ pingScale?: number; ping?: boolean }> }
+    }
+    expect(mid?.content?.cursors?.[0]?.ping).toBeFalsy()
+    expect(mid?.content?.cursors?.[0]?.pingScale ?? 1).toBe(1)
+  })
 })

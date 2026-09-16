@@ -240,7 +240,7 @@ export class Room {
     this.broadcast({
       t: 'cursor-ping',
       v: PROTOCOL_VERSION,
-      cursorId,
+      cursorId: this.localPeerId || cursorId,
     })
   }
 
