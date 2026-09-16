@@ -199,10 +199,13 @@
 
   <div use:autoscroll class="flex-1 overflow-y-auto px-3 pb-2 space-y-2">
     {#each messages as message (message.id)}
-      <div class="text-sm">
-        <span class="font-semibold">{message.name}</span>
-        <span class="opacity-60 text-xs ml-1">{formatTime(message.at)}</span>
-        <p class="whitespace-pre-wrap break-words">{message.text}</p>
+      <!-- chat-end is for messages from other peers, chat-start is for messages from the local peer -->
+      <div class="chat {message.from === localPeer?.id ? 'chat-start' : 'chat-end'}">
+        <div class="chat-header">
+          {message.name}
+          <time class="text-xs opacity-50">{formatTime(message.at)}</time>
+        </div>
+        <div class="chat-bubble">{message.text}</div>
       </div>
     {/each}
   </div>
