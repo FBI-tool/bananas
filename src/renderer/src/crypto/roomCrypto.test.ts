@@ -88,7 +88,7 @@ describe('RoomCrypto MLS', () => {
     await expect(charlie.decryptApplication(before)).rejects.toThrow()
   }, 40000)
 
-  it('exports distinct media keys per kind and matching keys for both members', async () => {
+  it('exports matching video keys for screen and camera and matching keys for both members', async () => {
     const alice = new RoomCrypto()
     const bob = new RoomCrypto()
     await alice.createRoom('room-3', 'alice', identity('alice'))
@@ -97,6 +97,7 @@ describe('RoomCrypto MLS', () => {
     await bob.handleHandshakeMessage(add!.welcome!)
     const screen = await alice.exportMediaKey({ sender: 'alice', kind: 'screen', streamId: 's1' })
     const camera = await alice.exportMediaKey({ sender: 'alice', kind: 'camera', streamId: 's1' })
+    const audio = await alice.exportMediaKey({ sender: 'alice', kind: 'audio', streamId: 'a1' })
     const sameScreen = await alice.exportMediaKey({
       sender: 'alice',
       kind: 'screen',
@@ -107,7 +108,8 @@ describe('RoomCrypto MLS', () => {
       kind: 'screen',
       streamId: 'other',
     })
-    expect(screen).not.toEqual(camera)
+    expect(screen).toEqual(camera)
+    expect(screen).not.toEqual(audio)
     expect(screen).toEqual(sameScreen)
     expect(screen).toEqual(bobScreen)
     const kid = alice.epoch & 0xff

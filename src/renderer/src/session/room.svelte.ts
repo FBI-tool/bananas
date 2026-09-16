@@ -1672,14 +1672,17 @@ export class Room {
       this.remoteVideo.srcObject = stream
     }
     if (this.remoteVideo.srcObject) {
-      void this.remoteVideo.play?.().then(() => {
-        debugLog.info('room', 'remote video play', {
-          videoWidth: this.remoteVideo?.videoWidth,
-          videoHeight: this.remoteVideo?.videoHeight,
+      void this.remoteVideo
+        .play?.()
+        .then(() => {
+          debugLog.info('room', 'remote video play', {
+            videoWidth: this.remoteVideo?.videoWidth,
+            videoHeight: this.remoteVideo?.videoHeight,
+          })
         })
-      }).catch((error) => {
-        debugLog.warn('room', 'remote video play failed', error)
-      })
+        .catch((error) => {
+          debugLog.warn('room', 'remote video play failed', error)
+        })
     }
   }
 

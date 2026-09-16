@@ -338,7 +338,33 @@ export class PeerLink {
 
   private async attachSender(sender: RTCRtpSender, identity: MediaStreamIdentity): Promise<void> {
     this.extraSenders.set(sender, identity)
+    this.preferVideoCodecs(sender, identity.kind)
     await this.pushSender(sender, identity)
+  }
+
+  private preferVideoCodecs(sender: RTCRtpSender, kind: MediaStreamIdentity['kind']): void {
+    if (kind === 'audio') return
+    const transceiver = this.pc.getTransceivers?.().find((item) => item.sender === sender)
+    const capabilities = (
+      globalThis as {
+        RTCRtpSender?: { getCapabilities?: (kind: string) => RTCRtpCapabilities | null }
+      }
+    ).RTCRtpSender?.getCapabilities?.('video')
+    if (!transceiver?.setCodecPreferences || !capabilities) return
+    const rank = (mime: string): number => {
+      const type = mime.toLowerCase()
+      if (type === 'video/vp8') return 0
+      if (type === 'video/vp9') return 1
+      if (type.includes('h264')) return 2
+      return 3
+    }
+    try {
+      transceiver.setCodecPreferences(
+        [...capabilities.codecs].sort((left, right) => rank(left.mimeType) - rank(right.mimeType)),
+      )
+    } catch {
+      // ignore
+    }
   }
 
   async attachReceiver(receiver: RTCRtpReceiver, identity: MediaStreamIdentity): Promise<void> {

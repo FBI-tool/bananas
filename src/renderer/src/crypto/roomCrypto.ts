@@ -372,11 +372,12 @@ export class RoomCrypto {
 
   async exportMediaKey(stream: MediaStreamIdentity): Promise<Uint8Array> {
     if (!this.state || !this.cs) throw new Error('room crypto is not ready')
+    const mediaKind = stream.kind === 'audio' ? 'audio' : 'video'
     return mlsExporter(
       this.state.keySchedule.exporterSecret,
-      exporterLabel('media', `${stream.kind}/${stream.sender}`),
+      exporterLabel('media', `${mediaKind}/${stream.sender}`),
       te.encode(
-        `${this.roomId}|${this.epoch}|${stream.sender}|${stream.kind}|${CRYPTO_PROTOCOL_VERSION}`,
+        `${this.roomId}|${this.epoch}|${stream.sender}|${mediaKind}|${CRYPTO_PROTOCOL_VERSION}`,
       ),
       16,
       this.cs,

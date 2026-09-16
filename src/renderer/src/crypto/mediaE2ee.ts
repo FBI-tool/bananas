@@ -1,13 +1,14 @@
 import {
   assignEncodedFrameData,
   encodedFrameBytes,
-  isSframePayload,
   sframeDecrypt,
   sframeEncrypt,
   scheduleVideoKeyFrame,
   supportsEncodedTransform,
 } from './sframe'
 import { asBufferSource } from './constants'
+import { debugLog } from '../debugLog.svelte'
+import { openEncodedMedia, sealEncodedMedia } from './encodedMedia'
 import type { RoomCrypto } from './roomCrypto'
 import type { MediaStreamIdentity } from './roomCrypto'
 
@@ -78,6 +79,12 @@ export class MediaE2EE {
     attached.kid = kid
     attached.keys.set(kid, key)
     this.workers.get(target)?.postMessage({ type: 'key', kid, key: asBufferSource(key) })
+    debugLog.info('media', 'installed media key', {
+      sender: attached.identity.sender,
+      kind: attached.identity.kind,
+      kid,
+      worker: this.workers.has(target),
+    })
     if (attached.identity.kind !== 'audio') scheduleVideoKeyFrame(target)
   }
 
@@ -101,6 +108,13 @@ export class MediaE2EE {
       throw new Error('media e2ee transform is unavailable')
     }
     const worker = new Worker(new URL('./sframeWorker.ts', import.meta.url), { type: 'module' })
+    worker.onmessage = (
+      event: MessageEvent<{ type?: string; message?: string; detail?: unknown }>,
+    ) => {
+      if (event.data?.type === 'media-e2ee') {
+        debugLog.info('media', event.data.message ?? 'worker', event.data.detail)
+      }
+    }
     this.workers.set(target, worker)
     const attached = this.attachedOf(target)
     if (attached) {
@@ -123,6 +137,7 @@ export class MediaE2EE {
     target: RTCRtpSender | RTCRtpReceiver,
   ): void {
     const counters = new Map<number, bigint>()
+    let logged = 0
     const transform = new TransformStream<EncodedFrame, EncodedFrame>({
       transform: async (frame, controller) => {
         const attached = this.attachedOf(target)
@@ -134,18 +149,48 @@ export class MediaE2EE {
           if (!key) return
           const ctr = (counters.get(kid) ?? 0n) + 1n
           counters.set(kid, ctr)
-          const sealed = await sframeEncrypt(data, key, kid, ctr)
+          const { sealed, headerLen } = await sealEncodedMedia(frame, data, key, kid, ctr)
+          if (logged < 4) {
+            logged += 1
+            debugLog.info('media', 'sframe encrypt', {
+              kind: attached.identity.kind,
+              type: 'type' in frame ? frame.type : 'audio',
+              headerLen,
+              inBytes: data.length,
+              outBytes: sealed.length,
+              kid,
+            })
+          }
           assignEncodedFrameData(frame, sealed)
           controller.enqueue(frame)
           return
         }
-        if (!isSframePayload(data)) return
         try {
-          const opened = await sframeDecrypt(data, (kid) => attached.keys.get(kid))
+          const { opened, headerLen } = await openEncodedMedia(frame, data, (kid) =>
+            attached.keys.get(kid),
+          )
+          if (logged < 4) {
+            logged += 1
+            debugLog.info('media', 'sframe decrypt', {
+              kind: attached.identity.kind,
+              type: 'type' in frame ? frame.type : 'audio',
+              headerLen,
+              inBytes: data.length,
+              outBytes: opened.length,
+            })
+          }
           assignEncodedFrameData(frame, opened)
           controller.enqueue(frame)
         } catch {
-          return
+          if (logged < 4) {
+            logged += 1
+            debugLog.warn('media', 'sframe decrypt dropped', {
+              kind: attached.identity.kind,
+              type: 'type' in frame ? frame.type : 'audio',
+              inBytes: data.length,
+              first: data[0],
+            })
+          }
         }
       },
     })

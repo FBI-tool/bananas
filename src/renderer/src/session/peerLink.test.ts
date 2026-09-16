@@ -43,6 +43,7 @@ class MockRTCPeerConnection {
     return sender
   })
   getSenders = vi.fn(() => this.senders)
+  getTransceivers = vi.fn(() => [])
   addEventListener = vi.fn()
   removeEventListener = vi.fn()
   close = vi.fn()

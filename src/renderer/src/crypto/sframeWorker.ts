@@ -1,14 +1,10 @@
-import {
-  assignEncodedFrameData,
-  encodedFrameBytes,
-  isSframePayload,
-  sframeDecrypt,
-  sframeEncrypt,
-} from './sframe'
+import { assignEncodedFrameData, encodedFrameBytes } from './sframe'
+import { openEncodedMedia, sealEncodedMedia } from './encodedMedia'
 
 const keys = new Map<number, Uint8Array>()
 const counters = new Map<number, bigint>()
 let activeKid = 0
+let logged = 0
 
 type ScriptTransformer = {
   readable: ReadableStream
@@ -18,6 +14,12 @@ type ScriptTransformer = {
 
 const asBytes = (value: ArrayBuffer | Uint8Array): Uint8Array =>
   value instanceof Uint8Array ? value : new Uint8Array(value)
+
+const report = (message: string, detail: Record<string, unknown>): void => {
+  if (logged >= 4) return
+  logged += 1
+  self.postMessage({ type: 'media-e2ee', message, detail })
+}
 
 self.addEventListener('rtctransform', (event: Event) => {
   const transformer = (event as unknown as { transformer: ScriptTransformer }).transformer
@@ -32,14 +34,31 @@ self.addEventListener('rtctransform', (event: Event) => {
         if (!key) return
         const ctr = (counters.get(kid) ?? 0n) + 1n
         counters.set(kid, ctr)
-        const sealed = await sframeEncrypt(data, key, kid, ctr)
+        const { sealed, headerLen } = await sealEncodedMedia(frame, data, key, kid, ctr)
+        report('sframe encrypt', {
+          type: 'type' in frame ? frame.type : 'audio',
+          headerLen,
+          inBytes: data.length,
+          outBytes: sealed.length,
+          kid,
+        })
         assignEncodedFrameData(frame, sealed)
       } else {
-        if (!isSframePayload(data)) return
         try {
-          const opened = await sframeDecrypt(data, (kid) => keys.get(kid))
+          const { opened, headerLen } = await openEncodedMedia(frame, data, (kid) => keys.get(kid))
+          report('sframe decrypt', {
+            type: 'type' in frame ? frame.type : 'audio',
+            headerLen,
+            inBytes: data.length,
+            outBytes: opened.length,
+          })
           assignEncodedFrameData(frame, opened)
         } catch {
+          report('sframe decrypt dropped', {
+            type: 'type' in frame ? frame.type : 'audio',
+            inBytes: data.length,
+            first: data[0],
+          })
           return
         }
       }
