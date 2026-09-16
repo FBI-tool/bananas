@@ -58,12 +58,43 @@ PY
   exit 1
 }
 
+build_darwin() {
+  local clang_arch="$1"
+  local odin_target="$2"
+  local suffix="$3"
+  local out_bin="$4"
+  local clang="${CC:-clang}"
+  local draw_obj="$OUT_DIR/overlay_draw.${suffix}.o"
+  local mac_obj="$OUT_DIR/overlay_macos.${suffix}.o"
+
+  "$clang" -arch "$clang_arch" -c "$ROOT/c/overlay_draw.c" -o "$draw_obj" -O2 -I"$ROOT/c"
+  "$clang" -arch "$clang_arch" -c "$ROOT/c/overlay_macos.m" -o "$mac_obj" -fobjc-arc -O2 -I"$ROOT/c"
+  "$ODIN" build "$ROOT" -target:"$odin_target" -out:"$out_bin" -o:speed \
+    "-extra-linker-flags:$draw_obj $mac_obj -arch $clang_arch -framework Cocoa -framework AppKit -framework Foundation -framework ApplicationServices -lm"
+}
+
+assert_universal_sidecar() {
+  local bin="$1"
+  local archs
+  archs="$(lipo -archs "$bin")"
+  echo "sidecar architectures: $archs"
+  if ! echo "$archs" | grep -qw arm64; then
+    echo "sidecar missing arm64 slice: $archs" >&2
+    exit 1
+  fi
+  if ! echo "$archs" | grep -qw x86_64; then
+    echo "sidecar missing x86_64 slice: $archs" >&2
+    exit 1
+  fi
+}
+
 gen_cursor_png_h
 
 EXTRA_FLAGS=()
 UNAME="$(uname -s)"
 ARCH="$(uname -m)"
 CC="${CC:-cc}"
+SKIP_FINAL_BUILD=0
 
 case "$UNAME" in
   Linux)
@@ -90,11 +121,24 @@ case "$UNAME" in
     EXTRA_FLAGS+=("-extra-linker-flags:$LIBS")
     ;;
   Darwin)
-    DRAW_OBJ="$OUT_DIR/overlay_draw.o"
-    MAC_OBJ="$OUT_DIR/overlay_macos.o"
-    "$CC" -c "$ROOT/c/overlay_draw.c" -o "$DRAW_OBJ" -O2 -I"$ROOT/c"
-    clang -c "$ROOT/c/overlay_macos.m" -o "$MAC_OBJ" -fobjc-arc -O2 -I"$ROOT/c"
-    EXTRA_FLAGS+=("-extra-linker-flags:$DRAW_OBJ $MAC_OBJ -framework Cocoa -framework AppKit -framework Foundation -framework ApplicationServices -lm")
+    SIDECAR_ARCH="${SIDECAR_ARCH:-host}"
+    if [[ "$SIDECAR_ARCH" == "universal" ]]; then
+      ARM_BIN="$OUT_DIR/${BIN_NAME}-arm64"
+      AMD_BIN="$OUT_DIR/${BIN_NAME}-amd64"
+      build_darwin arm64 darwin_arm64 arm64 "$ARM_BIN"
+      build_darwin x86_64 darwin_amd64 amd64 "$AMD_BIN"
+      lipo -create "$ARM_BIN" "$AMD_BIN" -output "$OUT_DIR/$BIN_NAME"
+      rm -f "$ARM_BIN" "$AMD_BIN"
+      assert_universal_sidecar "$OUT_DIR/$BIN_NAME"
+      echo "built $OUT_DIR/$BIN_NAME (Darwin universal)"
+    elif [[ "$ARCH" == "x86_64" ]]; then
+      build_darwin x86_64 darwin_amd64 host "$OUT_DIR/$BIN_NAME"
+      echo "built $OUT_DIR/$BIN_NAME ($UNAME $ARCH)"
+    else
+      build_darwin arm64 darwin_arm64 host "$OUT_DIR/$BIN_NAME"
+      echo "built $OUT_DIR/$BIN_NAME ($UNAME $ARCH)"
+    fi
+    SKIP_FINAL_BUILD=1
     ;;
   MINGW*|MSYS*|CYGWIN*|Windows_NT)
     DRAW_OBJ="$OUT_DIR/overlay_draw.o"
@@ -106,5 +150,7 @@ case "$UNAME" in
     ;;
 esac
 
-"$ODIN" build "$ROOT" -out:"$OUT_DIR/$BIN_NAME" -o:speed "${EXTRA_FLAGS[@]}"
-echo "built $OUT_DIR/$BIN_NAME ($UNAME $ARCH)"
+if [[ "$SKIP_FINAL_BUILD" -eq 0 ]]; then
+  "$ODIN" build "$ROOT" -out:"$OUT_DIR/$BIN_NAME" -o:speed "${EXTRA_FLAGS[@]}"
+  echo "built $OUT_DIR/$BIN_NAME ($UNAME $ARCH)"
+fi

@@ -64,6 +64,11 @@ The binary is an electron-builder extra resource
 asar. If the binary is missing (for example Linux arm64 cross-builds),
 the app starts without native overlays.
 
+macOS release builds ship a universal (`arm64` + `x86_64`) sidecar
+inside the universal DMG. The helper is codesigned with hardened
+runtime as part of the app bundle; release CI fails if it is missing,
+thin, or unsigned. Local `sidecar:dev` builds remain host-arch.
+
 ## Phase A acceptance gate
 
 Phase A is complete when all of the following hold. Cryptography in

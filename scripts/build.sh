@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-if [ -z "$VERSION" ]; then echo "Error: VERSION is not set"; exit 1; fi
-if [ -z "$PLATFORM" ]; then echo "Error: PLATFORM is not set"; exit 1; fi
+if [ -z "${VERSION:-}" ]; then echo "Error: VERSION is not set"; exit 1; fi
+if [ -z "${PLATFORM:-}" ]; then echo "Error: PLATFORM is not set"; exit 1; fi
 
 update_package_json_version() {
   local tmp
@@ -9,17 +10,45 @@ update_package_json_version() {
   jq --arg v "$VERSION" '.version = $v' package.json > "$tmp" && mv "$tmp" package.json
 }
 
+sidecar_binary_name() {
+  if [ "$PLATFORM" = "windows" ]; then
+    echo "p2p-kiwi-sidecar.exe"
+  else
+    echo "p2p-kiwi-sidecar"
+  fi
+}
+
+require_sidecar_binary() {
+  local bin="native/overlay-sidecar/dist/$(sidecar_binary_name)"
+  if [ ! -f "$bin" ]; then
+    echo "Error: sidecar binary missing: $bin" >&2
+    exit 1
+  fi
+  if [ "$PLATFORM" = "macos" ]; then
+    local archs
+    archs="$(lipo -archs "$bin")"
+    echo "sidecar architectures: $archs"
+    if ! echo "$archs" | grep -qw arm64; then
+      echo "Error: sidecar missing arm64 slice: $archs" >&2
+      exit 1
+    fi
+    if ! echo "$archs" | grep -qw x86_64; then
+      echo "Error: sidecar missing x86_64 slice: $archs" >&2
+      exit 1
+    fi
+  fi
+}
+
 update_package_json_version
 
 build_sidecar() {
   mkdir -p native/overlay-sidecar/dist
-  if command -v odin >/dev/null 2>&1; then
-    ./native/overlay-sidecar/scripts/build.sh native/overlay-sidecar/dist || {
-      echo "Warning: sidecar build failed; continuing with Electron overlay fallback"
-    }
-  else
-    echo "Warning: odin not found; packaging without native sidecar"
+  if ! command -v odin >/dev/null 2>&1; then
+    echo "Error: odin compiler not found; native sidecar is required for this platform" >&2
+    exit 1
   fi
+  ./native/overlay-sidecar/scripts/build.sh native/overlay-sidecar/dist
+  require_sidecar_binary
 }
 
 build_windows() {
@@ -46,7 +75,7 @@ build_linux_debug() {
 }
 
 build_macos() {
-  build_sidecar
+  SIDECAR_ARCH=universal build_sidecar
   pnpm run build && ./node_modules/.bin/electron-builder --mac --publish never
 }
 

@@ -31,17 +31,17 @@ jobs:
             --user \
             --if-not-exists \
             flathub https://flathub.org/repo/flathub.flatpakrepo
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-      - name: Cache Bun
-        uses: actions/cache@v5
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
         with:
-          path: ~/.bun/install/cache
-          key: linux-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            linux-bun-${{ hashFiles('**/bun.lock') }}
+          version: 10
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Install Odin
         run: ./scripts/ci-install-odin.sh
       - name: Build Linux
@@ -78,17 +78,17 @@ jobs:
             --user \
             --if-not-exists \
             flathub https://flathub.org/repo/flathub.flatpakrepo
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-      - name: Cache Bun
-        uses: actions/cache@v5
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
         with:
-          path: ~/.bun/install/cache
-          key: linux-arm64-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            linux-arm64-bun-${{ hashFiles('**/bun.lock') }}
+          version: 10
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Build Linux ARM64
         run: make linux-arm64
         env:
@@ -142,19 +142,19 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-      - name: Cache Bun
-        uses: actions/cache@v5
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
         with:
-          path: ~/.bun/install/cache
-          key: windows-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            windows-bun-${{ hashFiles('**/bun.lock') }}
+          version: 10
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
       - name: Install make
         run: choco install make --no-progress --yes
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Install Odin
         shell: bash
         run: ./scripts/ci-install-odin.sh
@@ -181,17 +181,17 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-      - name: Cache Bun
-        uses: actions/cache@v5
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
         with:
-          path: ~/.bun/install/cache
-          key: macos-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            macos-bun-${{ hashFiles('**/bun.lock') }}
+          version: 10
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Install Odin
         run: ./scripts/ci-install-odin.sh
       - name: Install the Apple certificate and API key

@@ -67,6 +67,7 @@ flatpak:
 deb:
   artifactName: p2p-kiwi_${arch}.${ext}
 npmRebuild: false
+afterSign: scripts/after-sign-macos.cjs
 publish:
   provider: generic
   url: https://p2p.kiwi/auto-updates/

@@ -27,6 +27,31 @@ if [ ! -f "$DMG" ]; then
   exit 1
 fi
 
+SIDECAR="${SIDECAR:-$APP/Contents/Resources/sidecar/p2p-kiwi-sidecar}"
+if [ ! -f "$SIDECAR" ]; then
+  echo "Error: sidecar not found: $SIDECAR"
+  exit 1
+fi
+
+ARCHS="$(lipo -archs "$SIDECAR")"
+echo "sidecar architectures: $ARCHS"
+if ! echo "$ARCHS" | grep -qw arm64; then
+  echo "Error: sidecar missing arm64 slice: $ARCHS"
+  exit 1
+fi
+if ! echo "$ARCHS" | grep -qw x86_64; then
+  echo "Error: sidecar missing x86_64 slice: $ARCHS"
+  exit 1
+fi
+
+codesign --verify --strict "$SIDECAR"
+DISPLAY_OUT="$(codesign --display --verbose=2 "$SIDECAR" 2>&1)"
+echo "$DISPLAY_OUT"
+if ! echo "$DISPLAY_OUT" | grep -q '(runtime)'; then
+  echo "Error: sidecar is not signed with hardened runtime"
+  exit 1
+fi
+
 codesign --verify --deep --strict "$APP"
 
 output=$(xcrun notarytool submit "$DMG" \
