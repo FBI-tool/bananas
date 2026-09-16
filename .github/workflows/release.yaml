@@ -46,11 +46,16 @@ jobs:
         run: make linux
         env:
           VERSION: ${{ env.VERSION }}
-      - name: Linux Release
-        run: make linux-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ env.VERSION }}
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            dist/p2p-kiwi_amd64.deb
+            dist/p2p-kiwi_amd64.snap
+            dist/p2p-kiwi_x86_64.AppImage
+            dist/p2p-kiwi_x86_64.flatpak
+          if-no-files-found: error
   build-linux-arm64:
     name: Build Linux ARM64
     runs-on: ubuntu-latest
@@ -86,14 +91,18 @@ jobs:
         run: make linux-arm64
         env:
           VERSION: ${{ env.VERSION }}
-      - name: Linux ARM64 Release
-        run: make linux-arm64-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ env.VERSION }}
+      - name: Upload Linux ARM64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: |
+            dist/p2p-kiwi_arm64.deb
+            dist/p2p-kiwi_arm64.AppImage
+            dist/p2p-kiwi_aarch64.flatpak
+          if-no-files-found: error
   # deploy-aur:
   #   name: Deploy to AUR
-  #   needs: build-linux
+  #   needs: publish-release
   #   runs-on: ubuntu-latest
   #   container:
   #     # INFO:  Use Arch image to access updpkgsums
@@ -149,12 +158,12 @@ jobs:
         run: make windows
         env:
           VERSION: ${{ env.VERSION }}
-      - name: Windows Release
-        shell: bash
-        run: make windows-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ env.VERSION }}
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/p2p-kiwi-setup_x64.exe
+          if-no-files-found: error
   build-macos:
     name: Build MacOS
     runs-on: macos-latest
@@ -178,12 +187,57 @@ jobs:
             macos-bun-${{ hashFiles('**/bun.lock') }}
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Install the Apple certificate and API key
+        id: keychain
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_P12_PASSWORD }}
+          AUTH_KEY_BASE64: ${{ secrets.APPLE_AUTH_KEY_BASE64 }}
+        run: ./scripts/ci-import-apple-certs.sh
       - name: Build MacOS
-        run: make macos
         env:
           VERSION: ${{ env.VERSION }}
-      - name: MacOS Release
-        run: make macos-release
+          CODESIGNING_IDENTITY: ${{ secrets.APPLE_CODESIGNING_IDENTITY }}
+        run: |
+          export CSC_NAME=$(base64 --decode <<< "$CODESIGNING_IDENTITY")
+          make macos
+      - name: Notarize macOS DMG
+        env:
+          AUTH_KEY_PATH: ${{ steps.keychain.outputs.auth_key_path }}
+          KEY_ID: ${{ secrets.APPLE_KEY_ID }}
+          ISSUER: ${{ secrets.APPLE_ISSUER }}
+        run: |
+          export KEY_ID=$(base64 --decode <<< "$KEY_ID")
+          export ISSUER=$(base64 --decode <<< "$ISSUER")
+          ./scripts/ci-notarize-macos.sh
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/p2p-kiwi_universal.dmg
+          if-no-files-found: error
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - build-linux
+      - build-linux-arm64
+      - build-windows
+      - build-macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up env
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release with all artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ env.VERSION }}
+        run: ./scripts/release.sh

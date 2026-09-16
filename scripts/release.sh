@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-if [ -z "$VERSION" ]; then echo "Error: VERSION is not set"; exit 1; fi
-if [ -z "$PLATFORM" ]; then echo "Error: PLATFORM is not set"; exit 1; fi
+if [ -z "${VERSION:-}" ]; then echo "Error: VERSION is not set"; exit 1; fi
 
 BIN_NAME="p2p-kiwi"
 RELEASE_ACTION="create"
 GH_TAG="v$VERSION"
+PLATFORM="${PLATFORM:-all}"
 FILES=()
 
 LINUX_FILES=(
@@ -27,6 +28,13 @@ WINDOWS_FILES=(
 
 MACOS_FILES=(
   "dist/${BIN_NAME}_universal.dmg"
+)
+
+ALL_FILES=(
+  "${LINUX_FILES[@]}"
+  "${LINUX_ARM64_FILES[@]}"
+  "${WINDOWS_FILES[@]}"
+  "${MACOS_FILES[@]}"
 )
 
 set_release_action() {
@@ -59,6 +67,9 @@ check_files_exist() {
 
 set_files_based_on_platform() {
   case $PLATFORM in
+    all)
+      FILES=("${ALL_FILES[@]}")
+      ;;
     linux)
       FILES=("${LINUX_FILES[@]}")
       ;;
@@ -86,8 +97,15 @@ print_files() {
 }
 
 do_gh_release() {
+  if [ "$PLATFORM" == "all" ]; then
+    echo "Creating new release $GH_TAG"
+    print_files
+    gh release create --generate-notes "$GH_TAG" "${FILES[@]}"
+    return
+  fi
+
   if [ "$RELEASE_ACTION" == "edit" ]; then
-    if [ -z "$REPLACE" ]; then
+    if [ -z "${REPLACE:-}" ]; then
       echo "Trying to upload files to existing release $GH_TAG"
       print_files
       gh release upload "$GH_TAG" "${FILES[@]}"
@@ -104,9 +122,11 @@ do_gh_release() {
 }
 
 release() {
-  set_release_action
   set_files_based_on_platform
   check_files_exist
+  if [ "$PLATFORM" != "all" ]; then
+    set_release_action
+  fi
   do_gh_release
 }
 

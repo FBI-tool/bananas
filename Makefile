@@ -15,6 +15,9 @@ linux-debug:
 windows:
 	PLATFORM=windows ./scripts/build.sh
 
+release:
+	PLATFORM=all ./scripts/release.sh
+
 linux-release:
 	REPLACE=1 PLATFORM=linux ./scripts/release.sh
 
