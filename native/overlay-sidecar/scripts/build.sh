@@ -143,7 +143,6 @@ case "$UNAME" in
   MINGW*|MSYS*|CYGWIN*|Windows_NT)
     WIN_CC="${WIN_CC:-clang}"
 
-    # Build from the Odin package directory so linker inputs can stay relative.
     pushd "$ROOT" >/dev/null
 
     mkdir -p dist
@@ -160,16 +159,11 @@ case "$UNAME" in
       -O2 \
       -Ic
 
-    EXTRA_FLAGS+=(
-      "-extra-linker-flags:dist/overlay_draw.obj dist/overlay_win32.obj"
-    )
-
     BIN_NAME="${BIN_NAME}.exe"
 
     "$ODIN" build . \
       -out:"dist/$BIN_NAME" \
-      -o:speed \
-      "${EXTRA_FLAGS[@]}"
+      -o:speed
 
     popd >/dev/null
 
