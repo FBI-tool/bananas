@@ -183,11 +183,21 @@ export class PeerLink {
     await this.replaceOrAddSender('camera', track, stream)
   }
 
+  private hintDisplayTrack(kind: 'display' | 'camera', track: MediaStreamTrack | null): void {
+    if (kind !== 'display' || !track) return
+    try {
+      track.contentHint = 'detail'
+    } catch {
+      // ignore
+    }
+  }
+
   private async replaceOrAddSender(
     kind: 'display' | 'camera',
     track: MediaStreamTrack | null,
     stream: MediaStream | null,
   ): Promise<void> {
+    this.hintDisplayTrack(kind, track)
     const existing = kind === 'display' ? this.displaySender : this.cameraSender
     if (existing) {
       await existing.replaceTrack(track)

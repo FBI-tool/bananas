@@ -1,4 +1,12 @@
-import { isSframePayload, sframeDecrypt, sframeEncrypt, supportsEncodedTransform } from './sframe'
+import {
+  assignEncodedFrameData,
+  encodedFrameBytes,
+  isSframePayload,
+  sframeDecrypt,
+  sframeEncrypt,
+  scheduleVideoKeyFrame,
+  supportsEncodedTransform,
+} from './sframe'
 import { asBufferSource } from './constants'
 import type { RoomCrypto } from './roomCrypto'
 import type { MediaStreamIdentity } from './roomCrypto'
@@ -70,6 +78,7 @@ export class MediaE2EE {
     attached.kid = kid
     attached.keys.set(kid, key)
     this.workers.get(target)?.postMessage({ type: 'key', kid, key: asBufferSource(key) })
+    if (attached.identity.kind !== 'audio') scheduleVideoKeyFrame(target)
   }
 
   private attachedOf(target: RTCRtpSender | RTCRtpReceiver): Attached | undefined {
@@ -118,7 +127,7 @@ export class MediaE2EE {
       transform: async (frame, controller) => {
         const attached = this.attachedOf(target)
         if (!attached) return
-        const data = new Uint8Array(frame.data)
+        const data = encodedFrameBytes(frame.data)
         if (role === 'sender') {
           const kid = this.epoch & 0xff
           const key = attached.keys.get(kid)
@@ -126,14 +135,14 @@ export class MediaE2EE {
           const ctr = (counters.get(kid) ?? 0n) + 1n
           counters.set(kid, ctr)
           const sealed = await sframeEncrypt(data, key, kid, ctr)
-          frame.data = asBufferSource(sealed).buffer
+          assignEncodedFrameData(frame, sealed)
           controller.enqueue(frame)
           return
         }
         if (!isSframePayload(data)) return
         try {
           const opened = await sframeDecrypt(data, (kid) => attached.keys.get(kid))
-          frame.data = asBufferSource(opened).buffer
+          assignEncodedFrameData(frame, opened)
           controller.enqueue(frame)
         } catch {
           return

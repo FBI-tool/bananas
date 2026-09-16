@@ -1630,10 +1630,13 @@ export class Room {
       this.attachRemoteAudio(peerId, stream)
     }
     event.track.addEventListener('unmute', () => {
+      const settings = event.track.getSettings?.()
       debugLog.info('room', 'track unmuted', {
         kind: event.track.kind,
         peerId,
         streamId: stream.id,
+        width: settings?.width,
+        height: settings?.height,
       })
       if (event.track.kind === 'video') this.attachPresenterVideo()
       if (event.track.kind === 'audio') this.attachRemoteAudio(peerId, stream)
@@ -1669,7 +1672,12 @@ export class Room {
       this.remoteVideo.srcObject = stream
     }
     if (this.remoteVideo.srcObject) {
-      void this.remoteVideo.play?.().catch((error) => {
+      void this.remoteVideo.play?.().then(() => {
+        debugLog.info('room', 'remote video play', {
+          videoWidth: this.remoteVideo?.videoWidth,
+          videoHeight: this.remoteVideo?.videoHeight,
+        })
+      }).catch((error) => {
         debugLog.warn('room', 'remote video play failed', error)
       })
     }

@@ -117,3 +117,45 @@ export const supportsEncodedTransform = (): boolean =>
   typeof RTCRtpScriptTransform === 'function' ||
   typeof (RTCRtpSender.prototype as { createEncodedStreams?: unknown }).createEncodedStreams ===
     'function'
+
+type KeyframeSender = RTCRtpSender & {
+  generateKeyFrame?: (rids?: string[]) => Promise<void>
+}
+
+type KeyframeReceiver = RTCRtpReceiver & {
+  requestKeyFrame?: () => void
+}
+
+export const requestVideoKeyFrame = (target: RTCRtpSender | RTCRtpReceiver): void => {
+  const generate = (target as KeyframeSender).generateKeyFrame
+  if (typeof generate === 'function') {
+    void generate.call(target).catch((error) => {
+      console.warn('generateKeyFrame failed', error)
+    })
+    return
+  }
+  const request = (target as KeyframeReceiver).requestKeyFrame
+  if (typeof request === 'function') request.call(target)
+}
+
+const KEYFRAME_RETRY_MS = [50, 250, 1000] as const
+
+export const scheduleVideoKeyFrame = (target: RTCRtpSender | RTCRtpReceiver): void => {
+  requestVideoKeyFrame(target)
+  for (const delay of KEYFRAME_RETRY_MS) {
+    globalThis.setTimeout(() => requestVideoKeyFrame(target), delay)
+  }
+}
+
+export const encodedFrameBytes = (data: BufferSource): Uint8Array => {
+  const view =
+    data instanceof ArrayBuffer
+      ? new Uint8Array(data)
+      : new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+  return asBufferSource(view)
+}
+
+export const assignEncodedFrameData = (frame: { data: BufferSource }, bytes: Uint8Array): void => {
+  const copy = asBufferSource(bytes)
+  frame.data = copy.buffer
+}

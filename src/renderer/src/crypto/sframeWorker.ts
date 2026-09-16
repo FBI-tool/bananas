@@ -1,5 +1,10 @@
-import { isSframePayload, sframeDecrypt, sframeEncrypt } from './sframe'
-import { asBufferSource } from './constants'
+import {
+  assignEncodedFrameData,
+  encodedFrameBytes,
+  isSframePayload,
+  sframeDecrypt,
+  sframeEncrypt,
+} from './sframe'
 
 const keys = new Map<number, Uint8Array>()
 const counters = new Map<number, bigint>()
@@ -20,7 +25,7 @@ self.addEventListener('rtctransform', (event: Event) => {
   if (options.kid !== undefined) activeKid = options.kid
   const transform = new TransformStream({
     async transform(frame: RTCEncodedVideoFrame | RTCEncodedAudioFrame, controller) {
-      const data = new Uint8Array(frame.data)
+      const data = encodedFrameBytes(frame.data)
       if (options.role === 'sender') {
         const kid = activeKid
         const key = keys.get(kid)
@@ -28,12 +33,12 @@ self.addEventListener('rtctransform', (event: Event) => {
         const ctr = (counters.get(kid) ?? 0n) + 1n
         counters.set(kid, ctr)
         const sealed = await sframeEncrypt(data, key, kid, ctr)
-        frame.data = asBufferSource(sealed).buffer
+        assignEncodedFrameData(frame, sealed)
       } else {
         if (!isSframePayload(data)) return
         try {
           const opened = await sframeDecrypt(data, (kid) => keys.get(kid))
-          frame.data = asBufferSource(opened).buffer
+          assignEncodedFrameData(frame, opened)
         } catch {
           return
         }
