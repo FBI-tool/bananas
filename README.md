@@ -53,7 +53,7 @@ yay -S p2p-kiwi-bin`
 brew install --cask p2p-kiwi
 ```
 
-## `E2EE` (End-to-End Encryption) 
+## `E2EE` (End-to-End Encryption)
 
 > [!WARNING]
 > Don't determine whether the call is `E2EE` by checking whether WebRTC reports `DTLS-SRTP`.

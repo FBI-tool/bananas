@@ -66,11 +66,13 @@ build_darwin() {
   local clang="${CC:-clang}"
   local draw_obj="$OUT_DIR/overlay_draw.${suffix}.o"
   local mac_obj="$OUT_DIR/overlay_macos.${suffix}.o"
+  local input_obj="$OUT_DIR/input_macos.${suffix}.o"
 
   "$clang" -arch "$clang_arch" -c "$ROOT/c/overlay_draw.c" -o "$draw_obj" -O2 -I"$ROOT/c"
   "$clang" -arch "$clang_arch" -c "$ROOT/c/overlay_macos.m" -o "$mac_obj" -fobjc-arc -O2 -I"$ROOT/c"
+  "$clang" -arch "$clang_arch" -c "$ROOT/c/input_macos.m" -o "$input_obj" -fobjc-arc -O2 -I"$ROOT/c"
   "$ODIN" build "$ROOT" -target:"$odin_target" -out:"$out_bin" -o:speed \
-    "-extra-linker-flags:$draw_obj $mac_obj -arch $clang_arch -framework Cocoa -framework AppKit -framework Foundation -framework ApplicationServices -lm"
+    "-extra-linker-flags:$draw_obj $mac_obj $input_obj -arch $clang_arch -framework Cocoa -framework AppKit -framework Foundation -framework ApplicationServices -framework Carbon -lm"
 }
 
 assert_universal_sidecar() {
@@ -100,6 +102,7 @@ case "$UNAME" in
   Linux)
     DRAW_OBJ="$OUT_DIR/overlay_draw.o"
     LINUX_OBJ="$OUT_DIR/overlay_linux.o"
+    INPUT_OBJ="$OUT_DIR/input_linux.o"
     WAYLAND_OBJ="$OUT_DIR/wlr-layer-shell-protocol.o"
     "$CC" -c "$ROOT/c/overlay_draw.c" -o "$DRAW_OBJ" -fPIC -O2 -I"$ROOT/c"
     WAYLAND_FLAGS=()
@@ -113,10 +116,12 @@ case "$UNAME" in
       "$CC" -c "$OUT_DIR/wlr-layer-shell-protocol.c" -o "$WAYLAND_OBJ" -fPIC -O2 $(pkg-config --cflags wayland-client)
       WAYLAND_FLAGS=(-DHAVE_WAYLAND -I"$ROOT/c" $(pkg-config --cflags wayland-client))
       "$CC" -c "$ROOT/c/overlay_linux.c" -o "$LINUX_OBJ" -fPIC -O2 "${WAYLAND_FLAGS[@]}" $(pkg-config --cflags x11 xfixes xext xrandr 2>/dev/null || true)
-      LIBS="$DRAW_OBJ $LINUX_OBJ $WAYLAND_OBJ $(pkg-config --libs x11 xfixes xext xrandr wayland-client 2>/dev/null || echo '-lX11 -lXfixes -lXext -lXrandr -lwayland-client') -lm"
+      "$CC" -c "$ROOT/c/input_linux.c" -o "$INPUT_OBJ" -fPIC -O2 -I"$ROOT/c" $(pkg-config --cflags x11 xtst 2>/dev/null || true)
+      LIBS="$DRAW_OBJ $LINUX_OBJ $INPUT_OBJ $WAYLAND_OBJ $(pkg-config --libs x11 xfixes xext xrandr xtst wayland-client 2>/dev/null || echo '-lX11 -lXfixes -lXext -lXrandr -lXtst -lwayland-client') -lm"
     else
       "$CC" -c "$ROOT/c/overlay_linux.c" -o "$LINUX_OBJ" -fPIC -O2 -I"$ROOT/c" $(pkg-config --cflags x11 xfixes xext xrandr 2>/dev/null || true)
-      LIBS="$DRAW_OBJ $LINUX_OBJ $(pkg-config --libs x11 xfixes xext xrandr 2>/dev/null || echo '-lX11 -lXfixes -lXext -lXrandr') -lm"
+      "$CC" -c "$ROOT/c/input_linux.c" -o "$INPUT_OBJ" -fPIC -O2 -I"$ROOT/c" $(pkg-config --cflags x11 xtst 2>/dev/null || true)
+      LIBS="$DRAW_OBJ $LINUX_OBJ $INPUT_OBJ $(pkg-config --libs x11 xfixes xext xrandr xtst 2>/dev/null || echo '-lX11 -lXfixes -lXext -lXrandr -lXtst') -lm"
     fi
     EXTRA_FLAGS+=("-extra-linker-flags:$LIBS")
     ;;
@@ -169,6 +174,7 @@ case "$UNAME" in
 
     compile_win_obj c/overlay_draw.c dist/overlay_draw.obj
     compile_win_obj c/overlay_win32.c dist/overlay_win32.obj
+    compile_win_obj c/input_win32.c dist/input_win32.obj
 
     BIN_NAME="${BIN_NAME}.exe"
 

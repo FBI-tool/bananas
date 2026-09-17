@@ -4,6 +4,7 @@
   import { L } from './translations'
   import { appState } from './appState.svelte'
   import { debugLog } from './debugLog.svelte'
+  import { DEFAULT_EMERGENCY_HOTKEY, type EmergencyHotkey } from './session/emergencyHotkey'
 
   let colorPreviewIcon: HTMLElement | undefined = $state()
   let usernameValue = $state('Kiwi')
@@ -22,6 +23,7 @@
   let microphoneDeviceId = $state('')
   let bonjourEnabled = $state(false)
   let bonjourServerUrl = $state('https://bonjour.p2p.kiwi')
+  let emergencyHotkey = $state<EmergencyHotkey>({ ...DEFAULT_EMERGENCY_HOTKEY })
   let cameras = $state<MediaDeviceInfo[]>([])
   let microphones = $state<MediaDeviceInfo[]>([])
   const isLinux = window.electron.process.platform === 'linux'
@@ -65,7 +67,8 @@
         microphoneDeviceId,
         iceServers: iceServersValue.split('\n').map((srv) => JSON.parse(srv)),
         bonjourEnabled,
-        bonjourServerUrl
+        bonjourServerUrl,
+        emergencyHotkey
       })
       appState.debugLogsEnabled = debugLogsEnabled
       appState.bonjourEnabled = bonjourEnabled
@@ -103,6 +106,7 @@
       iceServersValue = settings.iceServers.map((srv) => JSON.stringify(srv)).join('\n')
       bonjourEnabled = settings.bonjourEnabled === true
       bonjourServerUrl = settings.bonjourServerUrl || 'https://bonjour.p2p.kiwi'
+      if (settings.emergencyHotkey) emergencyHotkey = settings.emergencyHotkey
       await refreshMediaDevices()
     })()
     navigator.mediaDevices.addEventListener('devicechange', onDeviceChange)

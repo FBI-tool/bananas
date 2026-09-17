@@ -86,8 +86,9 @@
       }
       return
     }
-    const post = (): Promise<unknown> =>
-      window.KiwiApi.bonjour.signal(callId, payload.type, key, payload)
+    const post = async (): Promise<void> => {
+      await window.KiwiApi.bonjour.signal(callId, payload.type, key, payload)
+    }
     if (payload.type === 'ice') {
       signalQueue = signalQueue.then(post).catch(() => undefined)
       return
@@ -184,7 +185,11 @@
           }
           return
         }
-        applyPlainSignal(event)
+        applyPlainSignal({
+          callId: event.callId,
+          senderId: event.senderId,
+          plain: event.plain,
+        })
         if (event.plain.type === 'hangup') reset()
       }
       if (event.type === 'call-accepted' && event.callId && room.bonjourCallId === event.callId) {

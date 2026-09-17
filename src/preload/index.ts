@@ -107,6 +107,13 @@ const KiwiApi = {
     iceServers: IceServer[]
     bonjourEnabled?: boolean
     bonjourServerUrl?: string
+    emergencyHotkey?: {
+      ctrl: boolean
+      alt: boolean
+      shift: boolean
+      meta: boolean
+      key: 'Escape'
+    }
   }> => {
     return await ipcRenderer.invoke('getSettings')
   },
@@ -124,6 +131,13 @@ const KiwiApi = {
     iceServers: IceServer[]
     bonjourEnabled?: boolean
     bonjourServerUrl?: string
+    emergencyHotkey?: {
+      ctrl: boolean
+      alt: boolean
+      shift: boolean
+      meta: boolean
+      key: 'Escape'
+    }
   }): Promise<void> => {
     ipcRenderer.invoke('updateSettings', settings)
   },
@@ -152,6 +166,59 @@ const KiwiApi = {
   },
   removeRemoteCursor: async (peerId: string): Promise<void> => {
     ipcRenderer.invoke('removeRemoteCursor', peerId)
+  },
+  remoteControl: {
+    getCapabilities: async () => ipcRenderer.invoke('remoteControl:getCapabilities'),
+    arm: async (grant: { mouse: boolean; keyboard: boolean; generation?: number }) =>
+      ipcRenderer.invoke('remoteControl:arm', grant),
+    disarm: async () => ipcRenderer.invoke('remoteControl:disarm'),
+    pointerMove: async (input: unknown) => ipcRenderer.invoke('remoteControl:pointerMove', input),
+    pointerButton: async (input: unknown) =>
+      ipcRenderer.invoke('remoteControl:pointerButton', input),
+    wheel: async (input: unknown) => ipcRenderer.invoke('remoteControl:wheel', input),
+    key: async (input: unknown) => ipcRenderer.invoke('remoteControl:key', input),
+    releaseAll: async () => ipcRenderer.invoke('remoteControl:releaseAll'),
+    requestPermission: async () => ipcRenderer.invoke('remoteControl:requestPermission'),
+    onEmergencyDisabled: (cb: (event: { reason: string }) => void): (() => void) => {
+      const listener = (_: unknown, event: { reason: string }): void => cb(event)
+      ipcRenderer.on('remote-control-emergency', listener)
+      return () => {
+        ipcRenderer.removeListener('remote-control-emergency', listener)
+      }
+    },
+    onStatusChanged: (cb: (event: unknown) => void): (() => void) => {
+      const listener = (_: unknown, event: unknown): void => cb(event)
+      ipcRenderer.on('remote-control-status', listener)
+      return () => {
+        ipcRenderer.removeListener('remote-control-status', listener)
+      }
+    },
+    setLocalCapture: async (enabled: boolean) =>
+      ipcRenderer.invoke('remoteControl:setLocalCapture', enabled),
+    onLocalKey: (
+      cb: (event: {
+        action: 'down' | 'up'
+        code: string
+        location: number
+        repeat: boolean
+        modifiers: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }
+      }) => void,
+    ): (() => void) => {
+      const listener = (
+        _: unknown,
+        event: {
+          action: 'down' | 'up'
+          code: string
+          location: number
+          repeat: boolean
+          modifiers: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }
+        },
+      ): void => cb(event)
+      ipcRenderer.on('remoteControl:local-key', listener)
+      return () => {
+        ipcRenderer.removeListener('remoteControl:local-key', listener)
+      }
+    },
   },
   onSelectScreenShareSource: (handler: SelectScreenShareSourceHandler): void => {
     selectScreenShareSourceHandler = handler

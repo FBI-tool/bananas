@@ -3,7 +3,7 @@ import {
   encodeEnvelope,
   FrameDecoder,
   parseEnvelope,
-  rejectRemoteInput,
+  isKnownSidecarType,
   SIDECAR_MAX_FRAME_BYTES,
   SIDECAR_PROTOCOL_VERSION,
 } from './protocol'
@@ -43,9 +43,13 @@ describe('sidecar protocol', () => {
     expect(parseEnvelope({ protocolVersion: 99, type: 'ok', payload: {} })).toBeNull()
   })
 
-  it('flags remote input types', () => {
-    expect(rejectRemoteInput('pointer-event')).toBe(true)
-    expect(rejectRemoteInput('update-overlay')).toBe(false)
+  it('flags remote control request types as known', () => {
+    expect(isKnownSidecarType('pointer-move')).toBe(true)
+    expect(isKnownSidecarType('remote-control-arm')).toBe(true)
+    expect(isKnownSidecarType('remote-control-disabled')).toBe(true)
+    expect(isKnownSidecarType('keyboard-capture-arm')).toBe(true)
+    expect(isKnownSidecarType('captured-key')).toBe(true)
+    expect(isKnownSidecarType('request-control')).toBe(false)
   })
 })
 

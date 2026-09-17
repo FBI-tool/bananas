@@ -1,4 +1,4 @@
-export const SIDECAR_PROTOCOL_VERSION = 1
+export const SIDECAR_PROTOCOL_VERSION = 2
 export const SIDECAR_MAX_FRAME_BYTES = 1024 * 1024
 export const SIDECAR_HEARTBEAT_INTERVAL_MS = 2000
 export const SIDECAR_HANDSHAKE_TIMEOUT_MS = 5000
@@ -12,11 +12,17 @@ export const SIDECAR_REQUEST_TYPES = [
   'destroy-overlay',
   'heartbeat',
   'shutdown',
-  'request-control',
-  'grant-control',
-  'revoke-control',
-  'pointer-event',
+  'remote-control-arm',
+  'remote-control-disarm',
+  'pointer-move',
+  'pointer-button',
+  'pointer-wheel',
   'keyboard-event',
+  'release-all',
+  'set-emergency-hotkey',
+  'request-input-permission',
+  'keyboard-capture-arm',
+  'keyboard-capture-disarm',
 ] as const
 
 export const SIDECAR_RESPONSE_TYPES = [
@@ -30,19 +36,25 @@ export const SIDECAR_RESPONSE_TYPES = [
   'event',
 ] as const
 
-export const REMOTE_INPUT_TYPES = [
-  'request-control',
-  'grant-control',
-  'revoke-control',
-  'pointer-event',
-  'keyboard-event',
+export const SIDECAR_EVENT_TYPES = [
+  'remote-control-disabled',
+  'remote-control-status',
+  'captured-key',
 ] as const
 
 export type SidecarRequestType = (typeof SIDECAR_REQUEST_TYPES)[number]
 export type SidecarResponseType = (typeof SIDECAR_RESPONSE_TYPES)[number]
-export type RemoteInputType = (typeof REMOTE_INPUT_TYPES)[number]
+export type SidecarEventType = (typeof SIDECAR_EVENT_TYPES)[number]
 
 export type PermissionState = 'unknown' | 'granted' | 'denied'
+
+export type RemoteControlUnavailableReason =
+  | 'unsupported'
+  | 'accessibility-permission'
+  | 'input-monitoring-permission'
+  | 'uinput-permission'
+  | 'evdev-permission'
+  | 'hotkey-registration-failed'
 
 export type SidecarCapabilities = {
   overlays: boolean
@@ -51,12 +63,34 @@ export type SidecarCapabilities = {
   globalKeyboardObservation: boolean
   pointerInjection: boolean
   keyboardInjection: boolean
+  emergencyHotkey: boolean
+  keyboardCapture: boolean
   displayEnumeration: boolean
   backend?: 'wayland' | 'x11' | 'none' | string
+  unavailableReason?: RemoteControlUnavailableReason
   permissions: {
     accessibility?: PermissionState
     screenRecording?: PermissionState
     inputMonitoring?: PermissionState
+  }
+}
+
+export type SidecarEventMap = {
+  'remote-control-disabled': {
+    reason: 'emergency-hotkey' | 'native-error' | 'shutdown'
+    generation?: number
+  }
+  'remote-control-status': {
+    armed: boolean
+    mouse: boolean
+    keyboard: boolean
+  }
+  'captured-key': {
+    keyCode: number
+    down: boolean
+    repeat?: boolean
+    location?: number
+    modifiers?: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }
   }
 }
 
@@ -115,10 +149,10 @@ export type Envelope = {
 
 const REQUEST_TYPE_SET = new Set<string>(SIDECAR_REQUEST_TYPES)
 const RESPONSE_TYPE_SET = new Set<string>(SIDECAR_RESPONSE_TYPES)
-const REMOTE_INPUT_SET = new Set<string>(REMOTE_INPUT_TYPES)
+const EVENT_TYPE_SET = new Set<string>(SIDECAR_EVENT_TYPES)
 
-export const isRemoteInputType = (type: string): type is RemoteInputType =>
-  REMOTE_INPUT_SET.has(type)
+export const isSidecarEventType = (type: string): type is SidecarEventType =>
+  EVENT_TYPE_SET.has(type)
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -242,6 +276,4 @@ export const isOverlaySpec = (value: unknown): value is OverlaySpec => {
 }
 
 export const isKnownSidecarType = (type: string): boolean =>
-  REQUEST_TYPE_SET.has(type) || RESPONSE_TYPE_SET.has(type)
-
-export const rejectRemoteInput = (type: string): boolean => isRemoteInputType(type)
+  REQUEST_TYPE_SET.has(type) || RESPONSE_TYPE_SET.has(type) || EVENT_TYPE_SET.has(type)

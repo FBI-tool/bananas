@@ -13,6 +13,7 @@ const en = {
   copy_my_connection_string: 'Copy my connection string',
   disconnect: 'Disconnect',
   fullscreen: 'Fullscreen',
+  exit_fullscreen: 'Exit fullscreen',
   host_a_session: 'Host a session',
   host_connection_string: 'Host connection string',
   hosting_a_session: 'Hosting a session',
@@ -140,6 +141,21 @@ const en = {
   bonjour_enabled_description:
     'When enabled, this app talks to the Bonjour server you configure. Media and MLS keys stay on your device. Off by default.',
   bonjour_server_url: 'Bonjour server URL',
+  remote_control: 'Remote control',
+  remote_control_mouse: 'Mouse',
+  remote_control_keyboard: 'Keyboard',
+  remote_control_request: '{name} is requesting control',
+  remote_control_allow_mouse: 'Allow mouse',
+  remote_control_allow_keyboard: 'Allow keyboard',
+  remote_control_allow_both: 'Allow both',
+  remote_control_deny: 'Deny',
+  remote_control_active: 'Remote control active',
+  remote_control_controlling: 'Controlling {name}',
+  remote_control_emergency: 'Remote control disabled by host hotkey',
+  remote_control_emergency_hotkey: 'Emergency stop: {hotkey}',
+  remote_control_unavailable: 'Remote control is unavailable',
+  remote_control_request_permission: 'Grant accessibility permission',
+  remote_control_request_button: 'Request control',
 } satisfies BaseTranslation
 
 export default en

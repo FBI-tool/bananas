@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   PROTOCOL_VERSION,
+  domainForControl,
   parseControlMessage,
   serializeControlMessage,
   shouldEncryptControl,
@@ -308,5 +309,34 @@ describe('controlProtocol', () => {
         color: '#fff',
       }),
     ).toBe(false)
+  })
+
+  it('accepts remote-control grant messages on the remote-input domain', () => {
+    const grant = parseControlMessage(
+      JSON.stringify({
+        t: 'remote-control-grant',
+        v: 1,
+        peerId: 'a',
+        mouse: true,
+        keyboard: false,
+        generation: 3,
+      }),
+    )
+    expect(grant?.t).toBe('remote-control-grant')
+    if (grant?.t === 'remote-control-grant') {
+      expect(domainForControl(grant)).toBe('remote-input')
+      expect(shouldEncryptControl(grant)).toBe(true)
+    }
+    expect(
+      parseControlMessage(
+        JSON.stringify({
+          t: 'remote-control-revoke',
+          v: 1,
+          peerId: 'a',
+          generation: 4,
+          reason: 'emergency',
+        }),
+      )?.t,
+    ).toBe('remote-control-revoke')
   })
 })

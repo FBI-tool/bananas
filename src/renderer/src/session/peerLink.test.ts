@@ -25,7 +25,9 @@ class MockRTCPeerConnection {
   onnegotiationneeded: (() => void) | null = null
   private senders: Array<RTCRtpSender & { replaceTrack: ReturnType<typeof vi.fn> }> = []
 
-  createDataChannel = vi.fn((label: string) => new MockDataChannel(label))
+  createDataChannel = vi.fn(
+    (label: string, _opts?: RTCDataChannelInit) => new MockDataChannel(label),
+  )
   createOffer = vi.fn(async () => ({ type: 'offer' as const, sdp: 'v=0' }))
   createAnswer = vi.fn(async () => ({ type: 'answer' as const, sdp: 'v=0' }))
   setLocalDescription = vi.fn(async (desc?: RTCSessionDescriptionInit) => {
@@ -149,5 +151,42 @@ describe('PeerLink video senders', () => {
     const pc = link.pc as unknown as { onicecandidate: ((e: { candidate: null }) => void) | null }
     pc.onicecandidate?.({ candidate: null })
     expect(onIceCandidate).toHaveBeenCalledWith(null)
+  })
+
+  it('creates dedicated remote-input data channels as the offerer', () => {
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: true,
+      events,
+    })
+    const pc = link.pc as unknown as MockRTCPeerConnection
+    const labels = pc.createDataChannel.mock.calls.map((call) => call[0])
+    expect(labels).toEqual(['control', 'mls', 'remote-input-motion', 'remote-input-actions'])
+    expect(pc.createDataChannel.mock.calls[2]?.[1]).toEqual({
+      ordered: false,
+      maxRetransmits: 0,
+    })
+    expect(pc.createDataChannel.mock.calls[3]?.[1]).toEqual({ ordered: true })
+  })
+
+  it('sends remote-input payloads on the matching channel', () => {
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: true,
+      events,
+    })
+    const pc = link.pc as unknown as MockRTCPeerConnection
+    const motion = pc.createDataChannel.mock.results[2]?.value as MockDataChannel
+    const actions = pc.createDataChannel.mock.results[3]?.value as MockDataChannel
+    motion.readyState = 'open'
+    actions.readyState = 'open'
+    expect(link.sendRemoteInputMotion('{"t":"pointer-move"}')).toBe(true)
+    expect(link.sendRemoteInputAction('{"t":"key"}')).toBe(true)
+    expect(motion.send).toHaveBeenCalledWith('{"t":"pointer-move"}')
+    expect(actions.send).toHaveBeenCalledWith('{"t":"key"}')
   })
 })

@@ -49,9 +49,12 @@ test_version_mismatch :: proc(t: ^testing.T) {
 
 @(test)
 test_remote_input_types_are_flagged :: proc(t: ^testing.T) {
-	testing.expect(t, is_remote_input("pointer-event"))
-	testing.expect(t, is_remote_input("keyboard-event"))
-	testing.expect(t, !is_remote_input("update-overlay"))
+	testing.expect(t, is_remote_control("pointer-move"))
+	testing.expect(t, is_remote_control("keyboard-event"))
+	testing.expect(t, is_remote_control("keyboard-capture-arm"))
+	testing.expect(t, is_remote_control("keyboard-capture-disarm"))
+	testing.expect(t, !is_remote_control("update-overlay"))
+	testing.expect(t, !is_remote_control("captured-key"))
 }
 
 @(test)

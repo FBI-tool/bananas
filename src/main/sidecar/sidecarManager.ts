@@ -7,7 +7,7 @@ import net from 'node:net'
 import {
   encodeEnvelope,
   FrameDecoder,
-  rejectRemoteInput,
+  isSidecarEventType,
   SIDECAR_HANDSHAKE_TIMEOUT_MS,
   SIDECAR_HEARTBEAT_INTERVAL_MS,
   SIDECAR_PROTOCOL_VERSION,
@@ -15,6 +15,8 @@ import {
   type Envelope,
   type OverlaySpec,
   type SidecarCapabilities,
+  type SidecarEventMap,
+  type SidecarEventType,
 } from './protocol'
 
 export type SidecarLogger = {
@@ -36,6 +38,8 @@ export const defaultCapabilities = (): SidecarCapabilities => ({
   globalKeyboardObservation: false,
   pointerInjection: false,
   keyboardInjection: false,
+  emergencyHotkey: false,
+  keyboardCapture: false,
   displayEnumeration: false,
   backend: 'none',
   permissions: {
@@ -50,6 +54,29 @@ const isCapabilities = (value: unknown): value is SidecarCapabilities => {
   const v = value as Record<string, unknown>
   return typeof v.overlays === 'boolean' && typeof v.clickThrough === 'boolean'
 }
+
+const asBool = (value: unknown, fallback: boolean): boolean =>
+  typeof value === 'boolean' ? value : fallback
+
+const sanitizeCapabilities = (value: SidecarCapabilities): SidecarCapabilities => ({
+  overlays: asBool(value.overlays, false),
+  clickThrough: asBool(value.clickThrough, false),
+  globalPointerObservation: asBool(value.globalPointerObservation, false),
+  globalKeyboardObservation: asBool(value.globalKeyboardObservation, false),
+  pointerInjection: asBool(value.pointerInjection, false),
+  keyboardInjection: asBool(value.keyboardInjection, false),
+  emergencyHotkey: asBool(value.emergencyHotkey, false),
+  keyboardCapture: asBool(value.keyboardCapture, false),
+  displayEnumeration: asBool(value.displayEnumeration, false),
+  backend: typeof value.backend === 'string' ? value.backend : 'none',
+  unavailableReason:
+    typeof value.unavailableReason === 'string' ? value.unavailableReason : undefined,
+  permissions: {
+    accessibility: value.permissions?.accessibility ?? 'unknown',
+    screenRecording: value.permissions?.screenRecording ?? 'unknown',
+    inputMonitoring: value.permissions?.inputMonitoring ?? 'unknown',
+  },
+})
 
 export const resolveSidecarPath = (
   cwd = process.cwd(),
@@ -96,6 +123,9 @@ export class SidecarManager {
   private crashing = false
   private logger: SidecarLogger
   private debugLogs: boolean
+  private eventListeners = new Map<SidecarEventType, Set<(payload: never) => void>>()
+  private startedListeners = new Set<() => void>()
+  private stoppedListeners = new Set<() => void>()
 
   private spawnImpl: typeof nodeSpawn
   private resolvePathImpl: () => string | null
@@ -120,8 +150,61 @@ export class SidecarManager {
     return this.started && this.capabilities.overlays
   }
 
+  isStarted(): boolean {
+    return this.started
+  }
+
   getCapabilities(): SidecarCapabilities {
     return this.capabilities
+  }
+
+  on<K extends SidecarEventType>(
+    type: K,
+    listener: (payload: SidecarEventMap[K]) => void,
+  ): () => void {
+    const set = this.eventListeners.get(type) ?? new Set()
+    set.add(listener as (payload: never) => void)
+    this.eventListeners.set(type, set)
+    return () => {
+      set.delete(listener as (payload: never) => void)
+    }
+  }
+
+  onStarted(listener: () => void): () => void {
+    this.startedListeners.add(listener)
+    return () => {
+      this.startedListeners.delete(listener)
+    }
+  }
+
+  onStopped(listener: () => void): () => void {
+    this.stoppedListeners.add(listener)
+    return () => {
+      this.stoppedListeners.delete(listener)
+    }
+  }
+
+  async send(type: string, payload: unknown, timeoutMs = 4000): Promise<Envelope> {
+    const res = await this.request(type, payload, timeoutMs)
+    if (
+      type === 'set-emergency-hotkey' ||
+      type === 'request-input-permission' ||
+      type === 'keyboard-capture-arm'
+    ) {
+      await this.refreshCapabilities()
+    }
+    return res
+  }
+
+  async refreshCapabilities(): Promise<void> {
+    if (!this.started) return
+    const caps = await this.request('get-capabilities', {})
+    if (caps.type === 'capabilities' && isCapabilities(caps.payload)) {
+      this.capabilities = sanitizeCapabilities({
+        ...defaultCapabilities(),
+        ...caps.payload,
+      })
+    }
   }
 
   async start(): Promise<void> {
@@ -187,14 +270,10 @@ export class SidecarManager {
       }
       const caps = await this.request('get-capabilities', {})
       if (caps.type === 'capabilities' && isCapabilities(caps.payload)) {
-        this.capabilities = {
+        this.capabilities = sanitizeCapabilities({
           ...defaultCapabilities(),
           ...caps.payload,
-          globalPointerObservation: false,
-          globalKeyboardObservation: false,
-          pointerInjection: false,
-          keyboardInjection: false,
-        }
+        })
       }
       this.started = true
       this.lastStartAt = Date.now()
@@ -204,7 +283,13 @@ export class SidecarManager {
       this.logger.info('sidecar started', {
         overlays: this.capabilities.overlays,
         backend: this.capabilities.backend ?? 'none',
+        pointerInjection: this.capabilities.pointerInjection,
+        keyboardInjection: this.capabilities.keyboardInjection,
+        emergencyHotkey: this.capabilities.emergencyHotkey,
+        keyboardCapture: this.capabilities.keyboardCapture,
+        unavailableReason: this.capabilities.unavailableReason,
       })
+      for (const listener of this.startedListeners) listener()
     } catch (error) {
       this.logger.warn('sidecar start failed', error)
       await this.stop()
@@ -250,6 +335,8 @@ export class SidecarManager {
     this.decoder.reset()
     this.overlayId = null
     this.capabilities = defaultCapabilities()
+    this.emitEvent('remote-control-disabled', { reason: 'shutdown' })
+    for (const listener of this.stoppedListeners) listener()
   }
 
   async restart(): Promise<void> {
@@ -300,6 +387,10 @@ export class SidecarManager {
     this.started = false
     this.socket?.destroy()
     this.socket = null
+    if (wasStarted) {
+      this.emitEvent('remote-control-disabled', { reason: 'shutdown' })
+      for (const listener of this.stoppedListeners) listener()
+    }
     if (!wasStarted || this.crashing) return
     const now = Date.now()
     if (now - this.lastStartAt < 5000) this.restartCount += 1
@@ -326,12 +417,21 @@ export class SidecarManager {
       return
     }
     for (const frame of frames) {
-      if (rejectRemoteInput(frame.type)) continue
       if (frame.requestId && this.pending.has(frame.requestId)) {
         this.pending.get(frame.requestId)?.resolve(frame)
         this.pending.delete(frame.requestId)
+        continue
+      }
+      if (isSidecarEventType(frame.type)) {
+        this.emitEvent(frame.type, frame.payload as SidecarEventMap[typeof frame.type])
       }
     }
+  }
+
+  private emitEvent<K extends SidecarEventType>(type: K, payload: SidecarEventMap[K]): void {
+    const set = this.eventListeners.get(type)
+    if (!set) return
+    for (const listener of set) listener(payload as never)
   }
 
   private request(type: string, payload: unknown, timeoutMs = 4000): Promise<Envelope> {

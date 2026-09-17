@@ -12,9 +12,21 @@ the UI branch on OS names:
 - `overlays` - native overlay windows are available
 - `clickThrough` - overlays ignore pointer input
 - `displayEnumeration` - display list/bounds are available
-- Global observation and input injection stay `false` in this release
+- `pointerInjection` / `keyboardInjection` - OS input injection is
+  available for remote control
+- `emergencyHotkey` - the sidecar-native emergency stop is registered
+- `keyboardCapture` - exclusive keyboard grab on the **controlling**
+  peer so chords reach the host instead of local menus / the compositor
+- `globalKeyboardObservation` - physical emergency-chord observation
+  (required on Wayland together with injection)
 - Permission probes (`accessibility`, `screenRecording`,
-  `inputMonitoring`) are reported without prompting
+  `inputMonitoring`) are reported without prompting unless the user
+  explicitly requests Accessibility from the UI
+
+Remote control stays **disarmed by default**. The sidecar never
+auto-restores an armed state after restart, IPC loss, or emergency stop.
+If injection or the emergency hotkey is unavailable, capabilities stay
+false and the app continues without remote control.
 
 If `overlays` is false, p2p.kiwi keeps the existing Electron cursor
 window. Calls still work.
@@ -52,10 +64,60 @@ overlay without restarting the sidecar.
 ## macOS
 
 Borderless transparent `NSWindow` at a high overlay level,
-`ignoresMouseEvents`, no activation, Retina scale. Accessibility and
-Input Monitoring status may be reported for future input features; this
-release does not prompt for those permissions and does not inject
-input.
+`ignoresMouseEvents`, no activation, Retina scale. Remote input uses
+Quartz `CGEvent` injection and a Carbon global hotkey. Both require
+Accessibility permission. Capability probes never prompt; the session UI
+exposes an explicit action to open the macOS permission dialog.
+
+## Remote input
+
+The sidecar protocol version is **2**. Renderer and Electron main own
+peer authorization. Odin owns only:
+
+- armed / allow pointer / allow keyboard
+- injection of sanitized desktop coordinates and portable key ids
+- tracking of keys/buttons it injected, and `release-all`
+- the physical emergency hotkey (`Ctrl+Esc` by default)
+- exclusive keyboard capture on the controlling peer
+  (`keyboard-capture-arm` / `captured-key`); mouse still comes from the
+  renderer video element. Ctrl+Esc still fires the emergency stop while
+  capturing (the grab is released immediately).
+
+Emergency disable order inside Odin, without waiting for Electron:
+
+1. latch capture + injection (`emergency_generation`); queued arm
+   requests without that generation are rejected
+2. `armed = false`
+3. release every remotely-held key and button
+4. emit `remote-control-disabled` with `generation`
+
+Ctrl+Esc is observed from evdev on a real keyboard **and** from an X11
+root grab when `DISPLAY` is available. XTest injects via
+`XKeysymToKeycode`, not a hardcoded evdev+8 offset.
+
+### Platform backends
+
+- **Windows:** `SendInput` with `MOUSEEVENTF_ABSOLUTE |
+MOUSEEVENTF_VIRTUALDESK`; `RegisterHotKey` on a message-only window
+- **macOS:** CoreGraphics event posts; Accessibility-gated
+- **Linux X11:** XTest injection and `XGrabKey` on the root window.
+  Controller-side capture uses `EVIOCGRAB` when evdev is readable,
+  otherwise `XGrabKeyboard`.
+- **Linux Wayland:** `/dev/uinput` virtual device (not XWayland fakery)
+  plus evdev observation of the physical emergency chord. Remote control
+  is not armable unless **both** succeed. Distros may need a udev rule
+  granting the user `/dev/uinput` and keyboard `event*` nodes; do not
+  run the sidecar as root. The sidecar ignores its own uinput device
+  when watching evdev so injected keys cannot trip the emergency chord.
+  Controller-side capture requires an evdev `EVIOCGRAB`; XGrabKeyboard
+  is not treated as success on Wayland sessions.
+- **Linux hybrid (common):** many Wayland sessions still report overlay
+  `backend: x11` (XWayland / no layer-shell). Input still prefers
+  uinput+evdev, but if those devices are not usable it falls back to
+  XTest + `XGrabKey`. That fallback only reaches X11/XWayland windows.
+
+Logs record event types and counters only, never key identities or
+typed text.
 
 ## Packaging
 
@@ -84,6 +146,6 @@ Phase B must not start from a sidecar that fails this gate.
 - Killing the sidecar process does not end the call
 - Sidecar restart restores current overlay cursors
 - The sidecar has no TCP or other network listener
-- Remote input message types are defined and rejected
+- Remote control is capability-gated and fail-closed
 - Electron cursor window remains the fallback when overlays are
   unavailable

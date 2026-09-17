@@ -37,6 +37,34 @@ type CallCameraMid = {
   peerId: string
 }
 
+type RemoteControlCapabilities = {
+  pointerInjection: boolean
+  keyboardInjection: boolean
+  emergencyHotkey: boolean
+  keyboardCapture: boolean
+  backend?: string
+  unavailableReason?:
+    | 'unsupported'
+    | 'accessibility-permission'
+    | 'input-monitoring-permission'
+    | 'uinput-permission'
+    | 'evdev-permission'
+    | 'hotkey-registration-failed'
+  permissions?: {
+    accessibility?: 'unknown' | 'granted' | 'denied'
+    screenRecording?: 'unknown' | 'granted' | 'denied'
+    inputMonitoring?: 'unknown' | 'granted' | 'denied'
+  }
+}
+
+type EmergencyHotkey = {
+  ctrl: boolean
+  alt: boolean
+  shift: boolean
+  meta: boolean
+  key: 'Escape'
+}
+
 type KiwiApi = {
   toggleRemoteCursors: (state: boolean) => Promise<void>
   remoteCursorPing: (cursorId: string) => Promise<void>
@@ -49,6 +77,53 @@ type KiwiApi = {
     sourceId?: string
   }) => Promise<void>
   removeRemoteCursor: (peerId: string) => Promise<void>
+  remoteControl: {
+    getCapabilities: () => Promise<RemoteControlCapabilities>
+    arm: (grant: { mouse: boolean; keyboard: boolean; generation?: number }) => Promise<void>
+    disarm: () => Promise<void>
+    pointerMove: (input: {
+      generation: number
+      seq: number
+      x: number
+      y: number
+      sourceId?: string
+    }) => Promise<void>
+    pointerButton: (input: {
+      generation: number
+      seq: number
+      button: 'left' | 'middle' | 'right' | 'back' | 'forward'
+      action: 'down' | 'up'
+    }) => Promise<void>
+    wheel: (input: {
+      generation: number
+      seq: number
+      deltaX: number
+      deltaY: number
+    }) => Promise<void>
+    key: (input: {
+      generation: number
+      seq: number
+      action: 'down' | 'up'
+      code: string
+      location?: number
+      repeat?: boolean
+      modifiers?: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }
+    }) => Promise<void>
+    releaseAll: () => Promise<void>
+    requestPermission: () => Promise<void>
+    onEmergencyDisabled: (cb: (event: { reason: string }) => void) => () => void
+    onStatusChanged: (cb: (event: unknown) => void) => () => void
+    setLocalCapture: (enabled: boolean) => Promise<void>
+    onLocalKey: (
+      cb: (event: {
+        action: 'down' | 'up'
+        code: string
+        location: number
+        repeat: boolean
+        modifiers: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }
+      }) => void,
+    ) => () => void
+  }
   updateSettings: (settings: {
     username: string
     language: string
@@ -63,6 +138,7 @@ type KiwiApi = {
     iceServers: IceServer[]
     bonjourEnabled?: boolean
     bonjourServerUrl?: string
+    emergencyHotkey?: EmergencyHotkey
   }) => Promise<void>
   getSettings: () => Promise<{
     username: string
@@ -78,6 +154,7 @@ type KiwiApi = {
     iceServers: IceServer[]
     bonjourEnabled?: boolean
     bonjourServerUrl?: string
+    emergencyHotkey?: EmergencyHotkey
   }>
   getAppVersion: () => Promise<string>
   getDeviceIdentity: () => Promise<{ publicKey: string; fingerprint: string; privateKey: string }>
@@ -165,6 +242,12 @@ type CallApi = {
 }
 
 declare global {
+  interface Navigator {
+    keyboard?: {
+      lock: (keyCodes?: string[]) => Promise<void>
+      unlock: () => void
+    }
+  }
   interface Window {
     electron: ElectronAPI
     KiwiApi: KiwiApi

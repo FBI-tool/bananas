@@ -26,8 +26,8 @@ describe('SidecarManager', () => {
     await mgr.start()
     const caps = mgr.getCapabilities()
     expect(typeof caps.overlays).toBe('boolean')
-    expect(caps.pointerInjection).toBe(false)
-    expect(caps.keyboardInjection).toBe(false)
+    expect(typeof caps.pointerInjection).toBe('boolean')
+    expect(typeof caps.keyboardInjection).toBe('boolean')
     await mgr.stop()
     expect(mgr.isAvailable()).toBe(false)
   }, 15000)
@@ -37,6 +37,7 @@ describe('SidecarManager', () => {
     expect(path.length).toBeGreaterThan(4)
     expect(defaultCapabilities().pointerInjection).toBe(false)
     expect(defaultCapabilities().keyboardInjection).toBe(false)
+    expect(defaultCapabilities().keyboardCapture).toBe(false)
   })
 
   it('handshakes with a mock sidecar process and fails closed on version mismatch', async () => {
@@ -79,6 +80,8 @@ describe('SidecarManager', () => {
                 displayEnumeration: true,
                 pointerInjection: true,
                 keyboardInjection: true,
+                emergencyHotkey: true,
+                keyboardCapture: true,
                 globalPointerObservation: true,
                 globalKeyboardObservation: true,
                 permissions: { accessibility: 'unknown' },
@@ -99,8 +102,10 @@ describe('SidecarManager', () => {
     await mgr.start()
     expect(mgr.isAvailable()).toBe(true)
     expect(mgr.getCapabilities().overlays).toBe(true)
-    expect(mgr.getCapabilities().pointerInjection).toBe(false)
-    expect(mgr.getCapabilities().keyboardInjection).toBe(false)
+    expect(mgr.getCapabilities().pointerInjection).toBe(true)
+    expect(mgr.getCapabilities().keyboardInjection).toBe(true)
+    expect(mgr.getCapabilities().emergencyHotkey).toBe(true)
+    expect(mgr.getCapabilities().keyboardCapture).toBe(true)
     await mgr.stop()
     expect(mgr.isAvailable()).toBe(false)
   }, 10000)

@@ -5,13 +5,13 @@ sidecar and E2EE work reuse existing names instead of replacing them.
 
 ## Processes
 
-| Process                             | Owns                                                                     | Must not own                                            |
-| ----------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
-| Renderer (`Room` / `WebRTCSession`) | Mesh, `control` channel, chat, votes, media tracks, collaboration state  | Sidecar spawn, OS overlays, long-lived identity secrets |
-| Electron main                       | Window lifecycle, screen picker, sidecar supervisor, `safeStorage`       | MLS group state, WebRTC peer connections                |
-| Odin overlay sidecar                | Native overlay windows, display geometry, capability probes              | Room crypto, signaling, WebRTC, long-term keys          |
-| STUN/TURN                           | ICE connectivity                                                         | Application or media plaintext (after media E2EE)       |
-| Bonjour (opt-in)                    | SSO, contacts, presence, encrypted offer/answer/ICE/MLS-invite envelopes | Media, MLS group secrets, sidecar                       |
+| Process                             | Owns                                                                                                                     | Must not own                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| Renderer (`Room` / `WebRTCSession`) | Mesh, `control` channel, chat, votes, media tracks, collaboration state                                                  | Sidecar spawn, OS overlays, long-lived identity secrets |
+| Electron main                       | Window lifecycle, screen picker, sidecar supervisor, `safeStorage`                                                       | MLS group state, WebRTC peer connections                |
+| Odin overlay sidecar                | Native overlay windows, display geometry, capability probes, input injection, emergency hotkey, controller keyboard grab | Room crypto, signaling, WebRTC, long-term keys          |
+| STUN/TURN                           | ICE connectivity                                                                                                         | Application or media plaintext (after media E2EE)       |
+| Bonjour (opt-in)                    | SSO, contacts, presence, encrypted offer/answer/ICE/MLS-invite envelopes                                                 | Media, MLS group secrets, sidecar                       |
 
 Clipboard invite URLs (`kiwi://`) carry SDP out of band when Bonjour is off.
 When Bonjour is enabled, `Room.startBonjourCall` / `acceptBonjourCall` use
@@ -24,7 +24,7 @@ and user-configurable.
 - Main IPC: `src/main/ipcMainHandlers.ts`
 - Preload: `src/preload/index.ts` (`window.KiwiApi`)
 - Session orchestrator: `src/renderer/src/session/room.svelte.ts`
-- Peer connection + `control` data channel: `src/renderer/src/session/peerLink.ts`
+- Peer connection + `control` / `mls` / `remote-input-*` data channels: `src/renderer/src/session/peerLink.ts`
 - JSON control schema: `src/renderer/src/session/controlProtocol.ts`
 - Invite encoding: `src/renderer/src/Utils.ts`
 - Bonjour signaling: `src/main/bonjour/`, `src/renderer/src/session/bonjourSignal.ts`
@@ -39,7 +39,7 @@ Control message types today: `hello`, `roster`, `mesh-offer`,
 ## Sidecar protocol
 
 The sidecar protocol version is **independent of the application
-version**. Current value: `1` (`SIDECAR_PROTOCOL_VERSION` in
+version**. Current value: `2` (`SIDECAR_PROTOCOL_VERSION` in
 `src/main/sidecar/protocol.ts` and `native/overlay-sidecar`).
 
 Transport is a local Unix domain socket (Linux/macOS) or a named pipe
@@ -61,6 +61,29 @@ control cursor message
 
 The sidecar never sees `RTCPeerConnection` objects or cryptographic
 keys.
+
+## Remote-input path
+
+```
+controller keyboard (sidecar exclusive grab)
+  → captured-key → renderer remote-input-actions (E2EE)
+controller mouse (renderer video element)
+  → remote-input-motion / remote-input-actions (E2EE)
+  → Room grant + generation check
+  → Electron main sanitized IPC (`RemoteControlBridge`)
+  → host-owned source coordinate mapping
+  → Odin InputController
+  → native injection
+```
+
+Grant/request/revoke messages travel on the `control` channel with the
+same `remote-input` application domain. The presenter/host is the only
+authority. Grants are ephemeral room state.
+
+The physical emergency hotkey is handled inside the sidecar. The first
+disarm and key-release must not depend on Electron responding.
+
+The sidecar has no network listener.
 
 ## E2EE insertion points (Phase B)
 

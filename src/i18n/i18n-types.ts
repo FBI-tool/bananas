@@ -66,6 +66,10 @@ type RootTranslation = {
 	 */
 	fullscreen: string
 	/**
+	 * E​x​i​t​ ​f​u​l​l​s​c​r​e​e​n
+	 */
+	exit_fullscreen: string
+	/**
 	 * H​o​s​t​ ​a​ ​s​e​s​s​i​o​n
 	 */
 	host_a_session: string
@@ -543,6 +547,69 @@ type RootTranslation = {
 	 * B​o​n​j​o​u​r​ ​s​e​r​v​e​r​ ​U​R​L
 	 */
 	bonjour_server_url: string
+	/**
+	 * R​e​m​o​t​e​ ​c​o​n​t​r​o​l
+	 */
+	remote_control: string
+	/**
+	 * M​o​u​s​e
+	 */
+	remote_control_mouse: string
+	/**
+	 * K​e​y​b​o​a​r​d
+	 */
+	remote_control_keyboard: string
+	/**
+	 * {​n​a​m​e​}​ ​i​s​ ​r​e​q​u​e​s​t​i​n​g​ ​c​o​n​t​r​o​l
+	 * @param {unknown} name
+	 */
+	remote_control_request: RequiredParams<'name'>
+	/**
+	 * A​l​l​o​w​ ​m​o​u​s​e
+	 */
+	remote_control_allow_mouse: string
+	/**
+	 * A​l​l​o​w​ ​k​e​y​b​o​a​r​d
+	 */
+	remote_control_allow_keyboard: string
+	/**
+	 * A​l​l​o​w​ ​b​o​t​h
+	 */
+	remote_control_allow_both: string
+	/**
+	 * D​e​n​y
+	 */
+	remote_control_deny: string
+	/**
+	 * R​e​m​o​t​e​ ​c​o​n​t​r​o​l​ ​a​c​t​i​v​e
+	 */
+	remote_control_active: string
+	/**
+	 * C​o​n​t​r​o​l​l​i​n​g​ ​{​n​a​m​e​}
+	 * @param {unknown} name
+	 */
+	remote_control_controlling: RequiredParams<'name'>
+	/**
+	 * R​e​m​o​t​e​ ​c​o​n​t​r​o​l​ ​d​i​s​a​b​l​e​d​ ​b​y​ ​h​o​s​t​ ​h​o​t​k​e​y
+	 */
+	remote_control_emergency: string
+	/**
+	 * E​m​e​r​g​e​n​c​y​ ​s​t​o​p​:​ ​{​h​o​t​k​e​y​}
+	 * @param {unknown} hotkey
+	 */
+	remote_control_emergency_hotkey: RequiredParams<'hotkey'>
+	/**
+	 * R​e​m​o​t​e​ ​c​o​n​t​r​o​l​ ​i​s​ ​u​n​a​v​a​i​l​a​b​l​e
+	 */
+	remote_control_unavailable: string
+	/**
+	 * G​r​a​n​t​ ​a​c​c​e​s​s​i​b​i​l​i​t​y​ ​p​e​r​m​i​s​s​i​o​n
+	 */
+	remote_control_request_permission: string
+	/**
+	 * R​e​q​u​e​s​t​ ​c​o​n​t​r​o​l
+	 */
+	remote_control_request_button: string
 }
 
 export type TranslationFunctions = {
@@ -594,6 +661,10 @@ export type TranslationFunctions = {
 	 * Fullscreen
 	 */
 	fullscreen: () => LocalizedString
+	/**
+	 * Exit fullscreen
+	 */
+	exit_fullscreen: () => LocalizedString
 	/**
 	 * Host a session
 	 */
@@ -1070,6 +1141,66 @@ export type TranslationFunctions = {
 	 * Bonjour server URL
 	 */
 	bonjour_server_url: () => LocalizedString
+	/**
+	 * Remote control
+	 */
+	remote_control: () => LocalizedString
+	/**
+	 * Mouse
+	 */
+	remote_control_mouse: () => LocalizedString
+	/**
+	 * Keyboard
+	 */
+	remote_control_keyboard: () => LocalizedString
+	/**
+	 * {name} is requesting control
+	 */
+	remote_control_request: (arg: { name: unknown }) => LocalizedString
+	/**
+	 * Allow mouse
+	 */
+	remote_control_allow_mouse: () => LocalizedString
+	/**
+	 * Allow keyboard
+	 */
+	remote_control_allow_keyboard: () => LocalizedString
+	/**
+	 * Allow both
+	 */
+	remote_control_allow_both: () => LocalizedString
+	/**
+	 * Deny
+	 */
+	remote_control_deny: () => LocalizedString
+	/**
+	 * Remote control active
+	 */
+	remote_control_active: () => LocalizedString
+	/**
+	 * Controlling {name}
+	 */
+	remote_control_controlling: (arg: { name: unknown }) => LocalizedString
+	/**
+	 * Remote control disabled by host hotkey
+	 */
+	remote_control_emergency: () => LocalizedString
+	/**
+	 * Emergency stop: {hotkey}
+	 */
+	remote_control_emergency_hotkey: (arg: { hotkey: unknown }) => LocalizedString
+	/**
+	 * Remote control is unavailable
+	 */
+	remote_control_unavailable: () => LocalizedString
+	/**
+	 * Grant accessibility permission
+	 */
+	remote_control_request_permission: () => LocalizedString
+	/**
+	 * Request control
+	 */
+	remote_control_request_button: () => LocalizedString
 }
 
 export type Formatters = {}

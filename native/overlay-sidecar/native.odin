@@ -11,6 +11,9 @@ NativeCaps :: struct {
 	accessibility:                i32,
 	screen_recording:             i32,
 	input_monitoring:             i32,
+	emergency_hotkey:             i32,
+	keyboard_capture:             i32,
+	unavailable_reason:           [64]u8,
 	backend:                      [16]u8,
 }
 
@@ -32,6 +35,14 @@ NativeSource :: struct {
 	height:     i32,
 	scale:      f32,
 	rotation:   i32,
+}
+
+NativeCapturedKey :: struct {
+	key_code:   u32,
+	down:       i32,
+	modifiers:  u32,
+	location:   i32,
+	repeat:     i32,
 }
 
 copy_cstr :: proc(dst: []u8, src: string) {
@@ -66,11 +77,37 @@ when ODIN_TEST {
 	native_overlay_destroy :: proc(overlay_id: i32) { _ = overlay_id }
 	native_overlay_pump :: proc() {}
 	native_shutdown :: proc() {}
+	native_input_init :: proc() -> i32 { return 1 }
+	native_input_shutdown :: proc() {}
+	native_input_query_caps :: proc(out: ^NativeCaps) { _ = out }
+	native_input_pump :: proc() {}
+	native_hotkey_poll :: proc() -> i32 { return 0 }
+	native_hotkey_register :: proc(ctrl, alt, shift, meta, key_escape: i32) -> i32 {
+		_ = ctrl; _ = alt; _ = shift; _ = meta; _ = key_escape
+		return 1
+	}
+	native_hotkey_unregister :: proc() {}
+	native_pointer_move :: proc(x, y: f64) -> i32 { _ = x; _ = y; return 0 }
+	native_pointer_button :: proc(button, down: i32) -> i32 { _ = button; _ = down; return 0 }
+	native_pointer_wheel :: proc(dx, dy: f64) -> i32 { _ = dx; _ = dy; return 0 }
+	native_key_event :: proc(key_code: u32, down: i32, modifiers: u32) -> i32 {
+		_ = key_code; _ = down; _ = modifiers
+		return 0
+	}
+	native_input_request_permission :: proc() -> i32 { return 0 }
+	native_keyboard_capture_start :: proc() -> i32 { return 1 }
+	native_keyboard_capture_stop :: proc() {}
+	native_keyboard_capture_unlock :: proc() {}
+	native_keyboard_capture_poll :: proc(out: ^NativeCapturedKey) -> i32 {
+		_ = out
+		return 0
+	}
 } else {
 	when ODIN_OS == .Windows {
 		foreign import native_overlay {
 			"dist/overlay_draw.obj",
 			"dist/overlay_win32.obj",
+			"dist/input_win32.obj",
 			"system:gdi32.lib",
 			"system:user32.lib",
 			"system:dwmapi.lib",
@@ -87,5 +124,21 @@ when ODIN_TEST {
 		native_overlay_destroy :: proc(overlay_id: i32) ---
 		native_overlay_pump :: proc() ---
 		native_shutdown :: proc() ---
+		native_input_init :: proc() -> i32 ---
+		native_input_shutdown :: proc() ---
+		native_input_query_caps :: proc(out: ^NativeCaps) ---
+		native_input_pump :: proc() ---
+		native_hotkey_poll :: proc() -> i32 ---
+		native_hotkey_register :: proc(ctrl, alt, shift, meta, key_escape: i32) -> i32 ---
+		native_hotkey_unregister :: proc() ---
+		native_pointer_move :: proc(x, y: f64) -> i32 ---
+		native_pointer_button :: proc(button, down: i32) -> i32 ---
+		native_pointer_wheel :: proc(dx, dy: f64) -> i32 ---
+		native_key_event :: proc(key_code: u32, down: i32, modifiers: u32) -> i32 ---
+		native_input_request_permission :: proc() -> i32 ---
+		native_keyboard_capture_start :: proc() -> i32 ---
+		native_keyboard_capture_stop :: proc() ---
+		native_keyboard_capture_unlock :: proc() ---
+		native_keyboard_capture_poll :: proc(out: ^NativeCapturedKey) -> i32 ---
 	}
 }

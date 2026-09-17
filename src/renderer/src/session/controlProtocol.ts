@@ -1,5 +1,13 @@
 import { truncateChatText } from './constants'
 import type { AppDomain, CryptoCapabilities } from '../crypto/constants'
+import {
+  isRemoteControlGrantMessage,
+  isRemoteControlRequestMessage,
+  isRemoteControlRevokeMessage,
+  type RemoteControlGrantMessage,
+  type RemoteControlRequestMessage,
+  type RemoteControlRevokeMessage,
+} from './remoteInputProtocol'
 
 export const PROTOCOL_VERSION = 1 as const
 
@@ -186,6 +194,9 @@ export type ControlMessage =
   | CameraStateMessage
   | E2eeMessage
   | MlsControlMessage
+  | RemoteControlRequestMessage
+  | RemoteControlGrantMessage
+  | RemoteControlRevokeMessage
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -313,6 +324,12 @@ export const isControlMessage = (value: unknown): value is ControlMessage => {
         (value.to === undefined || isString(value.to)) &&
         (value.fingerprint === undefined || isString(value.fingerprint))
       )
+    case 'remote-control-request':
+      return isRemoteControlRequestMessage(value)
+    case 'remote-control-grant':
+      return isRemoteControlGrantMessage(value)
+    case 'remote-control-revoke':
+      return isRemoteControlRevokeMessage(value)
     default:
       return false
   }
@@ -342,6 +359,10 @@ export const domainForControl = (msg: ControlMessage): AppDomain => {
       return 'cursor'
     case 'camera-state':
       return 'camera-state'
+    case 'remote-control-request':
+    case 'remote-control-grant':
+    case 'remote-control-revoke':
+      return 'remote-input'
     default:
       return 'control'
   }

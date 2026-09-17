@@ -29,6 +29,28 @@ import {
   serializeControlMessage,
   shouldEncryptControl,
 } from './controlProtocol'
+import {
+  parseRemoteInputMessage,
+  serializeRemoteInputMessage,
+  type RemoteControlGrant,
+  type RemoteControlRevokeReason,
+  type RemoteInputMessage,
+} from './remoteInputProtocol'
+import {
+  acceptSeq,
+  activeController,
+  dropPeerRemoteControl,
+  getPeerRemoteControl,
+  grantRemoteControlState,
+  inputMatchesGrant,
+  requestRemoteControlState,
+  revokeAllRemoteControlState,
+  revokeRemoteControlState,
+  type RemoteControlMap,
+  type SeqTracker,
+} from './remoteControlState'
+import { DEFAULT_EMERGENCY_HOTKEY, formatEmergencyHotkey } from './emergencyHotkey'
+import { isPortableKeyCode } from './portableKeys'
 import { CallLoopback } from './callLoopback'
 import { PeerLink } from './peerLink'
 import {
@@ -112,6 +134,22 @@ export class Room {
   e2eeError = $state<string | null>(null)
   bonjourCallId = $state<string | null>(null)
   signalingKind = $state<SignalingTransportKind>('kiwi')
+  remoteControl = $state<RemoteControlMap>({})
+  remoteControlCaps = $state<{
+    pointerInjection: boolean
+    keyboardInjection: boolean
+    emergencyHotkey: boolean
+    keyboardCapture?: boolean
+    backend?: string
+    unavailableReason?: string
+    permissions?: {
+      accessibility?: 'unknown' | 'granted' | 'denied'
+      screenRecording?: 'unknown' | 'granted' | 'denied'
+      inputMonitoring?: 'unknown' | 'granted' | 'denied'
+    }
+  } | null>(null)
+  emergencyStopMessage = $state<string | null>(null)
+  emergencyHotkeyLabel = $state(formatEmergencyHotkey(DEFAULT_EMERGENCY_HOTKEY))
 
   private remoteVideo: HTMLVideoElement | null = null
   private audioStream: MediaStream | null = null
@@ -155,6 +193,10 @@ export class Room {
   private pendingBonjourIce: RTCIceCandidateInit[] = []
   private pendingBonjourIceOut: RTCIceCandidateInit[] = []
   private bonjourLocalSdpSent = false
+  private inboundRemoteSeq: SeqTracker = {}
+  private outboundMotionSeq = 0
+  private outboundActionSeq = 0
+  private remoteControlUnsub: Array<() => void> = []
 
   get isCoordinator(): boolean {
     return this.localPeerId !== '' && this.localPeerId === this.coordinatorId
@@ -162,6 +204,39 @@ export class Room {
 
   get isPresenter(): boolean {
     return this.localPeerId !== '' && this.localPeerId === this.presenterId
+  }
+
+  get localRemoteGrant(): { mouse: boolean; keyboard: boolean; generation: number } | null {
+    const state = this.remoteControl[this.localPeerId]
+    if (!state || (!state.mouse && !state.keyboard)) return null
+    return { mouse: state.mouse, keyboard: state.keyboard, generation: state.generation }
+  }
+
+  get activeRemoteController(): { peerId: string; mouse: boolean; keyboard: boolean } | null {
+    const active = activeController(this.remoteControl)
+    if (!active) return null
+    return { peerId: active.peerId, mouse: active.state.mouse, keyboard: active.state.keyboard }
+  }
+
+  get remoteControlRequests(): Array<{
+    peerId: string
+    username: string
+    mouse: boolean
+    keyboard: boolean
+  }> {
+    if (!this.isPresenter) return []
+    return Object.entries(this.remoteControl)
+      .filter(([, state]) => state.requestedMouse || state.requestedKeyboard)
+      .map(([peerId, state]) => ({
+        peerId,
+        username: this.peers.find((peer) => peer.id === peerId)?.username ?? peerId.slice(0, 8),
+        mouse: state.requestedMouse,
+        keyboard: state.requestedKeyboard,
+      }))
+  }
+
+  presenterUsername(): string {
+    return this.peers.find((peer) => peer.id === this.presenterId)?.username ?? ''
   }
 
   get remotePeerCount(): number {
@@ -215,7 +290,10 @@ export class Room {
       track.enabled = !track.enabled
     }
     this.displayStreamActive = this.displayStream.getVideoTracks().some((track) => track.enabled)
-    if (!this.displayStreamActive) this.ToggleRemoteCursors(false)
+    if (!this.displayStreamActive) {
+      this.ToggleRemoteCursors(false)
+      void this.revokeAllRemoteControl('sharing-stopped')
+    }
   }
 
   ToggleRemoteCursors(enabled: boolean): boolean {
@@ -273,6 +351,148 @@ export class Room {
     })
   }
 
+  requestRemoteControl(mouse: boolean, keyboard: boolean): void {
+    if (this.isPresenter) return
+    this.broadcast({
+      t: 'remote-control-request',
+      v: PROTOCOL_VERSION,
+      peerId: this.localPeerId,
+      mouse,
+      keyboard,
+    })
+  }
+
+  async grantRemoteControl(peerId: string, grant: RemoteControlGrant): Promise<void> {
+    if (!this.isPresenter || peerId === this.localPeerId) return
+    this.emergencyStopMessage = null
+    this.remoteControl = grantRemoteControlState(this.remoteControl, peerId, grant)
+    const state = getPeerRemoteControl(this.remoteControl, peerId)
+    this.broadcast({
+      t: 'remote-control-grant',
+      v: PROTOCOL_VERSION,
+      peerId,
+      mouse: state.mouse,
+      keyboard: state.keyboard,
+      generation: state.generation,
+    })
+    await this.syncSidecarArm()
+  }
+
+  async revokeRemoteControl(
+    peerId: string,
+    reason: RemoteControlRevokeReason = 'host',
+  ): Promise<void> {
+    if (!this.isPresenter && reason === 'host') return
+    const prev = getPeerRemoteControl(this.remoteControl, peerId)
+    this.remoteControl = revokeRemoteControlState(this.remoteControl, peerId, reason)
+    this.inboundRemoteSeq = { ...this.inboundRemoteSeq }
+    delete this.inboundRemoteSeq[peerId]
+    this.broadcast({
+      t: 'remote-control-revoke',
+      v: PROTOCOL_VERSION,
+      peerId,
+      generation: prev.generation + 1,
+      reason,
+    })
+    await this.syncSidecarArm()
+  }
+
+  async revokeAllRemoteControl(reason: RemoteControlRevokeReason): Promise<void> {
+    const prev = this.remoteControl
+    this.remoteControl = revokeAllRemoteControlState(prev)
+    this.inboundRemoteSeq = {}
+    for (const [peerId, state] of Object.entries(prev)) {
+      this.broadcast({
+        t: 'remote-control-revoke',
+        v: PROTOCOL_VERSION,
+        peerId,
+        generation: state.generation + 1,
+        reason,
+      })
+    }
+    await this.syncSidecarArm()
+  }
+
+  async requestRemoteControlPermission(): Promise<void> {
+    await window.KiwiApi.remoteControl?.requestPermission?.()
+    this.remoteControlCaps = (await window.KiwiApi.remoteControl?.getCapabilities?.()) ?? null
+  }
+
+  denyRemoteControlRequest(peerId: string): void {
+    if (!this.isPresenter) return
+    this.remoteControl = requestRemoteControlState(this.remoteControl, peerId, false, false)
+  }
+
+  sendRemotePointerMove(x: number, y: number, sourceId?: string): void {
+    const grant = this.localRemoteGrant
+    if (!grant?.mouse) return
+    this.outboundMotionSeq += 1
+    void this.sendRemoteInputToPresenter({
+      t: 'pointer-move',
+      v: 1,
+      generation: grant.generation,
+      seq: this.outboundMotionSeq,
+      x,
+      y,
+      sourceId,
+    })
+  }
+
+  sendRemotePointerButton(
+    button: 'left' | 'middle' | 'right' | 'back' | 'forward',
+    action: 'down' | 'up',
+  ): void {
+    const grant = this.localRemoteGrant
+    if (!grant?.mouse) return
+    this.outboundActionSeq += 1
+    void this.sendRemoteInputToPresenter({
+      t: 'pointer-button',
+      v: 1,
+      generation: grant.generation,
+      seq: this.outboundActionSeq,
+      button,
+      action,
+    })
+  }
+
+  sendRemoteWheel(deltaX: number, deltaY: number): void {
+    const grant = this.localRemoteGrant
+    if (!grant?.mouse) return
+    this.outboundActionSeq += 1
+    void this.sendRemoteInputToPresenter({
+      t: 'pointer-wheel',
+      v: 1,
+      generation: grant.generation,
+      seq: this.outboundActionSeq,
+      deltaX,
+      deltaY,
+    })
+  }
+
+  sendRemoteKey(event: {
+    action: 'down' | 'up'
+    code: string
+    location?: number
+    repeat?: boolean
+    modifiers?: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }
+  }): void {
+    const grant = this.localRemoteGrant
+    if (!grant?.keyboard) return
+    if (!isPortableKeyCode(event.code)) return
+    this.outboundActionSeq += 1
+    void this.sendRemoteInputToPresenter({
+      t: 'key',
+      v: 1,
+      generation: grant.generation,
+      seq: this.outboundActionSeq,
+      action: event.action,
+      code: event.code,
+      location: event.location,
+      repeat: event.repeat,
+      modifiers: event.modifiers,
+    })
+  }
+
   async Setup(
     v: HTMLVideoElement | null = null,
     opts?: { captureDisplay?: boolean },
@@ -287,6 +507,13 @@ export class Room {
     this.userSettings = await window.KiwiApi.getSettings()
     this.username = this.userSettings.username
     this.color = this.userSettings.color
+    this.emergencyHotkeyLabel = formatEmergencyHotkey(
+      this.userSettings.emergencyHotkey ?? DEFAULT_EMERGENCY_HOTKEY,
+    )
+    this.emergencyStopMessage = null
+    this.remoteControl = {}
+    this.bindRemoteControlIpc()
+    this.remoteControlCaps = (await window.KiwiApi.remoteControl?.getCapabilities?.()) ?? null
     this.remoteVideo = v
     this.localPeerId = getUUIDv4()
     this.microphoneActive = this.userSettings.isMicrophoneEnabledOnConnect
@@ -878,6 +1105,7 @@ export class Room {
     this.displayStreamActive = true
     this.bindDisplayEnded(captured)
     await this.pushVideoToAll(track, captured)
+    await this.revokeAllRemoteControl('sharing-stopped')
     debugLog.info('room', 'changeScreen ok')
     return 'ok'
   }
@@ -1189,6 +1417,12 @@ export class Room {
           }
           this.emitBonjour({ type: 'ice', candidate })
         },
+        onRemoteInputMotion: (raw) => {
+          void this.onRemoteInputRaw(link, raw, 'motion')
+        },
+        onRemoteInputAction: (raw) => {
+          void this.onRemoteInputRaw(link, raw, 'action')
+        },
       },
     })
     return link
@@ -1440,6 +1674,15 @@ export class Room {
         break
       case 'camera-state':
         this.onCameraState(inner)
+        break
+      case 'remote-control-request':
+        this.onRemoteControlRequest(inner)
+        break
+      case 'remote-control-grant':
+        this.onRemoteControlGrant(inner)
+        break
+      case 'remote-control-revoke':
+        this.onRemoteControlRevoke(inner)
         break
     }
   }
@@ -1708,6 +1951,7 @@ export class Room {
     if (link) await this.handleRemoteDeparted(link, false)
     else this.removePeerById(peerId)
     window.KiwiApi.removeRemoteCursor?.(peerId)
+    void this.revokeRemoteControl(peerId, 'disconnect')
     this.syncCallOverlay()
   }
 
@@ -1730,6 +1974,7 @@ export class Room {
       presenterId: this.localPeerId,
     })
     this.broadcastRoster()
+    await this.revokeAllRemoteControl('presenter-change')
   }
 
   private async onPresenterChanged(presenterId: string): Promise<void> {
@@ -1740,6 +1985,7 @@ export class Room {
       await this.stopPresenting()
     }
     this.attachPresenterVideo()
+    await this.revokeAllRemoteControl('presenter-change')
   }
 
   private async stopPresenting(): Promise<void> {
@@ -1967,6 +2213,10 @@ export class Room {
     if (peerId) {
       this.removePeerById(peerId)
       window.KiwiApi.removeRemoteCursor?.(peerId)
+      this.remoteControl = dropPeerRemoteControl(this.remoteControl, peerId)
+      this.inboundRemoteSeq = { ...this.inboundRemoteSeq }
+      delete this.inboundRemoteSeq[peerId]
+      if (this.isPresenter) void this.syncSidecarArm()
       this.remoteVideoStreams.delete(peerId)
       this.remoteCameraStreams.delete(peerId)
       this.remoteCameraState.delete(peerId)
@@ -2169,6 +2419,185 @@ export class Room {
     link.sendControl(wrapped)
   }
 
+  private onRemoteControlRequest(
+    msg: Extract<ControlMessage, { t: 'remote-control-request' }>,
+  ): void {
+    if (!this.isPresenter) return
+    if (msg.peerId === this.localPeerId) return
+    this.remoteControl = requestRemoteControlState(
+      this.remoteControl,
+      msg.peerId,
+      msg.mouse,
+      msg.keyboard,
+    )
+  }
+
+  private onRemoteControlGrant(msg: Extract<ControlMessage, { t: 'remote-control-grant' }>): void {
+    this.remoteControl = {
+      ...this.remoteControl,
+      [msg.peerId]: {
+        requestedMouse: false,
+        requestedKeyboard: false,
+        mouse: msg.mouse,
+        keyboard: msg.keyboard,
+        generation: msg.generation,
+      },
+    }
+    if (msg.peerId === this.localPeerId) this.emergencyStopMessage = null
+  }
+
+  private onRemoteControlRevoke(
+    msg: Extract<ControlMessage, { t: 'remote-control-revoke' }>,
+  ): void {
+    this.remoteControl = {
+      ...this.remoteControl,
+      [msg.peerId]: {
+        requestedMouse: false,
+        requestedKeyboard: false,
+        mouse: false,
+        keyboard: false,
+        generation: msg.generation,
+      },
+    }
+    if (msg.reason === 'emergency') {
+      this.emergencyStopMessage = 'Remote control disabled by host hotkey'
+    }
+  }
+
+  private async syncSidecarArm(): Promise<void> {
+    if (!window.KiwiApi.remoteControl) return
+    const active = this.isPresenter ? activeController(this.remoteControl) : null
+    if (!active) {
+      await window.KiwiApi.remoteControl.disarm().catch(() => undefined)
+      await window.KiwiApi.remoteControl.releaseAll().catch(() => undefined)
+      return
+    }
+    try {
+      await window.KiwiApi.remoteControl.arm({
+        mouse: active.state.mouse,
+        keyboard: active.state.keyboard,
+        generation: active.state.generation,
+      })
+    } catch (error) {
+      debugLog.warn('room', 'remote control arm failed', error)
+      this.remoteControlCaps = (await window.KiwiApi.remoteControl.getCapabilities()) ?? null
+    }
+  }
+
+  private bindRemoteControlIpc(): void {
+    if (this.remoteControlUnsub.length) return
+    const emergency = window.KiwiApi.remoteControl?.onEmergencyDisabled?.((event) => {
+      debugLog.info('room', 'remote control emergency', { reason: event.reason })
+      this.emergencyStopMessage = 'Remote control disabled by host hotkey'
+      void this.revokeAllRemoteControl('emergency')
+    })
+    const status = window.KiwiApi.remoteControl?.onStatusChanged?.((event) => {
+      void event
+      void window.KiwiApi.remoteControl?.getCapabilities?.().then((caps) => {
+        this.remoteControlCaps = caps ?? null
+      })
+    })
+    if (emergency) this.remoteControlUnsub.push(emergency)
+    if (status) this.remoteControlUnsub.push(status)
+  }
+
+  private async sendRemoteInputToPresenter(msg: RemoteInputMessage): Promise<void> {
+    const link = this.findLinkByRemote(this.presenterId)
+    if (!link) return
+    const wrapped = await this.wrapRemoteInput(msg)
+    if (!wrapped) return
+    if (msg.t === 'pointer-move') link.sendRemoteInputMotion(wrapped)
+    else link.sendRemoteInputAction(wrapped)
+  }
+
+  private async wrapRemoteInput(msg: RemoteInputMessage): Promise<string | null> {
+    const action = outboundCryptoAction({
+      encryptable: true,
+      required: this.e2eeFailClosed(),
+      ready: this.appCryptoReady(),
+    })
+    if (action === 'queue' || action === 'passthrough') {
+      if (action === 'queue') return null
+      return serializeRemoteInputMessage(msg)
+    }
+    try {
+      const encoded = new TextEncoder().encode(serializeRemoteInputMessage(msg))
+      const sealed = await this.crypto!.encryptApplication('remote-input', encoded)
+      return serializeControlMessage({
+        t: 'e2ee',
+        v: PROTOCOL_VERSION,
+        ...sealed,
+      })
+    } catch (error) {
+      debugLog.error('room', 'refusing plaintext remote-input; encrypt failed', error)
+      return null
+    }
+  }
+
+  private async unwrapRemoteInput(raw: string): Promise<RemoteInputMessage | null> {
+    let value: unknown
+    try {
+      value = JSON.parse(raw)
+    } catch {
+      return null
+    }
+    const asControl = parseControlMessage(JSON.stringify(value))
+    if (asControl?.t === 'e2ee') {
+      if (!this.crypto?.isReady()) return null
+      try {
+        const plaintext = await this.crypto.decryptApplication(asControl)
+        return parseRemoteInputMessage(new TextDecoder().decode(plaintext))
+      } catch (error) {
+        debugLog.warn('room', 'dropped unauthenticated remote-input', error)
+        return null
+      }
+    }
+    if (dropPlaintextInbound({ encryptable: true, required: this.e2eeFailClosed() })) {
+      debugLog.warn('room', 'dropped plaintext remote-input in e2ee room')
+      return null
+    }
+    return parseRemoteInputMessage(raw)
+  }
+
+  private async onRemoteInputRaw(
+    link: PeerLink,
+    raw: string,
+    channel: 'motion' | 'action',
+  ): Promise<void> {
+    if (!this.isPresenter) return
+    const peerId = link.remotePeerId
+    if (!peerId) return
+    const msg = await this.unwrapRemoteInput(raw)
+    if (!msg) return
+    if (
+      msg.t === 'remote-control-request' ||
+      msg.t === 'remote-control-grant' ||
+      msg.t === 'remote-control-revoke'
+    ) {
+      return
+    }
+    const kind = msg.t === 'key' ? 'keyboard' : 'mouse'
+    if (!inputMatchesGrant(this.remoteControl, peerId, kind, msg.generation)) return
+    const seq = acceptSeq(this.inboundRemoteSeq, peerId, channel, msg.seq)
+    if (!seq.ok) return
+    this.inboundRemoteSeq = seq.next
+    const api = window.KiwiApi.remoteControl
+    if (!api) return
+    if (msg.t === 'pointer-move') {
+      await api.pointerMove(msg)
+      return
+    }
+    if (msg.t === 'pointer-button') {
+      await api.pointerButton(msg)
+      return
+    }
+    if (msg.t === 'pointer-wheel') {
+      await api.wheel(msg)
+      return
+    }
+    await api.key(msg)
+  }
+
   private sendRouted(to: string, msg: ControlMessage, fallback: PeerLink): void {
     if (this.sendTo(to, msg)) return
     void this.sendEncrypted(fallback, msg)
@@ -2213,6 +2642,7 @@ export class Room {
       track.addEventListener('ended', () => {
         if (this.displayStream !== stream) return
         this.displayStreamActive = false
+        void this.revokeAllRemoteControl('sharing-stopped')
       })
     }
   }
@@ -2297,6 +2727,10 @@ export class Room {
     this.voteRejectedKind = null
     this.displayStreamActive = false
     this.cursorsEnabled = false
+    this.remoteControl = {}
+    this.inboundRemoteSeq = {}
+    this.emergencyStopMessage = null
+    void window.KiwiApi.remoteControl?.disarm?.()
     this.peers = []
     this.handshakeKey = null
     this.lastCopiedPendingId = null

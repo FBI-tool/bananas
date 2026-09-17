@@ -13,6 +13,7 @@ const zh = {
   copy_my_connection_string: '复制我的连接码',
   disconnect: '连接失败',
   fullscreen: '全屏',
+  exit_fullscreen: '退出全屏',
   host_a_session: '发起一个屏幕共享',
   host_connection_string: '创建此共享的邀请码',
   hosting_a_session: '正在屏幕共享',
@@ -137,6 +138,21 @@ const zh = {
   bonjour_enabled_description:
     '启用后，应用会连接你配置的 Bonjour 服务器。媒体和 MLS 密钥仍保留在本机。默认关闭。',
   bonjour_server_url: 'Bonjour 服务器 URL',
+  remote_control: '远程控制',
+  remote_control_mouse: '鼠标',
+  remote_control_keyboard: '键盘',
+  remote_control_request: '{name} 正在请求控制',
+  remote_control_allow_mouse: '允许鼠标',
+  remote_control_allow_keyboard: '允许键盘',
+  remote_control_allow_both: '全部允许',
+  remote_control_deny: '拒绝',
+  remote_control_active: '远程控制已启用',
+  remote_control_controlling: '正在控制 {name}',
+  remote_control_emergency: '主机快捷键已关闭远程控制',
+  remote_control_emergency_hotkey: '紧急停止：{hotkey}',
+  remote_control_unavailable: '远程控制不可用',
+  remote_control_request_permission: '授予辅助功能权限',
+  remote_control_request_button: '请求控制',
 } satisfies Translation
 
 export default zh

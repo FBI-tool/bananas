@@ -13,6 +13,7 @@ const pt_br = {
   copy_my_connection_string: 'Copiar minha chave de conexão',
   disconnect: 'Desconectar',
   fullscreen: 'Tela Cheia',
+  exit_fullscreen: 'Sair da tela cheia',
   host_a_session: 'Hostear uma Sessão',
   host_connection_string: 'Chave de conexão do Host',
   hosting_a_session: 'Hosteando uma sessão',
@@ -141,6 +142,21 @@ const pt_br = {
   bonjour_enabled_description:
     'Quando ativado, o app fala com o servidor Bonjour configurado. Mídia e chaves MLS ficam no dispositivo. Desligado por padrão.',
   bonjour_server_url: 'URL do servidor Bonjour',
+  remote_control: 'Controle remoto',
+  remote_control_mouse: 'Mouse',
+  remote_control_keyboard: 'Teclado',
+  remote_control_request: '{name} está pedindo controle',
+  remote_control_allow_mouse: 'Permitir mouse',
+  remote_control_allow_keyboard: 'Permitir teclado',
+  remote_control_allow_both: 'Permitir ambos',
+  remote_control_deny: 'Negar',
+  remote_control_active: 'Controle remoto ativo',
+  remote_control_controlling: 'Controlando {name}',
+  remote_control_emergency: 'Controle remoto desativado pelo atalho do anfitrião',
+  remote_control_emergency_hotkey: 'Parada de emergência: {hotkey}',
+  remote_control_unavailable: 'O controle remoto está indisponível',
+  remote_control_request_permission: 'Conceder permissão de acessibilidade',
+  remote_control_request_button: 'Pedir controle',
 } satisfies BaseTranslation
 
 export default pt_br

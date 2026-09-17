@@ -3,15 +3,28 @@ package main
 import "core:encoding/json"
 import "core:strings"
 
-PROTOCOL_VERSION :: 1
+PROTOCOL_VERSION :: 2
 MAX_FRAME_BYTES :: 1024 * 1024
 
-REMOTE_INPUT_TYPES :: []string{
-	"request-control",
-	"grant-control",
-	"revoke-control",
-	"pointer-event",
+REMOTE_CONTROL_TYPES :: []string{
+	"remote-control-arm",
+	"remote-control-disarm",
+	"pointer-move",
+	"pointer-button",
+	"pointer-wheel",
 	"keyboard-event",
+	"release-all",
+	"set-emergency-hotkey",
+	"request-input-permission",
+	"keyboard-capture-arm",
+	"keyboard-capture-disarm",
+}
+
+is_remote_control :: proc(type: string) -> bool {
+	for t in REMOTE_CONTROL_TYPES {
+		if t == type do return true
+	}
+	return false
 }
 
 Envelope :: struct {
@@ -28,13 +41,6 @@ Frame_Error :: enum {
 	Bad_Json,
 	Bad_Envelope,
 	Version_Mismatch,
-}
-
-is_remote_input :: proc(type: string) -> bool {
-	for t in REMOTE_INPUT_TYPES {
-		if t == type do return true
-	}
-	return false
 }
 
 write_u32le :: proc(n: u32) -> [4]u8 {
@@ -185,11 +191,22 @@ make_capabilities_payload :: proc(caps: NativeCaps) -> json.Value {
 	obj := json.Object{}
 	obj["overlays"] = caps.overlays != 0
 	obj["clickThrough"] = caps.click_through != 0
-	obj["globalPointerObservation"] = false
-	obj["globalKeyboardObservation"] = false
-	obj["pointerInjection"] = false
-	obj["keyboardInjection"] = false
+	obj["globalPointerObservation"] = caps.global_pointer_observation != 0
+	obj["globalKeyboardObservation"] = caps.global_keyboard_observation != 0
+	obj["pointerInjection"] = caps.pointer_injection != 0
+	obj["keyboardInjection"] = caps.keyboard_injection != 0
+	obj["emergencyHotkey"] = caps.emergency_hotkey != 0
+	obj["keyboardCapture"] = caps.keyboard_capture != 0
 	obj["displayEnumeration"] = caps.display_enumeration != 0
+	reason := caps.unavailable_reason
+	if reason[0] != 0 {
+		n := 0
+		for b, i in reason {
+			if b == 0 { break }
+			n = i + 1
+		}
+		obj["unavailableReason"] = strings.clone(string(reason[:n]))
+	}
 	obj["permissions"] = perms
 	backend := caps.backend
 	if backend[0] != 0 {

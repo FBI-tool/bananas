@@ -13,6 +13,7 @@ const en = {
   copy_my_connection_string: 'Kopiere meine Verbindungszeichenfolge',
   disconnect: 'Trennen',
   fullscreen: 'Vollbild',
+  exit_fullscreen: 'Vollbild beenden',
   host_a_session: 'Eine Sitzung hosten',
   host_connection_string: 'Host-Verbindungszeichenfolge',
   hosting_a_session: 'Eine Sitzung hosten',
@@ -142,6 +143,21 @@ const en = {
   bonjour_enabled_description:
     'Wenn aktiv, spricht die App mit dem konfigurierten Bonjour-Server. Medien und MLS-Schlüssel bleiben auf dem Gerät. Standardmäßig aus.',
   bonjour_server_url: 'Bonjour-Server-URL',
+  remote_control: 'Fernsteuerung',
+  remote_control_mouse: 'Maus',
+  remote_control_keyboard: 'Tastatur',
+  remote_control_request: '{name} möchte die Steuerung',
+  remote_control_allow_mouse: 'Maus erlauben',
+  remote_control_allow_keyboard: 'Tastatur erlauben',
+  remote_control_allow_both: 'Beides erlauben',
+  remote_control_deny: 'Ablehnen',
+  remote_control_active: 'Fernsteuerung aktiv',
+  remote_control_controlling: 'Steuert {name}',
+  remote_control_emergency: 'Fernsteuerung durch Host-Hotkey deaktiviert',
+  remote_control_emergency_hotkey: 'Not-Aus: {hotkey}',
+  remote_control_unavailable: 'Fernsteuerung ist nicht verfügbar',
+  remote_control_request_permission: 'Bedienungshilfen-Berechtigung erteilen',
+  remote_control_request_button: 'Steuerung anfragen',
 } satisfies BaseTranslation
 
 export default en

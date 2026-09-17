@@ -27,6 +27,13 @@ export type SettingsData = {
   iceServers: IceServer[]
   bonjourEnabled?: boolean
   bonjourServerUrl?: string
+  emergencyHotkey?: {
+    ctrl: boolean
+    alt: boolean
+    shift: boolean
+    meta: boolean
+    key: 'Escape'
+  }
 }
 
 export type ScreenShareSource = {

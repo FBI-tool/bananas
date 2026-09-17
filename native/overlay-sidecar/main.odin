@@ -16,6 +16,8 @@ Session :: struct {
 	running:        bool,
 	read_buf:       [8192]u8,
 	pending:        [dynamic]u8,
+	input:          Input_State,
+	emergency_generation: i64,
 }
 
 arg_value :: proc(flag: string) -> string {
@@ -100,9 +102,166 @@ parse_cursors :: proc(content: json.Object, cursors: []NativeCursor) -> i32 {
 	return n
 }
 
+refresh_caps :: proc(session: ^Session) {
+	native_query_caps(&session.caps)
+	native_input_query_caps(&session.caps)
+}
+
+emit_remote_disabled :: proc(session: ^Session, reason: string) {
+	obj := json.Object{}
+	obj["reason"] = reason
+	obj["generation"] = session.emergency_generation
+	_ = send_env(session, "remote-control-disabled", "", obj)
+}
+
+payload_emergency_generation :: proc(payload: json.Object) -> i64 {
+	gen, ok := object_int(payload, "emergencyGeneration")
+	if ok do return gen
+	return 0
+}
+
+reject_stale_emergency_arm :: proc(session: ^Session, env: Envelope, payload: json.Object) -> bool {
+	if emergency_generation_matches(session.emergency_generation, payload_emergency_generation(payload)) {
+		return false
+	}
+	_ = send_env(session, "error", env.request_id, make_error_payload("emergency-latched", "stale arm after emergency stop"))
+	return true
+}
+
+apply_emergency :: proc(session: ^Session) {
+	session.emergency_generation += 1
+	input_emergency_disable(&session.input)
+	native_keyboard_capture_stop()
+	emit_remote_disabled(session, "emergency-hotkey")
+}
+
+emit_captured_key :: proc(session: ^Session, cap: NativeCapturedKey) {
+	mods := json.Object{}
+	mods["ctrl"] = cap.modifiers & 1 != 0
+	mods["alt"] = cap.modifiers & 2 != 0
+	mods["shift"] = cap.modifiers & 4 != 0
+	mods["meta"] = cap.modifiers & 8 != 0
+	obj := json.Object{}
+	obj["keyCode"] = i64(cap.key_code)
+	obj["down"] = cap.down != 0
+	obj["repeat"] = cap.repeat != 0
+	obj["location"] = i64(cap.location)
+	obj["modifiers"] = mods
+	_ = send_env(session, "captured-key", "", obj)
+}
+
+handle_remote_control :: proc(session: ^Session, env: Envelope) {
+	payload_obj, _ := env.payload.(json.Object)
+	switch env.type {
+	case "remote-control-arm":
+		if reject_stale_emergency_arm(session, env, payload_obj) do return
+		mouse, _ := object_bool(payload_obj, "mouse")
+		keyboard, _ := object_bool(payload_obj, "keyboard")
+		refresh_caps(session)
+		if session.caps.emergency_hotkey == 0 {
+			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "emergency hotkey is not available"))
+			return
+		}
+		if mouse && session.caps.pointer_injection == 0 {
+			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "pointer injection is not available"))
+			return
+		}
+		if keyboard && session.caps.keyboard_injection == 0 {
+			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "keyboard injection is not available"))
+			return
+		}
+		err := input_arm(&session.input, mouse, keyboard)
+		if err != .None {
+			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "remote control is not armed"))
+			return
+		}
+		_ = send_env(session, "ok", env.request_id, make_ok_payload())
+	case "remote-control-disarm":
+		input_disarm(&session.input)
+		_ = send_env(session, "ok", env.request_id, make_ok_payload())
+	case "pointer-move":
+		x, _ := object_f64(payload_obj, "x")
+		y, _ := object_f64(payload_obj, "y")
+		err := input_pointer_move(&session.input, x, y)
+		if err != .None {
+			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "pointer move rejected"))
+			return
+		}
+		_ = send_env(session, "ok", env.request_id, make_ok_payload())
+	case "pointer-button":
+		button, _ := object_int(payload_obj, "button")
+		down_i, _ := object_int(payload_obj, "down")
+		err := input_pointer_button(&session.input, i32(button), down_i != 0)
+		if err != .None {
+			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "pointer button rejected"))
+			return
+		}
+		_ = send_env(session, "ok", env.request_id, make_ok_payload())
+	case "pointer-wheel":
+		dx, _ := object_f64(payload_obj, "deltaX")
+		dy, _ := object_f64(payload_obj, "deltaY")
+		err := input_wheel(&session.input, dx, dy)
+		if err != .None {
+			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "wheel rejected"))
+			return
+		}
+		_ = send_env(session, "ok", env.request_id, make_ok_payload())
+	case "keyboard-event":
+		code, _ := object_int(payload_obj, "keyCode")
+		down_i, _ := object_int(payload_obj, "down")
+		mods: u32 = 0
+		if m, ok := payload_obj["modifiers"].(json.Object); ok {
+			if v, vok := object_bool(m, "ctrl"); vok && v do mods |= 1
+			if v, vok := object_bool(m, "alt"); vok && v do mods |= 2
+			if v, vok := object_bool(m, "shift"); vok && v do mods |= 4
+			if v, vok := object_bool(m, "meta"); vok && v do mods |= 8
+		}
+		err := input_keyboard(&session.input, u32(code), down_i != 0, mods)
+		if err != .None {
+			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "key rejected"))
+			return
+		}
+		_ = send_env(session, "ok", env.request_id, make_ok_payload())
+	case "release-all":
+		input_release_all(&session.input)
+		_ = send_env(session, "ok", env.request_id, make_ok_payload())
+	case "set-emergency-hotkey":
+		ctrl, _ := object_bool(payload_obj, "ctrl")
+		alt, _ := object_bool(payload_obj, "alt")
+		shift, _ := object_bool(payload_obj, "shift")
+		meta, _ := object_bool(payload_obj, "meta")
+		ok := native_hotkey_register(ctrl ? 1 : 0, alt ? 1 : 0, shift ? 1 : 0, meta ? 1 : 0, 1)
+		if ok == 0 {
+			_ = send_env(session, "error", env.request_id, make_error_payload("hotkey-registration-failed", "could not register emergency hotkey"))
+			return
+		}
+		refresh_caps(session)
+		_ = send_env(session, "ok", env.request_id, make_ok_payload())
+	case "request-input-permission":
+		_ = native_input_request_permission()
+		refresh_caps(session)
+		_ = send_env(session, "capabilities", env.request_id, make_capabilities_payload(session.caps))
+	case "keyboard-capture-arm":
+		if reject_stale_emergency_arm(session, env, payload_obj) do return
+		if native_keyboard_capture_start() == 0 {
+			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "keyboard capture is not available"))
+			return
+		}
+		_ = send_env(session, "ok", env.request_id, make_ok_payload())
+	case "keyboard-capture-disarm":
+		native_keyboard_capture_stop()
+		native_keyboard_capture_unlock()
+		_ = send_env(session, "ok", env.request_id, make_ok_payload())
+	}
+}
+
 handle_message :: proc(session: ^Session, env: Envelope) {
-	if is_remote_input(env.type) {
-		_ = send_env(session, "error", env.request_id, make_error_payload("not-implemented", "remote input is disabled"))
+	if is_remote_control(env.type) {
+		if !session.authed {
+			_ = send_env(session, "error", env.request_id, make_error_payload("auth", "handshake required"))
+			return
+		}
+		handle_remote_control(session, env)
 		return
 	}
 	payload_obj, _ := env.payload.(json.Object)
@@ -122,6 +281,7 @@ handle_message :: proc(session: ^Session, env: Envelope) {
 			return
 		}
 		native_query_caps(&session.caps)
+		native_input_query_caps(&session.caps)
 		_ = send_env(session, "capabilities", env.request_id, make_capabilities_payload(session.caps))
 	case "create-overlay":
 		if !session.authed {
@@ -198,11 +358,23 @@ main :: proc() {
 		pending = make([dynamic]u8),
 	}
 	native_query_caps(&session.caps)
+	_ = native_input_init()
+	native_input_query_caps(&session.caps)
 	last_beat := time.now()
 	for session.running {
 		native_overlay_pump()
+		native_input_pump()
+		if native_hotkey_poll() != 0 {
+			apply_emergency(&session)
+		}
+		cap: NativeCapturedKey
+		for native_keyboard_capture_poll(&cap) != 0 {
+			emit_captured_key(&session, cap)
+		}
 		n, rok := ipc_read_some(session.conn, session.read_buf[:])
 		if !rok {
+			input_disarm(&session.input)
+			native_keyboard_capture_stop()
 			break
 		}
 		if n > 0 {
@@ -235,9 +407,11 @@ main :: proc() {
 		}
 		time.sleep(8 * time.Millisecond)
 	}
+	input_disarm(&session.input)
 	if session.overlay_id != 0 {
 		native_overlay_destroy(session.overlay_id)
 	}
+	native_input_shutdown()
 	native_shutdown()
 	ipc_close(&session.conn)
 }

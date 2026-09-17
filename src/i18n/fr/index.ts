@@ -13,6 +13,7 @@ const fr = {
   copy_my_connection_string: 'Copier ma chaîne de connexion',
   disconnect: 'Déconnecter',
   fullscreen: 'Plein écran',
+  exit_fullscreen: 'Quitter le plein écran',
   host_a_session: 'Héberger une session',
   host_connection_string: 'Chaîne de connexion de l’hôte',
   hosting_a_session: 'Hébergement d’une session',
@@ -142,6 +143,21 @@ const fr = {
   bonjour_enabled_description:
     'Une fois activé, l’application contacte le serveur Bonjour configuré. Les médias et les clés MLS restent sur l’appareil. Désactivé par défaut.',
   bonjour_server_url: 'URL du serveur Bonjour',
+  remote_control: 'Contrôle à distance',
+  remote_control_mouse: 'Souris',
+  remote_control_keyboard: 'Clavier',
+  remote_control_request: '{name} demande le contrôle',
+  remote_control_allow_mouse: 'Autoriser la souris',
+  remote_control_allow_keyboard: 'Autoriser le clavier',
+  remote_control_allow_both: 'Autoriser les deux',
+  remote_control_deny: 'Refuser',
+  remote_control_active: 'Contrôle à distance actif',
+  remote_control_controlling: 'Contrôle de {name}',
+  remote_control_emergency: 'Contrôle à distance désactivé par le raccourci hôte',
+  remote_control_emergency_hotkey: 'Arrêt d’urgence : {hotkey}',
+  remote_control_unavailable: 'Le contrôle à distance est indisponible',
+  remote_control_request_permission: 'Accorder l’accessibilité',
+  remote_control_request_button: 'Demander le contrôle',
 } satisfies BaseTranslation
 
 export default fr
