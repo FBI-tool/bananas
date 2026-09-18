@@ -157,14 +157,13 @@ export class BonjourClient {
     try {
       return await this.http.query<BonjourMe>(this.token, 'account.me')
     } catch (error) {
-      const err = error as Error
-      const cause = (err as any).cause as { code?: string } | undefined
-      if (error.message?.includes('UNAUTHORIZED')) {
+      const err = error as unknown as { message?: string; cause?: { code?: string } }
+      if (err.message?.includes('UNAUTHORIZED')) {
         return {
           error: BonjourServerErrorEnum.SERVER_UNAUTHORIZED,
         }
       }
-      switch (cause?.code) {
+      switch (err.cause?.code) {
         case 'UNAUTHORIZED':
           return {
             error: BonjourServerErrorEnum.SERVER_UNAUTHORIZED,

@@ -153,6 +153,7 @@ const zh = {
   remote_control_unavailable: '远程控制不可用',
   remote_control_request_permission: '授予辅助功能权限',
   remote_control_request_button: '请求控制',
+  search: '搜索',
 } satisfies Translation
 
 export default zh

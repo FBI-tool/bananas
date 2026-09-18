@@ -33,7 +33,7 @@
   let modalAddUserVisible = $state(false)
   let usernameDraft = $state('')
   let addUsername = $state('')
-  let listName = $state('')
+  // let listName = $state('')
   let contacts = $state<
     Array<{
       userId: string
@@ -46,7 +46,7 @@
   let incoming = $state<Array<{ id: string; fromUserId: string; username: string }>>([])
   let outgoing = $state<Array<{ id: string; toUserId: string; username: string }>>([])
   let ignored = $state<Array<{ userId: string; username: string }>>([])
-  let lists = $state<Array<{ id: string; name: string; memberIds: string[] }>>([])
+  // let lists = $state<Array<{ id: string; name: string; memberIds: string[] }>>([])
   let incomingCall = $state<IncomingBonjourCall | null>(null)
   let sessionStarted = $state(false)
   let outgoingCallId: string | null = null
@@ -81,7 +81,7 @@
     incoming = await window.KiwiApi.bonjour.incoming()
     outgoing = await window.KiwiApi.bonjour.outgoing()
     ignored = await window.KiwiApi.bonjour.ignored()
-    lists = await window.KiwiApi.bonjour.lists()
+    // lists = await window.KiwiApi.bonjour.lists()
     peerKeys = new Map(
       contacts
         .filter((contact) => contact.devicePublicKey)
@@ -400,11 +400,11 @@
     reset()
   }
 
-  const addMember = async (listId: string, peerId: string): Promise<void> => {
-    if (!peerId) return
-    await window.KiwiApi.bonjour.addListMember(listId, peerId)
-    await refresh()
-  }
+  // const addMember = async (listId: string, peerId: string): Promise<void> => {
+  //   if (!peerId) return
+  //   await window.KiwiApi.bonjour.addListMember(listId, peerId)
+  //   await refresh()
+  // }
 </script>
 
 <h1 class="text-3xl font-bold mb-4">{L.bonjour()}</h1>
