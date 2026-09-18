@@ -1,15 +1,41 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { PeerLink } from './peerLink'
+import { PeerLink, MOTION_BACKPRESSURE_BYTES } from './peerLink'
+import { CAMERA_PROFILES, SCREEN_PROFILES, AUDIO_PROFILE } from './adaptive/qualityProfiles'
 
 class MockDataChannel {
   label: string
   readyState = 'connecting'
+  bufferedAmount = 0
+  bufferedAmountLowThreshold = 0
   onmessage: ((e: MessageEvent) => void) | null = null
   onopen: (() => void) | null = null
+  onbufferedamountlow: (() => void) | null = null
   send = vi.fn()
   constructor(label: string) {
     this.label = label
   }
+}
+
+const createSender = (track: MediaStreamTrack) => {
+  const params: RTCRtpSendParameters = {
+    encodings: [{ maxBitrate: 0, active: true, scaleResolutionDownBy: 1 }],
+    transactionId: 't',
+    codecs: [],
+    headerExtensions: [],
+    rtcp: {},
+  }
+  const sender = {
+    track,
+    replaceTrack: vi.fn(async (next: MediaStreamTrack | null) => {
+      sender.track = next
+    }),
+    getParameters: vi.fn(() => params),
+    setParameters: vi.fn(async (next: RTCRtpSendParameters) => {
+      params.encodings = next.encodings
+      params.degradationPreference = next.degradationPreference
+    }),
+  }
+  return sender
 }
 
 class MockRTCPeerConnection {
@@ -23,7 +49,7 @@ class MockRTCPeerConnection {
   oniceconnectionstatechange: (() => void) | null = null
   onconnectionstatechange: (() => void) | null = null
   onnegotiationneeded: (() => void) | null = null
-  private senders: Array<RTCRtpSender & { replaceTrack: ReturnType<typeof vi.fn> }> = []
+  private senders: Array<ReturnType<typeof createSender>> = []
 
   createDataChannel = vi.fn(
     (label: string, _opts?: RTCDataChannelInit) => new MockDataChannel(label),
@@ -35,17 +61,15 @@ class MockRTCPeerConnection {
   })
   setRemoteDescription = vi.fn(async () => undefined)
   addTrack = vi.fn((track: MediaStreamTrack, _stream: MediaStream) => {
-    const sender = {
-      track,
-      replaceTrack: vi.fn(async (next: MediaStreamTrack | null) => {
-        sender.track = next
-      }),
-    }
-    this.senders.push(sender as RTCRtpSender & { replaceTrack: ReturnType<typeof vi.fn> })
+    const sender = createSender(track)
+    this.senders.push(sender)
     return sender
   })
   getSenders = vi.fn(() => this.senders)
   getTransceivers = vi.fn(() => [])
+  getStats = vi.fn(async () => ({
+    forEach: () => undefined,
+  }))
   addEventListener = vi.fn()
   removeEventListener = vi.fn()
   addIceCandidate = vi.fn(async () => undefined)
@@ -188,5 +212,116 @@ describe('PeerLink video senders', () => {
     expect(link.sendRemoteInputAction('{"t":"key"}')).toBe(true)
     expect(motion.send).toHaveBeenCalledWith('{"t":"pointer-move"}')
     expect(actions.send).toHaveBeenCalledWith('{"t":"key"}')
+  })
+})
+
+describe('PeerLink adaptive profiles', () => {
+  const openLink = async () => {
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: true,
+      events,
+    })
+    const display = {
+      id: 'display',
+      kind: 'video',
+      getSettings: () => ({ height: 2160 }),
+    } as MediaStreamTrack
+    const camera = {
+      id: 'camera',
+      kind: 'video',
+      getSettings: () => ({ height: 720 }),
+    } as MediaStreamTrack
+    const audio = { id: 'audio', kind: 'audio' } as MediaStreamTrack
+    const stream = { id: 's' } as MediaStream
+    await link.setDisplayTrack(display, stream)
+    await link.setCameraTrack(camera, stream)
+    link.addTrack(audio, stream)
+    return link
+  }
+
+  it('applies screen and camera profiles via setParameters without replaceTrack', async () => {
+    const link = await openLink()
+    const senders = link.getAdaptiveSenders()
+    const displayReplace = senders.display?.replaceTrack as ReturnType<typeof vi.fn>
+    await expect(link.applyDisplayProfile(SCREEN_PROFILES.medium)).resolves.toBe(true)
+    await expect(link.applyCameraProfile(CAMERA_PROFILES.low)).resolves.toBe(true)
+    await expect(link.applyAudioProfile(AUDIO_PROFILE)).resolves.toBe(true)
+    expect(senders.display?.setParameters).toHaveBeenCalled()
+    expect(senders.camera?.setParameters).toHaveBeenCalled()
+    expect(senders.audio?.setParameters).toHaveBeenCalled()
+    const displayParams = senders.display?.getParameters()
+    expect(displayParams?.encodings[0].maxBitrate).toBe(SCREEN_PROFILES.medium.maxBitrate)
+    expect(displayParams?.encodings[0].maxFramerate).toBe(SCREEN_PROFILES.medium.maxFramerate)
+    expect(displayParams?.encodings[0].scaleResolutionDownBy).toBe(2)
+    expect(displayParams?.degradationPreference).toBe('maintain-resolution')
+    expect(senders.camera?.getParameters().encodings[0].active).toBe(true)
+    await link.setCameraTransportEnabled(false)
+    expect(senders.camera?.getParameters().encodings[0].active).toBe(false)
+    expect(displayReplace).not.toHaveBeenCalled()
+  })
+
+  it('catches setParameters failure and keeps the call usable', async () => {
+    const link = await openLink()
+    const sender = link.getAdaptiveSenders().display
+    sender!.setParameters = vi.fn(async () => {
+      throw new Error('invalid modification')
+    })
+    await expect(link.applyDisplayProfile(SCREEN_PROFILES.low)).resolves.toBe(false)
+    expect(link.connectionState).toBe('new')
+  })
+
+  it('does not re-attach E2EE when only RTP parameters change', async () => {
+    const attachSender = vi.fn(async () => undefined)
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: true,
+      events,
+    })
+    const display = {
+      id: 'display',
+      kind: 'video',
+      getSettings: () => ({ height: 1080 }),
+    } as MediaStreamTrack
+    const stream = { id: 's' } as MediaStream
+    await link.setDisplayTrack(display, stream)
+    link.setMediaE2ee({ attachSender, attachReceiver: vi.fn() } as never)
+    await link.applyMediaE2ee()
+    expect(attachSender).toHaveBeenCalledTimes(1)
+    const sender = link.getAdaptiveSenders().display
+    await link.applyDisplayProfile(SCREEN_PROFILES.high)
+    expect(attachSender).toHaveBeenCalledTimes(1)
+    expect(sender).toBe(link.getAdaptiveSenders().display)
+  })
+
+  it('coalesces pointer motion under data-channel backpressure and never coalesces actions', () => {
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: true,
+      events,
+    })
+    const pc = link.pc as unknown as MockRTCPeerConnection
+    const motion = pc.createDataChannel.mock.results[2]?.value as MockDataChannel
+    const actions = pc.createDataChannel.mock.results[3]?.value as MockDataChannel
+    motion.readyState = 'open'
+    actions.readyState = 'open'
+    motion.bufferedAmount = MOTION_BACKPRESSURE_BYTES + 1
+    expect(link.sendRemoteInputMotion('move-1')).toBe(true)
+    expect(link.sendRemoteInputMotion('move-2')).toBe(true)
+    expect(motion.send).not.toHaveBeenCalled()
+    expect(link.sendRemoteInputAction('key-down')).toBe(true)
+    expect(link.sendRemoteInputAction('key-up')).toBe(true)
+    expect(actions.send).toHaveBeenCalledWith('key-down')
+    expect(actions.send).toHaveBeenCalledWith('key-up')
+    motion.bufferedAmount = 0
+    motion.onbufferedamountlow?.()
+    expect(motion.send).toHaveBeenCalledTimes(1)
+    expect(motion.send).toHaveBeenCalledWith('move-2')
   })
 })

@@ -6,9 +6,12 @@ import { decodeMlsFrame, encodeMlsFrame, type MlsFrame } from '../crypto/mlsWire
 import { asBufferSource } from '../crypto/constants'
 import type { MediaE2EE } from '../crypto/mediaE2ee'
 import type { MediaStreamIdentity } from '../crypto/roomCrypto'
+import type { AudioProfile, CameraProfile, ScreenProfile } from './adaptive/types'
+import { scaleResolutionDownBy } from './adaptive/qualityProfiles'
 
 export const REMOTE_INPUT_MOTION_LABEL = 'remote-input-motion'
 export const REMOTE_INPUT_ACTIONS_LABEL = 'remote-input-actions'
+export const MOTION_BACKPRESSURE_BYTES = 8 * 1024
 
 export type PeerLinkEvents = {
   onControl: (msg: ControlMessage) => void
@@ -63,6 +66,8 @@ export class PeerLink {
     trackKind: string
     identity: MediaStreamIdentity
   }> = []
+  private pendingMotion: string | null = null
+  private motionFlushTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(opts: PeerLinkOptions) {
     this.pendingId = opts.pendingId
@@ -165,15 +170,18 @@ export class PeerLink {
     return true
   }
 
+  get motionBufferedAmount(): number {
+    return this.remoteInputMotion?.bufferedAmount ?? 0
+  }
+
   sendRemoteInputMotion(raw: string): boolean {
     if (!this.remoteInputMotion || this.remoteInputMotion.readyState !== 'open') return false
-    try {
-      this.remoteInputMotion.send(raw)
+    if (this.motionBufferedAmount > MOTION_BACKPRESSURE_BYTES) {
+      this.pendingMotion = raw
+      this.scheduleMotionFlush()
       return true
-    } catch (error) {
-      console.warn('remote-input motion send failed', error)
-      return false
     }
+    return this.flushMotion(raw)
   }
 
   sendRemoteInputAction(raw: string): boolean {
@@ -232,6 +240,72 @@ export class PeerLink {
 
   async setCameraTrack(track: MediaStreamTrack | null, stream: MediaStream | null): Promise<void> {
     await this.replaceOrAddSender('camera', track, stream)
+  }
+
+  getAdaptiveSenders(): {
+    display: RTCRtpSender | null
+    camera: RTCRtpSender | null
+    audio: RTCRtpSender | null
+  } {
+    const audioFromIdentity = [...this.extraSenders.entries()].find(
+      ([, identity]) => identity.kind === 'audio',
+    )?.[0]
+    const audio =
+      audioFromIdentity ??
+      this.pc.getSenders().find((sender) => sender.track?.kind === 'audio') ??
+      null
+    return { display: this.displaySender, camera: this.cameraSender, audio }
+  }
+
+  async collectAdaptiveStats(): Promise<RTCStatsReport | null> {
+    try {
+      return await this.pc.getStats()
+    } catch (error) {
+      console.warn('peer link getStats failed', error)
+      return null
+    }
+  }
+
+  async applyDisplayProfile(profile: ScreenProfile): Promise<boolean> {
+    return this.applyVideoSenderProfile(this.displaySender, {
+      maxBitrate: profile.maxBitrate,
+      maxFramerate: profile.maxFramerate,
+      maxHeight: profile.maxHeight,
+      active: true,
+      degradationPreference: profile.degradationPreference,
+    })
+  }
+
+  async applyCameraProfile(profile: CameraProfile): Promise<boolean> {
+    return this.applyVideoSenderProfile(this.cameraSender, {
+      maxBitrate: profile.maxBitrate,
+      maxFramerate: profile.maxFramerate,
+      maxHeight: profile.maxHeight,
+      active: profile.active,
+      degradationPreference: profile.degradationPreference,
+    })
+  }
+
+  async setCameraTransportEnabled(enabled: boolean): Promise<boolean> {
+    return this.applyVideoSenderProfile(this.cameraSender, { active: enabled })
+  }
+
+  async applyAudioProfile(profile: AudioProfile): Promise<boolean> {
+    const { audio } = this.getAdaptiveSenders()
+    if (!audio?.getParameters || !audio.setParameters) return false
+    try {
+      const params = audio.getParameters()
+      if (!params.encodings?.length) return false
+      const encoding = params.encodings[0]
+      encoding.maxBitrate = profile.maxBitrate
+      encoding.priority = profile.priority
+      if ('networkPriority' in encoding) encoding.networkPriority = profile.priority
+      await audio.setParameters(params)
+      return true
+    } catch (error) {
+      console.warn('audio setParameters failed', error)
+      return false
+    }
   }
 
   private hintDisplayTrack(kind: 'display' | 'camera', track: MediaStreamTrack | null): void {
@@ -353,6 +427,8 @@ export class PeerLink {
   close(): void {
     if (this.closed) return
     this.closed = true
+    this.clearMotionFlush()
+    this.pendingMotion = null
     try {
       this.pc.close()
     } catch {
@@ -380,6 +456,83 @@ export class PeerLink {
       const raw = String(event.data)
       if (kind === 'motion') this.events.onRemoteInputMotion?.(raw)
       else this.events.onRemoteInputAction?.(raw)
+    }
+    if (kind !== 'motion') return
+    try {
+      channel.bufferedAmountLowThreshold = MOTION_BACKPRESSURE_BYTES
+      channel.onbufferedamountlow = (): void => {
+        this.flushPendingMotion()
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  private scheduleMotionFlush(): void {
+    if (this.motionFlushTimer !== null) return
+    this.motionFlushTimer = setTimeout(() => {
+      this.motionFlushTimer = null
+      this.flushPendingMotion()
+    }, 16)
+  }
+
+  private clearMotionFlush(): void {
+    if (this.motionFlushTimer === null) return
+    clearTimeout(this.motionFlushTimer)
+    this.motionFlushTimer = null
+  }
+
+  private flushPendingMotion(): void {
+    const pending = this.pendingMotion
+    if (pending === null) return
+    if (this.motionBufferedAmount > MOTION_BACKPRESSURE_BYTES) {
+      this.scheduleMotionFlush()
+      return
+    }
+    this.pendingMotion = null
+    this.flushMotion(pending)
+  }
+
+  private flushMotion(raw: string): boolean {
+    if (!this.remoteInputMotion || this.remoteInputMotion.readyState !== 'open') return false
+    try {
+      this.remoteInputMotion.send(raw)
+      return true
+    } catch (error) {
+      console.warn('remote-input motion send failed', error)
+      return false
+    }
+  }
+
+  private async applyVideoSenderProfile(
+    sender: RTCRtpSender | null,
+    profile: {
+      maxBitrate?: number
+      maxFramerate?: number
+      maxHeight?: number | null
+      active?: boolean
+      degradationPreference?: ScreenProfile['degradationPreference']
+    },
+  ): Promise<boolean> {
+    if (!sender?.getParameters || !sender.setParameters) return false
+    try {
+      const params = sender.getParameters()
+      if (!params.encodings?.length) return false
+      const encoding = params.encodings[0]
+      if (profile.maxBitrate !== undefined) encoding.maxBitrate = profile.maxBitrate
+      if (profile.maxFramerate !== undefined) encoding.maxFramerate = profile.maxFramerate
+      if (profile.maxHeight !== undefined) {
+        const height = sender.track?.getSettings?.().height
+        encoding.scaleResolutionDownBy = scaleResolutionDownBy(height, profile.maxHeight)
+      }
+      if (profile.active !== undefined) encoding.active = profile.active
+      if (profile.degradationPreference)
+        params.degradationPreference = profile.degradationPreference
+      await sender.setParameters(params)
+      return true
+    } catch (error) {
+      console.warn('video setParameters failed', error)
+      return false
     }
   }
 

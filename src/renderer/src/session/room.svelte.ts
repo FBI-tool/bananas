@@ -53,6 +53,8 @@ import { DEFAULT_EMERGENCY_HOTKEY, formatEmergencyHotkey } from './emergencyHotk
 import { isPortableKeyCode } from './portableKeys'
 import { CallLoopback } from './callLoopback'
 import { PeerLink } from './peerLink'
+import { AdaptiveController, SpeechActivity, initialCpuGuard, stepCpuGuard } from './adaptive'
+import type { CpuGuardState } from './adaptive'
 import {
   answersMatchOffer,
   canStartKick,
@@ -197,6 +199,9 @@ export class Room {
   private outboundMotionSeq = 0
   private outboundActionSeq = 0
   private remoteControlUnsub: Array<() => void> = []
+  private adaptiveControllers = new Map<PeerLink, AdaptiveController>()
+  private speechActivity = new SpeechActivity()
+  private cpuGuardState: CpuGuardState = initialCpuGuard()
 
   get isCoordinator(): boolean {
     return this.localPeerId !== '' && this.localPeerId === this.coordinatorId
@@ -547,6 +552,7 @@ export class Room {
     }
     this.hasAudioInput = this.audioStream !== null
     debugLog.info('room', `audio input ${this.hasAudioInput ? 'available' : 'unavailable'}`)
+    this.speechActivity.start(this.audioStream)
 
     if (!v) {
       this.coordinatorId = this.localPeerId
@@ -1331,7 +1337,10 @@ export class Room {
       if (now - link.createdAt > PENDING_INVITE_TTL_MS) stale.push(key)
     }
     for (const key of stale) {
-      this.links.get(key)?.close()
+      const link = this.links.get(key)
+      if (!link) continue
+      this.stopAdaptive(link)
+      link.close()
       this.links.delete(key)
     }
   }
@@ -1695,6 +1704,7 @@ export class Room {
       debugLog.warn('room', 'rejected hello: e2ee mismatch', { peerId: msg.peerId })
       this.closing.add(link.pendingId)
       if (link.remotePeerId) this.closing.add(link.remotePeerId)
+      this.stopAdaptive(link)
       link.close()
       this.deleteLink(link)
       this.isLive = this.establishedRemoteIds().length > 0
@@ -2191,6 +2201,7 @@ export class Room {
 
   private markLive(link: PeerLink): void {
     link.markEstablished()
+    this.startAdaptive(link)
     this.isLive = this.remotePeerCount > 0 || link.iceConnectionState === 'connected'
     if (link.connectionState === 'connected' || link.iceConnectionState === 'connected') {
       this.setConnectionState('connected')
@@ -2208,6 +2219,7 @@ export class Room {
     this.closing.add(key)
     const peerId = link.remotePeerId
     this.clearIceGrace(key)
+    this.stopAdaptive(link)
     link.close()
     this.deleteLink(link)
     if (peerId) {
@@ -2306,6 +2318,8 @@ export class Room {
     const oldKey = [...this.links.entries()].find(([, value]) => value === link)?.[0]
     if (oldKey && oldKey !== remotePeerId) this.links.delete(oldKey)
     this.links.set(remotePeerId, link)
+    const adaptive = this.adaptiveControllers.get(link)
+    if (adaptive) adaptive.id = remotePeerId
     const pendingStream = this.remoteVideoStreams.get(link.pendingId)
     if (pendingStream) {
       this.remoteVideoStreams.delete(link.pendingId)
@@ -2338,9 +2352,63 @@ export class Room {
   }
 
   private deleteLink(link: PeerLink): void {
+    this.stopAdaptive(link)
     for (const [key, value] of this.links) {
       if (value === link) this.links.delete(key)
     }
+  }
+
+  private startAdaptive(link: PeerLink): void {
+    if (this.adaptiveControllers.has(link)) return
+    const controller = new AdaptiveController({
+      id: link.remotePeerId ?? link.pendingId,
+      collectStats: () => link.collectAdaptiveStats(),
+      applyDisplayProfile: (profile) => link.applyDisplayProfile(profile),
+      applyCameraProfile: (profile) => link.applyCameraProfile(profile),
+      applyAudioProfile: (profile) => link.applyAudioProfile(profile),
+      getContext: () => this.adaptiveContextFor(link),
+      logger: {
+        info: (message, detail) => debugLog.info('adaptive', message, detail),
+        warn: (message, detail) => debugLog.warn('adaptive', message, detail),
+      },
+      onAfterTick: () => this.refreshCpuGuard(),
+    })
+    this.adaptiveControllers.set(link, controller)
+    controller.start()
+  }
+
+  private stopAdaptive(link: PeerLink): void {
+    const controller = this.adaptiveControllers.get(link)
+    if (!controller) return
+    controller.stop()
+    this.adaptiveControllers.delete(link)
+    this.refreshCpuGuard()
+  }
+
+  private stopAllAdaptive(): void {
+    for (const controller of this.adaptiveControllers.values()) controller.stop()
+    this.adaptiveControllers.clear()
+    this.cpuGuardState = initialCpuGuard()
+  }
+
+  private adaptiveContextFor(link: PeerLink) {
+    const peerId = link.remotePeerId
+    const grant = peerId ? getPeerRemoteControl(this.remoteControl, peerId) : null
+    return {
+      screenActive: this.isPresenter && this.displayStreamActive,
+      cameraIntent: this.cameraActive,
+      microphoneActive: this.microphoneActive || this.IsMicrophoneActive(),
+      speaking: this.speechActivity.speaking,
+      remoteControlActive: Boolean(this.isPresenter && grant && (grant.mouse || grant.keyboard)),
+      cpuCeiling: this.cpuGuardState.ceiling,
+    }
+  }
+
+  private refreshCpuGuard(): void {
+    const samples = [...this.adaptiveControllers.values()].map(
+      (controller) => controller.getHealth().cpu,
+    )
+    this.cpuGuardState = stepCpuGuard(this.cpuGuardState, samples, Date.now())
   }
 
   private upsertPeer(peer: RoomPeer): void {
@@ -2695,8 +2763,10 @@ export class Room {
     this.clearVoteTimer()
     for (const timer of this.iceGraceTimers.values()) clearTimeout(timer)
     this.iceGraceTimers.clear()
+    this.stopAllAdaptive()
     for (const link of this.links.values()) link.close()
     this.links.clear()
+    this.speechActivity.stop()
     this.stopStream(this.displayStream)
     this.stopStream(this.pendingDisplayStream)
     this.stopStream(this.audioStream)
@@ -2826,6 +2896,7 @@ export class Room {
       })
       for (const link of this.links.values()) {
         await link.setCameraTrack(track, stream)
+        void this.adaptiveControllers.get(link)?.tick()
       }
       this.broadcastCameraState()
       this.syncCallOverlay()

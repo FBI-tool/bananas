@@ -68,7 +68,7 @@
         iceServers: iceServersValue.split('\n').map((srv) => JSON.parse(srv)),
         bonjourEnabled,
         bonjourServerUrl,
-        emergencyHotkey
+        emergencyHotkey: Object.assign({}, emergencyHotkey)
       })
       appState.debugLogsEnabled = debugLogsEnabled
       appState.bonjourEnabled = bonjourEnabled
