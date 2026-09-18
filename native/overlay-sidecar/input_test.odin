@@ -100,6 +100,44 @@ test_ctrl_chord_syncs_then_releases_before_next_key :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_ctrl_c_chord_repeats_then_fully_releases :: proc(t: ^testing.T) {
+	state: Input_State
+	_ = input_arm(&state, false, true)
+	testing.expect_value(t, input_keyboard(&state, PK_CONTROL_LEFT, true, 1), Input_Error.None)
+	testing.expect_value(t, input_keyboard(&state, PK_C, true, 1), Input_Error.None)
+	testing.expect(t, key_is_held(&state, PK_CONTROL_LEFT))
+	testing.expect(t, key_is_held(&state, PK_C))
+	testing.expect_value(t, input_keyboard(&state, PK_C, true, 1), Input_Error.None)
+	testing.expect_value(t, input_keyboard(&state, PK_C, true, 1), Input_Error.None)
+	testing.expect(t, key_is_held(&state, PK_C))
+	testing.expect_value(t, input_keyboard(&state, PK_C, false, 1), Input_Error.None)
+	testing.expect(t, !key_is_held(&state, PK_C))
+	testing.expect(t, key_is_held(&state, PK_CONTROL_LEFT))
+	testing.expect_value(t, input_keyboard(&state, PK_CONTROL_LEFT, false, 0), Input_Error.None)
+	testing.expect(t, !key_is_held(&state, PK_CONTROL_LEFT))
+	testing.expect(t, !key_is_held(&state, PK_C))
+}
+
+@(test)
+test_shift_semicolon_chord_repeats_then_fully_releases :: proc(t: ^testing.T) {
+	state: Input_State
+	_ = input_arm(&state, false, true)
+	testing.expect_value(t, input_keyboard(&state, PK_SHIFT_LEFT, true, 4), Input_Error.None)
+	testing.expect_value(t, input_keyboard(&state, PK_SEMICOLON, true, 4), Input_Error.None)
+	testing.expect(t, key_is_held(&state, PK_SHIFT_LEFT))
+	testing.expect(t, key_is_held(&state, PK_SEMICOLON))
+	testing.expect_value(t, input_keyboard(&state, PK_SEMICOLON, true, 4), Input_Error.None)
+	testing.expect_value(t, input_keyboard(&state, PK_SEMICOLON, true, 4), Input_Error.None)
+	testing.expect(t, key_is_held(&state, PK_SEMICOLON))
+	testing.expect_value(t, input_keyboard(&state, PK_SEMICOLON, false, 4), Input_Error.None)
+	testing.expect(t, !key_is_held(&state, PK_SEMICOLON))
+	testing.expect(t, key_is_held(&state, PK_SHIFT_LEFT))
+	testing.expect_value(t, input_keyboard(&state, PK_SHIFT_LEFT, false, 0), Input_Error.None)
+	testing.expect(t, !key_is_held(&state, PK_SHIFT_LEFT))
+	testing.expect(t, !key_is_held(&state, PK_SEMICOLON))
+}
+
+@(test)
 test_stale_emergency_generation_is_rejected :: proc(t: ^testing.T) {
 	testing.expect(t, emergency_generation_matches(0, 0))
 	testing.expect(t, emergency_generation_matches(2, 2))

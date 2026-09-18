@@ -46,9 +46,11 @@ import {
   requestRemoteControlState,
   revokeAllRemoteControlState,
   revokeRemoteControlState,
+  takeRemoteKeyEdge,
   type RemoteControlMap,
   type SeqTracker,
 } from './remoteControlState'
+import { createSerialQueue } from './serialQueue'
 import { DEFAULT_EMERGENCY_HOTKEY, formatEmergencyHotkey } from './emergencyHotkey'
 import { isPortableKeyCode } from './portableKeys'
 import { CallLoopback } from './callLoopback'
@@ -198,6 +200,13 @@ export class Room {
   private inboundRemoteSeq: SeqTracker = {}
   private outboundMotionSeq = 0
   private outboundActionSeq = 0
+  private pressedRemoteKeys = new Set<string>()
+  private outboundActionQueue = createSerialQueue((error) => {
+    debugLog.error('room', 'remote-input action send failed', error)
+  })
+  private inboundActionQueue = createSerialQueue((error) => {
+    debugLog.error('room', 'remote-input action recv failed', error)
+  })
   private remoteControlUnsub: Array<() => void> = []
   private adaptiveControllers = new Map<PeerLink, AdaptiveController>()
   private speechActivity = new SpeechActivity()
@@ -406,6 +415,7 @@ export class Room {
     const prev = this.remoteControl
     this.remoteControl = revokeAllRemoteControlState(prev)
     this.inboundRemoteSeq = {}
+    this.pressedRemoteKeys.clear()
     for (const [peerId, state] of Object.entries(prev)) {
       this.broadcast({
         t: 'remote-control-revoke',
@@ -484,6 +494,7 @@ export class Room {
     const grant = this.localRemoteGrant
     if (!grant?.keyboard) return
     if (!isPortableKeyCode(event.code)) return
+    if (!takeRemoteKeyEdge(this.pressedRemoteKeys, event.action, event.code)) return
     this.outboundActionSeq += 1
     void this.sendRemoteInputToPresenter({
       t: 'key',
@@ -1430,7 +1441,7 @@ export class Room {
           void this.onRemoteInputRaw(link, raw, 'motion')
         },
         onRemoteInputAction: (raw) => {
-          void this.onRemoteInputRaw(link, raw, 'action')
+          this.inboundActionQueue.enqueue(() => this.onRemoteInputRaw(link, raw, 'action'))
         },
       },
     })
@@ -2569,7 +2580,15 @@ export class Room {
     if (status) this.remoteControlUnsub.push(status)
   }
 
-  private async sendRemoteInputToPresenter(msg: RemoteInputMessage): Promise<void> {
+  private sendRemoteInputToPresenter(msg: RemoteInputMessage): void {
+    if (msg.t === 'pointer-move') {
+      void this.sendRemoteInputNow(msg)
+      return
+    }
+    this.outboundActionQueue.enqueue(() => this.sendRemoteInputNow(msg))
+  }
+
+  private async sendRemoteInputNow(msg: RemoteInputMessage): Promise<void> {
     const link = this.findLinkByRemote(this.presenterId)
     if (!link) return
     const wrapped = await this.wrapRemoteInput(msg)
@@ -2799,6 +2818,9 @@ export class Room {
     this.cursorsEnabled = false
     this.remoteControl = {}
     this.inboundRemoteSeq = {}
+    this.pressedRemoteKeys.clear()
+    this.outboundActionQueue.reset()
+    this.inboundActionQueue.reset()
     this.emergencyStopMessage = null
     void window.KiwiApi.remoteControl?.disarm?.()
     this.peers = []

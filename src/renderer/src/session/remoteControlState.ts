@@ -162,3 +162,18 @@ export const acceptSeq = (
     },
   }
 }
+
+/** Skip extra downs (OS repeat / capture duplicates) so the matching up is not delayed. */
+export const takeRemoteKeyEdge = (
+  pressed: Set<string>,
+  action: 'down' | 'up',
+  code: string,
+): boolean => {
+  if (action === 'down') {
+    if (pressed.has(code)) return false
+    pressed.add(code)
+    return true
+  }
+  pressed.delete(code)
+  return true
+}

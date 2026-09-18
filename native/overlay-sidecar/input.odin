@@ -94,6 +94,8 @@ PK_ALT_LEFT :: u32(66)
 PK_ALT_RIGHT :: u32(67)
 PK_META_LEFT :: u32(68)
 PK_META_RIGHT :: u32(69)
+PK_C :: u32(14)
+PK_SEMICOLON :: u32(111)
 
 key_is_held :: proc(state: ^Input_State, code: u32) -> bool {
 	return code > 0 && int(code) < MAX_TRACKED_KEYS && state.held_keys[code]
@@ -133,7 +135,10 @@ input_keyboard :: proc(state: ^Input_State, key_code: u32, down: bool, modifiers
 	if !key_is_modifier(key_code) {
 		input_sync_modifiers(state, modifiers)
 	}
-	if native_key_event(key_code, down ? 1 : 0, modifiers) != 0 do return .Native_Failed
+	already_held := down && key_is_held(state, key_code)
+	if !already_held {
+		if native_key_event(key_code, down ? 1 : 0, modifiers) != 0 do return .Native_Failed
+	}
 	if key_code > 0 && int(key_code) < MAX_TRACKED_KEYS {
 		state.held_keys[key_code] = down
 	}

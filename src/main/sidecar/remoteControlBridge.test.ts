@@ -9,6 +9,7 @@ import {
 } from './remoteControlBridge'
 import type { SidecarManager } from './sidecarManager'
 import type { OverlaySource } from './protocol'
+import { portableKeyId } from '../../shared/portableKeys'
 
 const source: OverlaySource = {
   displayId: '1',
@@ -146,5 +147,59 @@ describe('RemoteControlBridge', () => {
     ).resolves.toBeUndefined()
     const arm = sidecar.send.mock.calls.find((call) => call[0] === 'remote-control-arm')
     expect(arm?.[1]).toMatchObject({ emergencyGeneration: 1 })
+  })
+
+  it('still injects key-up after action rate limit is exhausted', async () => {
+    const sidecar = mockSidecar()
+    const bridge = new RemoteControlBridge(sidecar, () => source)
+    await bridge.arm({ mouse: false, keyboard: true, generation: 1 })
+    sidecar.send.mockClear()
+    for (let seq = 1; seq <= 130; seq += 1) {
+      await bridge.key({
+        generation: 1,
+        seq,
+        action: 'down',
+        code: 'KeyC',
+        repeat: seq > 1,
+      })
+    }
+    await bridge.key({
+      generation: 1,
+      seq: 131,
+      action: 'up',
+      code: 'KeyC',
+    })
+    await vi.waitFor(() => {
+      const keys = sidecar.send.mock.calls.filter((call) => call[0] === 'keyboard-event')
+      expect(keys.some((call) => call[1].down === 1)).toBe(true)
+      expect(
+        keys.some((call) => call[1].down === 0 && call[1].keyCode === portableKeyId('KeyC')),
+      ).toBe(true)
+    })
+  })
+
+  it('does not strand a key-up behind a slow sidecar inject', async () => {
+    const sidecar = mockSidecar()
+    const bridge = new RemoteControlBridge(sidecar, () => source)
+    await bridge.arm({ mouse: false, keyboard: true, generation: 1 })
+    sidecar.send.mockClear()
+    let releaseDown: (() => void) | undefined
+    sidecar.send.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseDown = () => resolve({ protocolVersion: 2, type: 'ok', payload: {} })
+        }),
+    )
+    const down = bridge.key({ generation: 1, seq: 1, action: 'down', code: 'KeyA' })
+    const up = bridge.key({ generation: 1, seq: 2, action: 'up', code: 'KeyA' })
+    await Promise.all([down, up])
+    expect(sidecar.send).toHaveBeenCalledTimes(1)
+    expect(sidecar.send.mock.calls[0][1].down).toBe(1)
+    releaseDown?.()
+    await vi.waitFor(() => {
+      expect(
+        sidecar.send.mock.calls.some((call) => call[0] === 'keyboard-event' && call[1].down === 0),
+      ).toBe(true)
+    })
   })
 })

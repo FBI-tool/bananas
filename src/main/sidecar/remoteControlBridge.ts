@@ -95,6 +95,7 @@ export class RemoteControlBridge {
   private buttonRate = new RateLimiter(ACTION_RATE_PER_SEC)
   private wheelRate = new RateLimiter(WHEEL_RATE_PER_SEC)
   private keyRate = new RateLimiter(ACTION_RATE_PER_SEC)
+  private actionInjectQueue: Promise<void> = Promise.resolve()
   private mainWindow: BrowserWindow | null = null
   private hotkey: EmergencyHotkey = DEFAULT_EMERGENCY_HOTKEY
   private emergencyGeneration = 0
@@ -231,10 +232,12 @@ export class RemoteControlBridge {
     if (!this.armed || !this.mouse) return
     if (parsed.generation !== this.generation && this.generation !== 0) return
     if (!this.buttonRate.allow()) return
-    await this.sidecar.send('pointer-button', {
-      button: BUTTON_IDS[parsed.button],
-      down: parsed.action === 'down' ? 1 : 0,
-    })
+    this.enqueueActionInject(() =>
+      this.sidecar.send('pointer-button', {
+        button: BUTTON_IDS[parsed.button],
+        down: parsed.action === 'down' ? 1 : 0,
+      }),
+    )
   }
 
   async wheel(input: unknown): Promise<void> {
@@ -243,10 +246,12 @@ export class RemoteControlBridge {
     if (!this.armed || !this.mouse) return
     if (parsed.generation !== this.generation && this.generation !== 0) return
     if (!this.wheelRate.allow()) return
-    await this.sidecar.send('pointer-wheel', {
-      deltaX: parsed.deltaX,
-      deltaY: parsed.deltaY,
-    })
+    this.enqueueActionInject(() =>
+      this.sidecar.send('pointer-wheel', {
+        deltaX: parsed.deltaX,
+        deltaY: parsed.deltaY,
+      }),
+    )
   }
 
   async key(input: unknown): Promise<void> {
@@ -254,20 +259,29 @@ export class RemoteControlBridge {
     if (!parsed) return
     if (!this.armed || !this.keyboard) return
     if (parsed.generation !== this.generation && this.generation !== 0) return
-    if (!this.keyRate.allow()) return
+    if (parsed.action !== 'up' && !this.keyRate.allow()) return
     const code = portableKeyId(parsed.code)
-    await this.sidecar.send('keyboard-event', {
-      keyCode: code,
-      down: parsed.action === 'down' ? 1 : 0,
-      location: parsed.location ?? 0,
-      repeat: parsed.repeat ? 1 : 0,
-      modifiers: {
-        ctrl: Boolean(parsed.modifiers?.ctrl),
-        alt: Boolean(parsed.modifiers?.alt),
-        shift: Boolean(parsed.modifiers?.shift),
-        meta: Boolean(parsed.modifiers?.meta),
-      },
-    })
+    this.enqueueActionInject(() =>
+      this.sidecar.send('keyboard-event', {
+        keyCode: code,
+        down: parsed.action === 'down' ? 1 : 0,
+        location: parsed.location ?? 0,
+        repeat: parsed.repeat ? 1 : 0,
+        modifiers: {
+          ctrl: Boolean(parsed.modifiers?.ctrl),
+          alt: Boolean(parsed.modifiers?.alt),
+          shift: Boolean(parsed.modifiers?.shift),
+          meta: Boolean(parsed.modifiers?.meta),
+        },
+      }),
+    )
+  }
+
+  private enqueueActionInject(send: () => Promise<unknown>): void {
+    this.actionInjectQueue = this.actionInjectQueue
+      .then(send)
+      .then(() => undefined)
+      .catch(() => undefined)
   }
 
   private async flushMove(point: { x: number; y: number }): Promise<void> {

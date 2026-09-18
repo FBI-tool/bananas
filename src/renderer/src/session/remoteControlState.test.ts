@@ -7,6 +7,7 @@ import {
   requestRemoteControlState,
   revokeAllRemoteControlState,
   revokeRemoteControlState,
+  takeRemoteKeyEdge,
 } from './remoteControlState'
 
 describe('remoteControlState', () => {
@@ -60,5 +61,15 @@ describe('remoteControlState', () => {
     expect(next.ok).toBe(true)
     const motion = acceptSeq(next.next, 'alice', 'motion', 1)
     expect(motion.ok).toBe(true)
+  })
+
+  it('forwards one down per key and always forwards the matching up', () => {
+    const pressed = new Set<string>()
+    expect(takeRemoteKeyEdge(pressed, 'down', 'KeyA')).toBe(true)
+    expect(takeRemoteKeyEdge(pressed, 'down', 'KeyA')).toBe(false)
+    expect(takeRemoteKeyEdge(pressed, 'down', 'KeyA')).toBe(false)
+    expect(takeRemoteKeyEdge(pressed, 'up', 'KeyA')).toBe(true)
+    expect(pressed.has('KeyA')).toBe(false)
+    expect(takeRemoteKeyEdge(pressed, 'down', 'KeyA')).toBe(true)
   })
 })
