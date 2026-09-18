@@ -18,8 +18,7 @@ jobs:
           fetch-depth: 0
       - name: Set up env
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=1.0.0" >> $GITHUB_ENV
       - uses: jdx/mise-action@v4
         with:
           install: true
