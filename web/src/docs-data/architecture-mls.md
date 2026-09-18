@@ -1,11 +1,21 @@
-# ADR: MLS implementation for p2p.kiwi
+---
+title: MLS implementation for p2p.kiwi
+excerpt: |
+  ts-mls (MIT, RFC 9420) behind the `RoomCrypto` interface for
+  group membership and epoch key management.
 
-Status: accepted  
-Date: 2026-09-16
+  Media keys and high-frequency application keys are derived with MLS
+  exporters and domain-separated labels.
+description: |
+  ts-mls (MIT, RFC 9420) behind the `RoomCrypto` interface for
+  group membership and epoch key management.
 
-## Decision
+  Media keys and high-frequency application keys are derived with MLS
+  exporters and domain-separated labels.
+order: 3
+---
 
-Use **ts-mls** (MIT, RFC 9420) behind the `RoomCrypto` interface for
+**ts-mls** (MIT, RFC 9420) behind the `RoomCrypto` interface for
 group membership and epoch key management.
 
 Media keys and high-frequency application keys are derived with MLS

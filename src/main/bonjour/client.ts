@@ -9,6 +9,7 @@ import type {
   BonjourEvent,
   BonjourList,
   BonjourMe,
+  BonjourServerError,
   BonjourRequest,
   CallKind,
   PlainSignal,
@@ -17,6 +18,7 @@ import type {
 } from './types'
 import { startAuthLoopback } from './loopback'
 import { eventsWsUrl, tokenFromBonjourAuthUrl } from './urls'
+import { BonjourServerErrorEnum } from './enums'
 
 const EVENTS_RECONNECT_MS = 2_000
 
@@ -147,12 +149,35 @@ export class BonjourClient {
     await http.mutate(token, 'account.setDevicePublicKey', { devicePublicKey: publicX })
   }
 
-  async me(): Promise<BonjourMe | null> {
-    if (!this.token || !this.http) return null
+  async me(): Promise<BonjourMe | BonjourServerError> {
+    if (!this.token || !this.http)
+      return {
+        error: BonjourServerErrorEnum.SERVER_UNAUTHORIZED,
+      }
     try {
       return await this.http.query<BonjourMe>(this.token, 'account.me')
-    } catch {
-      return null
+    } catch (error) {
+      const err = error as Error
+      const cause = (err as any).cause as { code?: string } | undefined
+      if (error.message?.includes('UNAUTHORIZED')) {
+        return {
+          error: BonjourServerErrorEnum.SERVER_UNAUTHORIZED,
+        }
+      }
+      switch (cause?.code) {
+        case 'UNAUTHORIZED':
+          return {
+            error: BonjourServerErrorEnum.SERVER_UNAUTHORIZED,
+          }
+        case 'EHOSTUNREACH':
+          return {
+            error: BonjourServerErrorEnum.SERVER_NOT_REACHABLE,
+          }
+        default:
+          return {
+            error: BonjourServerErrorEnum.SERVER_ERROR,
+          }
+      }
     }
   }
 

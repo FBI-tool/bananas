@@ -1,6 +1,11 @@
 export type PresenceStatus = 'available' | 'busy' | 'offline'
 export type SignalType = 'offer' | 'answer' | 'ice' | 'mls-invite' | 'hangup'
 export type CallKind = 'start' | 'join'
+import { BonjourServerErrorEnum } from './enums'
+
+export type BonjourServerError = {
+  error: (typeof BonjourServerErrorEnum)[keyof typeof BonjourServerErrorEnum]
+}
 
 export type BonjourMe = {
   userId: string

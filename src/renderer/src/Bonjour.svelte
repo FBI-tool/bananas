@@ -12,16 +12,24 @@
   } from './session/bonjourSignal'
   import { applyContactPresence, isPresenceStatus } from './bonjourPresence'
   import { debugLog } from './debugLog.svelte'
+  import type { BonjourServerError } from './../../main/bonjour/types'
+  import { BonjourServerErrorEnum } from '../../main/bonjour/enums';
 
   const CONTACTS_POLL_MS = 30_000
 
   let remoteScreen: HTMLVideoElement | undefined = $state()
+  const BonjourRequestProgressEnum = {
+    'WAITING': 'waiting',
+  } as const
+  type BonjourRequestProgress = {
+    requestState: typeof BonjourRequestProgressEnum[keyof typeof BonjourRequestProgressEnum]
+  }
   let me = $state<{
     userId: string
     username: string | null
     acceptRequestsUntil: string | null
     acceptCallJoins: boolean
-  } | null>(null)
+  } | BonjourServerError | BonjourRequestProgress>({requestState: BonjourRequestProgressEnum.WAITING})
   let modalAddUserVisible = $state(false)
   let usernameDraft = $state('')
   let addUsername = $state('')
@@ -205,7 +213,7 @@
         void refresh()
       }
       if (event.type === 'presence') {
-        if (!event.userId || (me && event.userId === me.userId)) return
+        if (!event.userId || (me && 'error' in me === false && 'requestState' in me === false && event.userId === me.userId)) return
         if (!isPresenceStatus(event.status)) {
           debugLog.warn('bonjour', 'presence event missing status', { userId: event.userId })
           void refresh()
@@ -222,7 +230,7 @@
     })
     void refresh()
     const poll = setInterval(() => {
-      if (!me?.username) return
+      if ('error' in me === false && 'requestState' in me === false && !me?.username) return
       void refresh()
     }, CONTACTS_POLL_MS)
     return (): void => {
@@ -421,14 +429,23 @@
 {/if}
 
 {#if !sessionStarted}
-{#if !me}
+{#if !me || ('error' in me === true && me.error === BonjourServerErrorEnum.SERVER_UNAUTHORIZED)}
   <p class="mb-4">{L.bonjour_sign_in_description()}</p>
   <button class="btn btn-primary" onclick={onLogin}>{L.bonjour_sign_in()}</button>
-{:else if !me.username}
+{:else if 'error' in me === false && 'requestState' in me === false && !me.username}
   <p class="mb-4">{L.bonjour_choose_username()}</p>
   <div class="join mb-4">
     <input class="input join-item" bind:value={usernameDraft} placeholder={L.username()} />
     <button class="btn btn-primary join-item" onclick={onClaim}>{L.save()}</button>
+  </div>
+{:else if 'error' in me === true}
+  <div role="alert" class="alert alert-error text-xl">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    <span>{me.error}</span>
+  </div>
+{:else if 'requestState' in me === true}
+  <div class="text-center">
+    <span class="loading loading-spinner loading-xl text-info"></span>
   </div>
 {:else}
   <div class="grid grid-cols-[auto_1fr] gap-4 mb-4 items-center">
@@ -480,16 +497,16 @@
               </span>
             </button>
           </li>
-          <li>
-            <button
-              class="btn btn-ghost btn-circle hover:text-info"
-                aria-label={L.bonjour_add_contact()}
-                onclick={()=>modalAddUserVisible=!modalAddUserVisible}>
-              <span class="tooltip" data-tip={L.bonjour_lists()}>
-                <i class=" fa-solid fa-user-plus text-xl"></i>
-              </span>
-            </button>
-          </li>
+          <!-- <li> -->
+          <!--   <button -->
+          <!--     class="btn btn-ghost btn-circle hover:text-info" -->
+          <!--       aria-label={L.bonjour_add_contact()} -->
+          <!--       onclick={()=>modalAddUserVisible=!modalAddUserVisible}> -->
+          <!--     <span class="tooltip" data-tip={L.bonjour_add_contact()}> -->
+          <!--       <i class=" fa-solid fa-user-plus text-xl"></i> -->
+          <!--     </span> -->
+          <!--   </button> -->
+          <!-- </li> -->
           <li>
             <button
               class="btn btn-ghost btn-circle"

@@ -1,4 +1,15 @@
-# Native overlay sidecar
+---
+title: Native overlay sidecar
+excerpt: |
+  p2p.kiwi ships an Odin helper (`p2p-kiwi-sidecar`) for always-on-top,
+  click-through cursor overlays. Electron main is the only process that
+  starts it. The renderer never executes sidecar commands.
+description: |
+  p2p.kiwi ships an Odin helper (`p2p-kiwi-sidecar`) for always-on-top,
+  click-through cursor overlays. Electron main is the only process that
+  starts it. The renderer never executes sidecar commands.
+order: 4
+---
 
 p2p.kiwi ships an Odin helper (`p2p-kiwi-sidecar`) for always-on-top,
 click-through cursor overlays. Electron main is the only process that

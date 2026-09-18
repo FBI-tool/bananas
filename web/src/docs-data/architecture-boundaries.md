@@ -1,4 +1,13 @@
-# p2p.kiwi process and protocol boundaries
+---
+title: Process and protocol boundaries
+excerpt: |
+  This note maps the live room, WebRTC, and native surfaces so later
+  sidecar and E2EE work reuse existing names instead of replacing them.
+description: |
+  This note maps the live room, WebRTC, and native surfaces so later
+  sidecar and E2EE work reuse existing names instead of replacing them.
+order: 0
+---
 
 This note maps the live room, WebRTC, and native surfaces so later
 sidecar and E2EE work reuse existing names instead of replacing them.

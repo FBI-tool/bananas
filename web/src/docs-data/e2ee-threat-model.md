@@ -1,4 +1,15 @@
-# End-to-end encryption threat model
+---
+title: End-to-end encryption threat model
+excerpt: |
+  p2p.kiwi is a desktop WebRTC mesh. There is no application signaling
+  server. Invite URLs carry SDP out of band. STUN/TURN may still observe
+  connection metadata.
+description: |
+  p2p.kiwi is a desktop WebRTC mesh. There is no application signaling
+  server. Invite URLs carry SDP out of band. STUN/TURN may still observe
+  connection metadata.
+order: 1
+---
 
 p2p.kiwi is a desktop WebRTC mesh. There is no application signaling
 server. Invite URLs carry SDP out of band. STUN/TURN may still observe
