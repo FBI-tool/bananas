@@ -34,7 +34,6 @@ jobs:
         run: ./scripts/sync-assets.sh
 
       - name: Install dependencies
-        working-directory: web
         run: pnpm install
 
       - name: Build website
