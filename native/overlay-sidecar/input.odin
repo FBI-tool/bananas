@@ -66,15 +66,20 @@ input_pointer_move :: proc(state: ^Input_State, x: f64, y: f64) -> Input_Error {
 input_pointer_button :: proc(state: ^Input_State, button: i32, down: bool) -> Input_Error {
 	if !state.armed do return .Not_Armed
 	if !state.allow_pointer do return .Pointer_Denied
-	if native_pointer_button(button, down ? 1 : 0) != 0 do return .Native_Failed
 	if button >= 1 && button <= 31 {
 		bit := u32(1) << u32(button)
+		already_held := down && (state.held_buttons & bit) != 0
+		if !already_held {
+			if native_pointer_button(button, down ? 1 : 0) != 0 do return .Native_Failed
+		}
 		if down {
 			state.held_buttons |= bit
 		} else {
 			state.held_buttons &~= bit
 		}
+		return .None
 	}
+	if native_pointer_button(button, down ? 1 : 0) != 0 do return .Native_Failed
 	return .None
 }
 

@@ -231,13 +231,11 @@ export class RemoteControlBridge {
     if (!parsed) return
     if (!this.armed || !this.mouse) return
     if (parsed.generation !== this.generation && this.generation !== 0) return
-    if (!this.buttonRate.allow()) return
-    this.enqueueActionInject(() =>
-      this.sidecar.send('pointer-button', {
-        button: BUTTON_IDS[parsed.button],
-        down: parsed.action === 'down' ? 1 : 0,
-      }),
-    )
+    if (parsed.action !== 'up' && !this.buttonRate.allow()) return
+    await this.sidecar.send('pointer-button', {
+      button: BUTTON_IDS[parsed.button],
+      down: parsed.action === 'down' ? 1 : 0,
+    })
   }
 
   async wheel(input: unknown): Promise<void> {

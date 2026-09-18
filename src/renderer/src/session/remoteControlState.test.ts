@@ -72,4 +72,12 @@ describe('remoteControlState', () => {
     expect(pressed.has('KeyA')).toBe(false)
     expect(takeRemoteKeyEdge(pressed, 'down', 'KeyA')).toBe(true)
   })
+
+  it('tracks mouse-button edges the same way as keys', () => {
+    const pressed = new Set<string>()
+    expect(takeRemoteKeyEdge(pressed, 'down', 'left')).toBe(true)
+    expect(takeRemoteKeyEdge(pressed, 'down', 'left')).toBe(false)
+    expect(takeRemoteKeyEdge(pressed, 'up', 'left')).toBe(true)
+    expect(takeRemoteKeyEdge(pressed, 'up', 'left')).toBe(true)
+  })
 })

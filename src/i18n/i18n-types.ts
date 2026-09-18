@@ -158,6 +158,10 @@ type RootTranslation = {
 	 */
 	screens: string
 	/**
+	 * S​e​a​r​c​h
+	 */
+	search: string
+	/**
 	 * S​e​e​ ​t​h​e​ ​c​o​d​e
 	 */
 	see_the_code: string
@@ -528,7 +532,7 @@ type RootTranslation = {
 	 */
 	bonjour_unignore: string
 	/**
-	 * I​n​c​o​m​i​n​g​ ​B​o​n​j​o​u​r​ ​c​a​l​l
+	 * I​n​c​o​m​i​n​g​ ​c​a​l​l
 	 */
 	bonjour_incoming_call: string
 	/**
@@ -753,6 +757,10 @@ export type TranslationFunctions = {
 	 * Screens
 	 */
 	screens: () => LocalizedString
+	/**
+	 * Search
+	 */
+	search: () => LocalizedString
 	/**
 	 * See the code
 	 */
@@ -1122,7 +1130,7 @@ export type TranslationFunctions = {
 	 */
 	bonjour_unignore: () => LocalizedString
 	/**
-	 * Incoming Bonjour call
+	 * Incoming call
 	 */
 	bonjour_incoming_call: () => LocalizedString
 	/**

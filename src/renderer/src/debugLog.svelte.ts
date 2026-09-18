@@ -29,9 +29,11 @@ class DebugLog {
   enabled = $state(false)
   entries = $state<DebugLogEntry[]>([])
   private nextId = 1
+  private lastSample = new Map<string, number>()
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled
+    if (!enabled) this.lastSample.clear()
   }
 
   log(level: DebugLogLevel, scope: string, message: string, detail?: unknown): void {
@@ -66,8 +68,19 @@ class DebugLog {
     this.log('error', scope, message, detail)
   }
 
+  /** High-frequency events (pointer moves) — at most one line per key each intervalMs. */
+  sample(scope: string, message: string, detail?: unknown, intervalMs = 200): void {
+    if (!this.enabled) return
+    const key = `${scope}:${message}`
+    const now = Date.now()
+    if (now - (this.lastSample.get(key) ?? 0) < intervalMs) return
+    this.lastSample.set(key, now)
+    this.info(scope, message, detail)
+  }
+
   clear(): void {
     this.entries = []
+    this.lastSample.clear()
   }
 
   toText(): string {

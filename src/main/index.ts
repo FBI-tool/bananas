@@ -126,10 +126,10 @@ app.whenReady().then(async () => {
   sidecarManager.setDebugLogs(Boolean(settings.get().debugLogsEnabled))
   void sidecarManager.start()
   const prefs = settings.get()
-  if (prefs.bonjourEnabled) bonjourClient.configured(prefs.bonjourServerUrl)
 
   await createWindow()
   bonjourClient.attachWindow(MAIN_WINDOW)
+  if (prefs.bonjourEnabled) bonjourClient.configured(prefs.bonjourServerUrl)
   const coldStartUrl = process.argv.find(
     (arg) => arg.startsWith(CUSTOM_PROTOCOL + '://') || arg.startsWith('bananas://'),
   )

@@ -144,3 +144,16 @@ test_stale_emergency_generation_is_rejected :: proc(t: ^testing.T) {
 	testing.expect(t, !emergency_generation_matches(1, 0))
 	testing.expect(t, !emergency_generation_matches(2, 1))
 }
+
+@(test)
+test_pointer_hold_repeats_then_fully_releases :: proc(t: ^testing.T) {
+	state: Input_State
+	_ = input_arm(&state, true, false)
+	testing.expect_value(t, input_pointer_button(&state, 1, true), Input_Error.None)
+	testing.expect(t, state.held_buttons & 2 != 0)
+	testing.expect_value(t, input_pointer_button(&state, 1, true), Input_Error.None)
+	testing.expect_value(t, input_pointer_button(&state, 1, true), Input_Error.None)
+	testing.expect(t, state.held_buttons & 2 != 0)
+	testing.expect_value(t, input_pointer_button(&state, 1, false), Input_Error.None)
+	testing.expect_value(t, state.held_buttons, u32(0))
+}

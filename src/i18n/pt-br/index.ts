@@ -136,7 +136,7 @@ const pt_br = {
   bonjour_ignored: 'Ignorados',
   bonjour_ignore: 'Ignorar',
   bonjour_unignore: 'Deixar de ignorar',
-  bonjour_incoming_call: 'Chamada Bonjour recebida',
+  bonjour_incoming_call: 'Chamada recebida',
   bonjour_error: 'Falha na solicitação Bonjour',
   bonjour_enabled: 'Ativar Bonjour (servidor de contatos opcional)',
   bonjour_enabled_description:

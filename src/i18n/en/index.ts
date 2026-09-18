@@ -37,6 +37,7 @@ const en = {
   save: 'Save',
   screen_share_failed: 'Could not start screen sharing',
   screens: 'Screens',
+  search: 'Search',
   see_the_code: 'See the code',
   share: 'Share',
   share_your_screen: 'Share your screen',
@@ -135,7 +136,7 @@ const en = {
   bonjour_ignored: 'Ignored',
   bonjour_ignore: 'Ignore',
   bonjour_unignore: 'Un-ignore',
-  bonjour_incoming_call: 'Incoming Bonjour call',
+  bonjour_incoming_call: 'Incoming call',
   bonjour_error: 'Bonjour request failed',
   bonjour_enabled: 'Enable Bonjour (optional contacts server)',
   bonjour_enabled_description:

@@ -14,6 +14,7 @@
   import SessionEndedOverlay from './SessionEndedOverlay.svelte'
   import PresenterVoteModal from './PresenterVoteModal.svelte'
   import type { Room } from './session/room.svelte'
+  import { debugLog } from './debugLog.svelte'
 
   let {
     room,
@@ -47,7 +48,15 @@
   let captureFocus = $state(false)
   let videoStage: HTMLDivElement | undefined = $state()
 
-  const contentPoint = (e: MouseEvent): { x: number; y: number } | null => {
+  const pointDetail = (point: { x: number; y: number } | null) =>
+    point
+      ? { x: Math.round(point.x * 1000) / 1000, y: Math.round(point.y * 1000) / 1000 }
+      : null
+
+  const contentPoint = (
+    e: MouseEvent,
+    opts?: { clamp?: boolean },
+  ): { x: number; y: number } | null => {
     if (!remoteScreen) return null
     const rect = remoteScreen.getBoundingClientRect()
     const videoW = remoteScreen.videoWidth || rect.width
@@ -58,8 +67,13 @@
     const contentH = videoH * scale
     const offsetX = (rect.width - contentW) / 2
     const offsetY = (rect.height - contentH) / 2
-    const x = (e.clientX - rect.left - offsetX) / contentW
-    const y = (e.clientY - rect.top - offsetY) / contentH
+    let x = (e.clientX - rect.left - offsetX) / contentW
+    let y = (e.clientY - rect.top - offsetY) / contentH
+    if (opts?.clamp) {
+      x = Math.min(1, Math.max(0, x))
+      y = Math.min(1, Math.max(0, y))
+      return { x, y }
+    }
     if (x < 0 || x > 1 || y < 0 || y > 1) return null
     return { x, y }
   }
@@ -76,8 +90,20 @@
       onRemoteScreenMouseMove(e)
       return
     }
-    const point = contentPoint(e)
-    if (!point) return
+    const holding = e.buttons !== 0
+    const point = contentPoint(e, { clamp: holding })
+    if (!point) {
+      debugLog.sample('remote-input', 'viewer pointer move dropped', {
+        buttons: e.buttons,
+        type: e.type,
+      })
+      return
+    }
+    debugLog.sample('remote-input', 'viewer pointer move', {
+      type: e.type,
+      buttons: e.buttons,
+      ...pointDetail(point),
+    })
     pendingMove = point
     if (!moveFrame) moveFrame = requestAnimationFrame(flushMove)
   }
@@ -108,6 +134,27 @@
     const name = buttonName(e.button)
     if (!name) return
     e.preventDefault()
+    const target = e.currentTarget
+    if (target instanceof HTMLElement) {
+      try {
+        target.setPointerCapture(e.pointerId)
+      } catch {
+        // Capture is best-effort so a drag still ends on pointerup/cancel.
+      }
+    }
+    const point = contentPoint(e, { clamp: true })
+    debugLog.info('remote-input', 'viewer pointer down', {
+      button: name,
+      pointerId: e.pointerId,
+      pointerType: e.pointerType,
+      buttons: e.buttons,
+      captured: target instanceof HTMLElement && target.hasPointerCapture(e.pointerId),
+      ...pointDetail(point),
+    })
+    if (point) {
+      pendingMove = point
+      flushMove()
+    }
     room.sendRemotePointerButton(name, 'down')
   }
 
@@ -116,7 +163,21 @@
     const name = buttonName(e.button)
     if (!name) return
     e.preventDefault()
+    debugLog.info('remote-input', 'viewer pointer up', {
+      button: name,
+      type: e.type,
+      pointerId: e.pointerId,
+      buttons: e.buttons,
+      ...pointDetail(contentPoint(e, { clamp: true })),
+    })
     room.sendRemotePointerButton(name, 'up')
+  }
+
+  const onLostPointerCapture = (e: PointerEvent): void => {
+    debugLog.warn('remote-input', 'viewer lost pointer capture', {
+      pointerId: e.pointerId,
+      buttons: e.buttons,
+    })
   }
 
   const onRemoteWheel = (e: WheelEvent): void => {
@@ -704,9 +765,11 @@
         disablepictureinpicture
         ondblclick={onRemoteScreenDblClick}
         onmousemove={queueMove}
+        onpointermove={queueMove}
         onpointerdown={onRemotePointerDown}
         onpointerup={onRemotePointerUp}
         onpointercancel={onRemotePointerUp}
+        onlostpointercapture={onLostPointerCapture}
         onwheel={onRemoteWheel}
         oncontextmenu={onRemoteContextMenu}
       ></video>

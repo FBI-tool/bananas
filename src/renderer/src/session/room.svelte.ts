@@ -201,8 +201,12 @@ export class Room {
   private outboundMotionSeq = 0
   private outboundActionSeq = 0
   private pressedRemoteKeys = new Set<string>()
+  private pressedRemoteButtons = new Set<string>()
   private outboundActionQueue = createSerialQueue((error) => {
     debugLog.error('room', 'remote-input action send failed', error)
+  })
+  private outboundButtonQueue = createSerialQueue((error) => {
+    debugLog.error('room', 'remote-input button send failed', error)
   })
   private inboundActionQueue = createSerialQueue((error) => {
     debugLog.error('room', 'remote-input action recv failed', error)
@@ -416,6 +420,7 @@ export class Room {
     this.remoteControl = revokeAllRemoteControlState(prev)
     this.inboundRemoteSeq = {}
     this.pressedRemoteKeys.clear()
+    this.pressedRemoteButtons.clear()
     for (const [peerId, state] of Object.entries(prev)) {
       this.broadcast({
         t: 'remote-control-revoke',
@@ -442,6 +447,11 @@ export class Room {
     const grant = this.localRemoteGrant
     if (!grant?.mouse) return
     this.outboundMotionSeq += 1
+    debugLog.sample('remote-input', 'send pointer move', {
+      seq: this.outboundMotionSeq,
+      x: Math.round(x * 1000) / 1000,
+      y: Math.round(y * 1000) / 1000,
+    })
     void this.sendRemoteInputToPresenter({
       t: 'pointer-move',
       v: 1,
@@ -459,7 +469,17 @@ export class Room {
   ): void {
     const grant = this.localRemoteGrant
     if (!grant?.mouse) return
+    if (!takeRemoteKeyEdge(this.pressedRemoteButtons, action, button)) {
+      debugLog.info('remote-input', 'skip duplicate pointer down', { button, action })
+      return
+    }
     this.outboundActionSeq += 1
+    debugLog.info('remote-input', 'send pointer button', {
+      button,
+      action,
+      seq: this.outboundActionSeq,
+      held: [...this.pressedRemoteButtons],
+    })
     void this.sendRemoteInputToPresenter({
       t: 'pointer-button',
       v: 1,
@@ -2585,6 +2605,10 @@ export class Room {
       void this.sendRemoteInputNow(msg)
       return
     }
+    if (msg.t === 'pointer-button') {
+      this.outboundButtonQueue.enqueue(() => this.sendRemoteInputNow(msg))
+      return
+    }
     this.outboundActionQueue.enqueue(() => this.sendRemoteInputNow(msg))
   }
 
@@ -2664,17 +2688,41 @@ export class Room {
       return
     }
     const kind = msg.t === 'key' ? 'keyboard' : 'mouse'
-    if (!inputMatchesGrant(this.remoteControl, peerId, kind, msg.generation)) return
+    if (!inputMatchesGrant(this.remoteControl, peerId, kind, msg.generation)) {
+      debugLog.warn('remote-input', 'dropped; grant mismatch', {
+        t: msg.t,
+        peerId,
+        generation: msg.generation,
+      })
+      return
+    }
     const seq = acceptSeq(this.inboundRemoteSeq, peerId, channel, msg.seq)
-    if (!seq.ok) return
+    if (!seq.ok) {
+      debugLog.warn('remote-input', 'dropped stale seq', {
+        t: msg.t,
+        seq: msg.seq,
+        channel,
+      })
+      return
+    }
     this.inboundRemoteSeq = seq.next
     const api = window.KiwiApi.remoteControl
     if (!api) return
     if (msg.t === 'pointer-move') {
+      debugLog.sample('remote-input', 'host pointer move', {
+        seq: msg.seq,
+        x: Math.round(msg.x * 1000) / 1000,
+        y: Math.round(msg.y * 1000) / 1000,
+      })
       await api.pointerMove(msg)
       return
     }
     if (msg.t === 'pointer-button') {
+      debugLog.info('remote-input', 'host pointer button', {
+        button: msg.button,
+        action: msg.action,
+        seq: msg.seq,
+      })
       await api.pointerButton(msg)
       return
     }
@@ -2819,7 +2867,9 @@ export class Room {
     this.remoteControl = {}
     this.inboundRemoteSeq = {}
     this.pressedRemoteKeys.clear()
+    this.pressedRemoteButtons.clear()
     this.outboundActionQueue.reset()
+    this.outboundButtonQueue.reset()
     this.inboundActionQueue.reset()
     this.emergencyStopMessage = null
     void window.KiwiApi.remoteControl?.disarm?.()

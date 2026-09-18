@@ -132,7 +132,7 @@ const zh = {
   bonjour_ignored: '已忽略',
   bonjour_ignore: '忽略',
   bonjour_unignore: '取消忽略',
-  bonjour_incoming_call: '收到 Bonjour 来电',
+  bonjour_incoming_call: '收到 来电',
   bonjour_error: 'Bonjour 请求失败',
   bonjour_enabled: '启用 Bonjour（可选联系人服务器）',
   bonjour_enabled_description:

@@ -137,7 +137,7 @@ const fr = {
   bonjour_ignored: 'Ignorés',
   bonjour_ignore: 'Ignorer',
   bonjour_unignore: 'Ne plus ignorer',
-  bonjour_incoming_call: 'Appel Bonjour entrant',
+  bonjour_incoming_call: 'Appel entrant',
   bonjour_error: 'Échec de la requête Bonjour',
   bonjour_enabled: 'Activer Bonjour (serveur de contacts facultatif)',
   bonjour_enabled_description:

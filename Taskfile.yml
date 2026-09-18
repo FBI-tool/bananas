@@ -8,7 +8,17 @@ tasks:
     cmds:
       - task --list
     silent: true
-  install-dependencies:
+  gen:translations:
+    desc: Generates translation files
+    cmds:
+      - typesafe-i18n --no-watch
+    silent: true
+  gen:translations:watch:
+    desc: Generates translation files
+    cmds:
+      - typesafe-i18n
+    silent: true
+  install:deps:
     desc: Installs all dependencies
     cmds:
       - pnpm install

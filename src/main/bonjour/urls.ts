@@ -8,6 +8,11 @@ export const isKiwiSdpUrl = (url: string): boolean => {
   return !isBonjourAuthUrl(url)
 }
 
+export const eventsWsUrl = (serverUrl: string, token: string): string => {
+  const base = serverUrl.replace(/\/$/, '')
+  return `${base.replace(/^http/, 'ws')}/events?token=${encodeURIComponent(token)}`
+}
+
 export const tokenFromBonjourAuthUrl = (url: string): string | null => {
   try {
     const parsed = new URL(url)

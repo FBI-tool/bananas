@@ -36,19 +36,6 @@
       </span>
       <strong>{!appState.isHosting ? L.host_a_session() : L.hosting_a_session()}</strong>
     </button>
-    {#if appState.bonjourEnabled}
-      <button
-        class="btn {appState.activeView === 'bonjour' ? 'btn-primary' : 'btn-ghost'}"
-        data-action="bonjour"
-        onclick={handleTopButtonsClick}
-        disabled={!appState.navigationEnabled}
-      >
-        <span class="icon">
-          <i class="fa-solid fa-address-book"></i>
-        </span>
-        <strong>{L.bonjour()}</strong>
-      </button>
-    {/if}
     <button
       class="btn {appState.activeView === 'settings' ? 'btn-primary' : 'btn-ghost'}"
       data-action="settings"
@@ -81,6 +68,21 @@
           <i class="fa-solid fa-bug"></i>
         </span>
         <strong>{L.debug()}</strong>
+      </button>
+    {/if}
+  </div>
+  <div class="navbar-end">
+    {#if appState.bonjourEnabled}
+      <button
+        class="btn {appState.bonjourVisible === true ? 'btn-active' : 'btn-ghost'}"
+        aria-label={L.bonjour()}
+        onclick={()=> (appState.bonjourVisible = !appState.bonjourVisible)}
+      >
+        <span class="tooltip tooltip-left" data-tip={L.bonjour()}>
+          <span class="icon">
+            <i class="fa-solid fa-address-book"></i>
+          </span>
+        </span>
       </button>
     {/if}
   </div>

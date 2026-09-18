@@ -8,6 +8,7 @@ class AppState {
   isCoordinator = $state(false)
   debugLogsEnabled = $state(false)
   bonjourEnabled = $state(false)
+  bonjourVisible = $state(false)
   hostUrl = $state('')
   participantUrl = $state('')
 }

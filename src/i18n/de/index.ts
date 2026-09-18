@@ -137,7 +137,7 @@ const en = {
   bonjour_ignored: 'Ignoriert',
   bonjour_ignore: 'Ignorieren',
   bonjour_unignore: 'Nicht mehr ignorieren',
-  bonjour_incoming_call: 'Eingehender Bonjour-Anruf',
+  bonjour_incoming_call: 'Eingehender Anruf',
   bonjour_error: 'Bonjour-Anfrage fehlgeschlagen',
   bonjour_enabled: 'Bonjour aktivieren (optionaler Kontakt-Server)',
   bonjour_enabled_description:

@@ -202,4 +202,40 @@ describe('RemoteControlBridge', () => {
       ).toBe(true)
     })
   })
+
+  it('still injects pointer-button up after action rate limit is exhausted', async () => {
+    const sidecar = mockSidecar()
+    const bridge = new RemoteControlBridge(sidecar, () => source)
+    await bridge.arm({ mouse: true, keyboard: false, generation: 1 })
+    sidecar.send.mockClear()
+    for (let seq = 1; seq <= 130; seq += 1) {
+      await bridge.pointerButton({ generation: 1, seq, button: 'left', action: 'down' })
+    }
+    await bridge.pointerButton({ generation: 1, seq: 131, button: 'left', action: 'up' })
+    const buttons = sidecar.send.mock.calls.filter((call) => call[0] === 'pointer-button')
+    expect(buttons.some((call) => call[1].down === 1)).toBe(true)
+    expect(buttons.some((call) => call[1].down === 0 && call[1].button === 1)).toBe(true)
+  })
+
+  it('injects a pointer-button down without waiting behind a slow key inject', async () => {
+    const sidecar = mockSidecar()
+    const bridge = new RemoteControlBridge(sidecar, () => source)
+    await bridge.arm({ mouse: true, keyboard: true, generation: 1 })
+    sidecar.send.mockClear()
+    sidecar.send.mockImplementation((type: string) => {
+      if (type === 'keyboard-event') {
+        return new Promise(() => {
+          /* hang the key inject */
+        })
+      }
+      return Promise.resolve({ protocolVersion: 2, type: 'ok', payload: {} })
+    })
+    void bridge.key({ generation: 1, seq: 1, action: 'down', code: 'KeyA' })
+    await bridge.pointerButton({ generation: 1, seq: 2, button: 'left', action: 'down' })
+    expect(
+      sidecar.send.mock.calls.some(
+        (call) => call[0] === 'pointer-button' && call[1].down === 1 && call[1].button === 1,
+      ),
+    ).toBe(true)
+  })
 })

@@ -16,7 +16,9 @@ import type {
   SignalType,
 } from './types'
 import { startAuthLoopback } from './loopback'
-import { tokenFromBonjourAuthUrl } from './urls'
+import { eventsWsUrl, tokenFromBonjourAuthUrl } from './urls'
+
+const EVENTS_RECONNECT_MS = 2_000
 
 const tokenPath = (): string => join(app.getPath('userData'), 'bonjour-session.bin')
 
@@ -52,12 +54,15 @@ export class BonjourClient {
   private http: TrpcHttp | null = null
   private ws: WebSocket | null = null
   private heartbeat: ReturnType<typeof setInterval> | null = null
+  private eventsReconnect: ReturnType<typeof setTimeout> | null = null
+  private eventsGeneration = 0
   private window: BrowserWindow | null = null
   private serverUrl = ''
   presence: PresenceStatus = 'offline'
 
   attachWindow(win: BrowserWindow): void {
     this.window = win
+    if (this.token && this.serverUrl) this.openEvents()
   }
 
   private liveWindow(): BrowserWindow | null {
@@ -120,9 +125,7 @@ export class BonjourClient {
   logout(): void {
     this.token = null
     persistToken(null)
-    this.stopHeartbeat()
-    this.ws?.close()
-    this.ws = null
+    this.disconnectEvents()
     this.emit('bonjour:auth', null)
   }
 
@@ -325,15 +328,50 @@ export class BonjourClient {
 
   private openEvents(): void {
     if (!this.token || !this.serverUrl) return
+    this.eventsGeneration += 1
+    const generation = this.eventsGeneration
+    this.clearEventsReconnect()
     this.ws?.close()
-    const wsUrl =
-      this.serverUrl.replace(/^http/, 'ws') + `/events?token=${encodeURIComponent(this.token)}`
+    this.ws = null
+    const wsUrl = eventsWsUrl(this.serverUrl, this.token)
     const ws = new WebSocket(wsUrl)
     this.ws = ws
     ws.addEventListener('message', (event) => {
-      void this.dispatchEvent(JSON.parse(String(event.data)) as BonjourEvent)
+      if (generation !== this.eventsGeneration) return
+      try {
+        void this.dispatchEvent(JSON.parse(String(event.data)) as BonjourEvent)
+      } catch (error) {
+        console.error('bonjour event', error)
+      }
+    })
+    const scheduleReconnect = (): void => {
+      if (generation !== this.eventsGeneration) return
+      if (this.ws === ws) this.ws = null
+      this.clearEventsReconnect()
+      this.eventsReconnect = setTimeout(() => {
+        if (generation !== this.eventsGeneration || !this.token) return
+        this.openEvents()
+      }, EVENTS_RECONNECT_MS)
+    }
+    ws.addEventListener('close', scheduleReconnect)
+    ws.addEventListener('error', () => {
+      if (generation !== this.eventsGeneration) return
+      ws.close()
     })
     this.startHeartbeat()
+  }
+
+  private disconnectEvents(): void {
+    this.eventsGeneration += 1
+    this.clearEventsReconnect()
+    this.stopHeartbeat()
+    this.ws?.close()
+    this.ws = null
+  }
+
+  private clearEventsReconnect(): void {
+    if (this.eventsReconnect) clearTimeout(this.eventsReconnect)
+    this.eventsReconnect = null
   }
 
   private startHeartbeat(): void {
