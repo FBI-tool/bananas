@@ -68,65 +68,6 @@
 </div>
 
 <style>
-	details {
-		border-radius: 4px;
-		padding: 10px;
-	}
-
-	summary {
-		font-weight: bold;
-		cursor: pointer;
-		user-select: none;
-		margin-bottom: 10px;
-	}
-
-	details {
-		overflow: hidden;
-	}
-
-	details::details-content {
-		block-size: 0;
-		opacity: 0;
-		overflow: hidden;
-		border: 5px solid transparent;
-		background-color: #181818;
-		transition:
-			block-size 300ms ease,
-			opacity 200ms ease,
-			content-visibility 300ms allow-discrete;
-	}
-
-	details[open]::details-content {
-		block-size: auto;
-		opacity: 1;
-		border: 5px solid #181818;
-		border-radius: 10px;
-	}
-
-	details > summary:first-of-type {
-		display: list-item;
-		list-style: none;
-	}
-
-	details > summary:first-of-type:before {
-		content: '📚';
-		margin-right: 15px;
-		display: inline-block;
-	}
-
-	details[open] > summary:first-of-type:before {
-		content: '📖';
-	}
-
-	details p {
-		margin: 10px 20px auto 20px;
-		font-size: 16px;
-	}
-
-	details p.mnemonic {
-		font-size: 14px;
-	}
-
 	@supports (interpolate-size: allow-keywords) {
 		:root {
 			interpolate-size: allow-keywords;
