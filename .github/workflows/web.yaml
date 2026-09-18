@@ -30,8 +30,7 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      - if: steps.should_deploy.outputs.deploy == 'true'
-        name: Copy synced assets to website
+      - name: Copy synced assets to website
         run: ./scripts/sync-assets.sh
 
       - name: Install dependencies
