@@ -43,7 +43,6 @@
   }
 </script>
 
-{#if appState.bonjourEnabled}
 <div class="drawer drawer-end">
   <input id="bonjour-drawer" type="checkbox" onchange={(evt)=>{
     appState.bonjourVisible = (evt.target as HTMLInputElement).checked
@@ -66,10 +65,11 @@
   <div class="drawer-side">
     <label for="bonjour-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
     <div class="menu bg-base-200 min-h-full w-120 p-4">
-      <Bonjour />
+      {#if appState.bonjourEnabled}
+        <Bonjour />
+      {/if}
     </div>
   </div>
 </div>
-{/if}
 
 <ScreenPicker bind:this={screenPicker} />

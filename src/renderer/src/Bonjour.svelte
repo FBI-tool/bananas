@@ -487,26 +487,26 @@
     <h2 class="text-3xl">{L.bonjour_contacts()}</h2>
     <div class="bg-base-200 max-w-max rounded-box">
         <ul class="menu menu-horizontal">
-          <li>
-            <button
-              class="btn btn-ghost btn-circle hover:text-info"
-              aria-label={L.bonjour_lists()}
-              onclick={()=>modalAddUserVisible=!modalAddUserVisible}>
-              <span class="tooltip" data-tip={L.bonjour_lists()}>
-                <i class=" fa-solid fa-address-book text-xl"></i>
-              </span>
-            </button>
-          </li>
           <!-- <li> -->
           <!--   <button -->
           <!--     class="btn btn-ghost btn-circle hover:text-info" -->
-          <!--       aria-label={L.bonjour_add_contact()} -->
-          <!--       onclick={()=>modalAddUserVisible=!modalAddUserVisible}> -->
-          <!--     <span class="tooltip" data-tip={L.bonjour_add_contact()}> -->
-          <!--       <i class=" fa-solid fa-user-plus text-xl"></i> -->
+          <!--     aria-label={L.bonjour_lists()} -->
+          <!--     onclick={()=>modalAddUserVisible=!modalAddUserVisible}> -->
+          <!--     <span class="tooltip" data-tip={L.bonjour_lists()}> -->
+          <!--       <i class=" fa-solid fa-address-book text-xl"></i> -->
           <!--     </span> -->
           <!--   </button> -->
           <!-- </li> -->
+          <li>
+            <button
+              class="btn btn-ghost btn-circle hover:text-info"
+                aria-label={L.bonjour_add_contact()}
+                onclick={()=>modalAddUserVisible=!modalAddUserVisible}>
+              <span class="tooltip" data-tip={L.bonjour_add_contact()}>
+                <i class=" fa-solid fa-user-plus text-xl"></i>
+              </span>
+            </button>
+          </li>
           <li>
             <button
               class="btn btn-ghost btn-circle"
