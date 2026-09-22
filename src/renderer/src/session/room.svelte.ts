@@ -2588,6 +2588,7 @@ export class Room {
   private bindRemoteControlIpc(): void {
     if (this.remoteControlUnsub.length) return
     const emergency = window.KiwiApi.remoteControl?.onEmergencyDisabled?.((event) => {
+      if (!this.isPresenter) return
       debugLog.info('room', 'remote control emergency', { reason: event.reason })
       this.emergencyStopMessage = 'Remote control disabled by host hotkey'
       void this.revokeAllRemoteControl('emergency')

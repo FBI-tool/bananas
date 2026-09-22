@@ -156,6 +156,8 @@ const en = {
   remote_control_emergency: 'Fernsteuerung durch Host-Hotkey deaktiviert',
   remote_control_emergency_hotkey: 'Not-Aus: {hotkey}',
   remote_control_unavailable: 'Fernsteuerung ist nicht verfügbar',
+  remote_control_evdev_permission:
+    'Der Notstopp sieht nicht jede Tastatur. Installiere build/udev/70-p2p-kiwi-input.rules nach /etc/udev/rules.d/ und melde dich erneut an.',
   remote_control_request_permission: 'Bedienungshilfen erlauben',
   remote_control_request_listen: 'Eingabeüberwachung erlauben',
   remote_control_permission_helper:

@@ -607,14 +607,36 @@ type RootTranslation = {
 	 */
 	remote_control_unavailable: string
 	/**
-	 * G​r​a​n​t​ ​a​c​c​e​s​s​i​b​i​l​i​t​y​ ​p​e​r​m​i​s​s​i​o​n
+	 * T​h​e​ ​e​m​e​r​g​e​n​c​y​ ​s​t​o​p​ ​c​a​n​n​o​t​ ​s​e​e​ ​e​v​e​r​y​ ​k​e​y​b​o​a​r​d​.​ ​I​n​s​t​a​l​l​ ​b​u​i​l​d​/​u​d​e​v​/​7​0​-​p​2​p​-​k​i​w​i​-​i​n​p​u​t​.​r​u​l​e​s​ ​i​n​t​o​ ​/​e​t​c​/​u​d​e​v​/​r​u​l​e​s​.​d​/​,​ ​t​h​e​n​ ​s​i​g​n​ ​i​n​ ​a​g​a​i​n​.
+	 */
+	remote_control_evdev_permission: string
+	/**
+	 * A​l​l​o​w​ ​A​c​c​e​s​s​i​b​i​l​i​t​y
 	 */
 	remote_control_request_permission: string
+	/**
+	 * A​l​l​o​w​ ​I​n​p​u​t​ ​M​o​n​i​t​o​r​i​n​g
+	 */
 	remote_control_request_listen: string
+	/**
+	 * A​p​p​r​o​v​e​ ​p​2​p​.​k​i​w​i​ ​S​i​d​e​c​a​r​ ​(​k​i​w​i​.​p​2​p​.​d​e​s​k​t​o​p​.​s​i​d​e​c​a​r​)​ ​i​n​ ​S​y​s​t​e​m​ ​S​e​t​t​i​n​g​s​.​ ​O​v​e​r​l​a​y​ ​d​r​a​w​i​n​g​ ​d​o​e​s​ ​n​o​t​ ​n​e​e​d​ ​e​i​t​h​e​r​ ​p​e​r​m​i​s​s​i​o​n​.​ ​A​c​c​e​s​s​i​b​i​l​i​t​y​ ​l​e​t​s​ ​t​h​e​ ​h​e​l​p​e​r​ ​t​y​p​e​ ​a​n​d​ ​m​o​v​e​ ​t​h​e​ ​p​o​i​n​t​e​r​.​ ​I​n​p​u​t​ ​M​o​n​i​t​o​r​i​n​g​ ​l​e​t​s​ ​i​t​ ​s​e​e​ ​o​n​l​y​ ​t​h​e​ ​e​m​e​r​g​e​n​c​y​-​s​t​o​p​ ​s​h​o​r​t​c​u​t​.
+	 */
 	remote_control_permission_helper: string
+	/**
+	 * I​f​ ​y​o​u​ ​a​l​r​e​a​d​y​ ​a​p​p​r​o​v​e​d​ ​a​c​c​e​s​s​,​ ​q​u​i​t​ ​p​2​p​.​k​i​w​i​ ​a​n​d​ ​o​p​e​n​ ​i​t​ ​a​g​a​i​n​.
+	 */
 	remote_control_restart_required: string
+	/**
+	 * O​p​e​n​ ​A​c​c​e​s​s​i​b​i​l​i​t​y​ ​s​e​t​t​i​n​g​s
+	 */
 	remote_control_open_accessibility: string
+	/**
+	 * O​p​e​n​ ​I​n​p​u​t​ ​M​o​n​i​t​o​r​i​n​g​ ​s​e​t​t​i​n​g​s
+	 */
 	remote_control_open_input_monitoring: string
+	/**
+	 * R​e​c​h​e​c​k​ ​p​e​r​m​i​s​s​i​o​n​s
+	 */
 	remote_control_recheck: string
 	/**
 	 * R​e​q​u​e​s​t​ ​c​o​n​t​r​o​l
@@ -1208,14 +1230,36 @@ export type TranslationFunctions = {
 	 */
 	remote_control_unavailable: () => LocalizedString
 	/**
-	 * Grant accessibility permission
+	 * The emergency stop cannot see every keyboard. Install build/udev/70-p2p-kiwi-input.rules into /etc/udev/rules.d/, then sign in again.
+	 */
+	remote_control_evdev_permission: () => LocalizedString
+	/**
+	 * Allow Accessibility
 	 */
 	remote_control_request_permission: () => LocalizedString
+	/**
+	 * Allow Input Monitoring
+	 */
 	remote_control_request_listen: () => LocalizedString
+	/**
+	 * Approve p2p.kiwi Sidecar (kiwi.p2p.desktop.sidecar) in System Settings. Overlay drawing does not need either permission. Accessibility lets the helper type and move the pointer. Input Monitoring lets it see only the emergency-stop shortcut.
+	 */
 	remote_control_permission_helper: () => LocalizedString
+	/**
+	 * If you already approved access, quit p2p.kiwi and open it again.
+	 */
 	remote_control_restart_required: () => LocalizedString
+	/**
+	 * Open Accessibility settings
+	 */
 	remote_control_open_accessibility: () => LocalizedString
+	/**
+	 * Open Input Monitoring settings
+	 */
 	remote_control_open_input_monitoring: () => LocalizedString
+	/**
+	 * Recheck permissions
+	 */
 	remote_control_recheck: () => LocalizedString
 	/**
 	 * Request control

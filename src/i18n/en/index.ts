@@ -155,6 +155,8 @@ const en = {
   remote_control_emergency: 'Remote control disabled by host hotkey',
   remote_control_emergency_hotkey: 'Emergency stop: {hotkey}',
   remote_control_unavailable: 'Remote control is unavailable',
+  remote_control_evdev_permission:
+    'The emergency stop cannot see every keyboard. Install build/udev/70-p2p-kiwi-input.rules into /etc/udev/rules.d/, then sign in again.',
   remote_control_request_permission: 'Allow Accessibility',
   remote_control_request_listen: 'Allow Input Monitoring',
   remote_control_permission_helper:

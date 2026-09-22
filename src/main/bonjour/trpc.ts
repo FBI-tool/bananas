@@ -6,6 +6,14 @@ type TrpcErrorBody = {
 
 type TrpcResult<T> = { result?: { data: T }; error?: TrpcErrorBody }
 
+export const isClosedStreamError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false
+  const err = error as { message?: string; cause?: { message?: string; code?: string } }
+  if (err.message === 'closed') return true
+  const cause = err.cause
+  return cause?.message === 'closed' || cause?.code === 'UND_ERR_SOCKET'
+}
+
 export const trpcErrorMessage = (error: TrpcErrorBody | undefined): string => {
   if (!error) return 'bonjour request failed'
   const nested = error.json

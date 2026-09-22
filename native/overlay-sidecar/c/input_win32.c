@@ -15,7 +15,18 @@ static int g_hotkey_want_shift;
 static int g_hotkey_want_meta;
 static int g_inited;
 static HHOOK g_kb_hook;
+static HHOOK g_emergency_hook;
 static unsigned int g_win_mods;
+static unsigned int g_phys_mods;
+
+#ifndef LLKHF_INJECTED
+#define LLKHF_INJECTED 0x10
+#endif
+#ifndef LLKHF_LOWER_IL_INJECTED
+#define LLKHF_LOWER_IL_INJECTED 0x02
+#endif
+
+static LRESULT CALLBACK emergency_ll(int ncode, WPARAM wparam, LPARAM lparam);
 
 static LRESULT CALLBACK hotkey_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   if (msg == WM_HOTKEY) {
@@ -137,6 +148,11 @@ void native_input_query_caps(NativeCaps *out) {
 
 void native_input_pump(void) {
   MSG msg;
+  /* Low-level hook notifications are thread messages, not window messages. */
+  while (PeekMessageA(&msg, (HWND)-1, 0, 0, PM_REMOVE)) {
+    TranslateMessage(&msg);
+    DispatchMessageA(&msg);
+  }
   HWND target = g_capture_active ? NULL : g_hotkey_hwnd;
   while (PeekMessageA(&msg, target, 0, 0, PM_REMOVE)) {
     TranslateMessage(&msg);
@@ -159,18 +175,20 @@ int native_hotkey_register(int ctrl, int alt, int shift, int meta, int key_escap
   g_hotkey_want_alt = alt;
   g_hotkey_want_shift = shift;
   g_hotkey_want_meta = meta;
-  UINT mods = 0;
-  if (ctrl) mods |= MOD_CONTROL;
-  if (alt) mods |= MOD_ALT;
-  if (shift) mods |= MOD_SHIFT;
-  if (meta) mods |= MOD_WIN;
-  mods |= MOD_NOREPEAT;
-  g_hotkey_registered = RegisterHotKey(g_hotkey_hwnd, 1, mods, VK_ESCAPE) ? 1 : 0;
+  g_phys_mods = 0;
+  if (!g_emergency_hook) {
+    g_emergency_hook = SetWindowsHookExA(WH_KEYBOARD_LL, emergency_ll, GetModuleHandleA(NULL), 0);
+  }
+  g_hotkey_registered = g_emergency_hook ? 1 : 0;
   return g_hotkey_registered;
 }
 
 void native_hotkey_unregister(void) {
   if (g_hotkey_hwnd && g_hotkey_registered) UnregisterHotKey(g_hotkey_hwnd, 1);
+  if (g_emergency_hook) {
+    UnhookWindowsHookEx(g_emergency_hook);
+    g_emergency_hook = NULL;
+  }
   g_hotkey_registered = 0;
 }
 
@@ -249,6 +267,8 @@ int native_key_event(unsigned int key_code, int down, unsigned int modifiers) {
   return SendInput(1, &in, sizeof(INPUT)) == 1 ? 0 : -1;
 }
 
+void native_input_activate_injection(void) {}
+
 int native_input_request_permission(int kind) {
   (void)kind;
   return 0;
@@ -280,6 +300,38 @@ static int win_hotkey_match(unsigned int mods) {
          (!g_hotkey_want_meta || (mods & 8));
 }
 
+static int win_injected(const KBDLLHOOKSTRUCT *info) {
+  return info && (info->flags & (LLKHF_INJECTED | LLKHF_LOWER_IL_INJECTED)) != 0;
+}
+
+static void note_phys_mod(unsigned int pk, int down) {
+  unsigned int bit = 0;
+  if (pk == PK_CONTROL_LEFT || pk == PK_CONTROL_RIGHT) bit = 1;
+  else if (pk == PK_ALT_LEFT || pk == PK_ALT_RIGHT) bit = 2;
+  else if (pk == PK_SHIFT_LEFT || pk == PK_SHIFT_RIGHT) bit = 4;
+  else if (pk == PK_META_LEFT || pk == PK_META_RIGHT) bit = 8;
+  if (!bit) return;
+  if (down) g_phys_mods |= bit;
+  else g_phys_mods &= ~bit;
+}
+
+static LRESULT CALLBACK emergency_ll(int ncode, WPARAM wparam, LPARAM lparam) {
+  if (ncode == HC_ACTION && !g_capture_active) {
+    KBDLLHOOKSTRUCT *info = (KBDLLHOOKSTRUCT *)lparam;
+    if (!win_injected(info)) {
+      int down = (wparam == WM_KEYDOWN || wparam == WM_SYSKEYDOWN);
+      unsigned int pk = portable_from_vk((int)info->vkCode);
+      note_phys_mod(pk, down);
+      if (down && info->vkCode == VK_ESCAPE && win_hotkey_match(g_phys_mods)) {
+        g_hotkey_fired = 1;
+        capture_lock();
+        return 1;
+      }
+    }
+  }
+  return CallNextHookEx(g_emergency_hook, ncode, wparam, lparam);
+}
+
 static LRESULT CALLBACK ll_keyboard(int ncode, WPARAM wparam, LPARAM lparam) {
   if (ncode == HC_ACTION && g_capture_active) {
     KBDLLHOOKSTRUCT *info = (KBDLLHOOKSTRUCT *)lparam;
@@ -294,12 +346,6 @@ static LRESULT CALLBACK ll_keyboard(int ncode, WPARAM wparam, LPARAM lparam) {
     } else if (pk == PK_META_LEFT || pk == PK_META_RIGHT) {
       if (down) g_win_mods |= 8; else g_win_mods &= ~8u;
     }
-    if (down && info->vkCode == VK_ESCAPE && win_hotkey_match(g_win_mods)) {
-      g_hotkey_fired = 1;
-      capture_lock();
-      return 1;
-    }
-    if (g_hotkey_fired) return 1;
     cap_push(pk, down, g_win_mods, location_from_pk(pk), 0);
     return 1;
   }

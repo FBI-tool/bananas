@@ -9,6 +9,7 @@ arch=('x86_64')
 url="https://github.com/dont-be-evil-company/p2p.kiwi"
 license=('MIT')
 depends=('nss' 'at-spi2-core' 'libxss' 'gtk3' 'alsa-lib' 'libxtst')
+install=p2p-kiwi.install
 provides=("$_pkgname")
 conflicts=("$_pkgname")
 source=("https://github.com/dont-be-evil-company/p2p.kiwi/releases/download/v${pkgver}/p2p-kiwi_amd64.deb")
@@ -30,5 +31,10 @@ package() {
   sandbox="$(find "${pkgdir}" -name chrome-sandbox -type f | head -n 1 || true)"
   if [[ -n "$sandbox" ]]; then
     chmod 4755 "$sandbox"
+  fi
+  local rules
+  rules="$(find "${pkgdir}" -path '*/udev/70-p2p-kiwi-input.rules' -type f | head -n 1 || true)"
+  if [[ -n "$rules" ]]; then
+    install -Dm644 "$rules" "${pkgdir}/usr/lib/udev/rules.d/70-p2p-kiwi-input.rules"
   fi
 }

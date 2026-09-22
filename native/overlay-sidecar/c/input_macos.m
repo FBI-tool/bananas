@@ -6,6 +6,7 @@
 #import <ApplicationServices/ApplicationServices.h>
 #import <Carbon/Carbon.h>
 #import <Foundation/Foundation.h>
+#include <unistd.h>
 
 static int g_hotkey_fired;
 static int g_hotkey_registered;
@@ -190,6 +191,8 @@ static CGEventRef emergency_tap_callback(CGEventTapProxy proxy, CGEventType type
     return event;
   }
   if (type != kCGEventKeyDown) return event;
+  int64_t pid = CGEventGetIntegerValueField(event, kCGEventSourceUnixProcessID);
+  if (pid > 0 && pid == (int64_t)getpid()) return event;
   CGKeyCode kc = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
   int repeat = (int)CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat);
   if (repeat || kc != kVK_Escape) return event;
@@ -308,6 +311,8 @@ int native_key_event(unsigned int key_code, int down, unsigned int modifiers) {
   return 0;
 }
 
+void native_input_activate_injection(void) {}
+
 int native_input_request_permission(int kind) {
   native_macos_ensure_app();
   if (kind == 2) {
@@ -368,11 +373,6 @@ static CGEventRef tap_callback(CGEventTapProxy proxy, CGEventType type, CGEventR
     int repeat = (int)CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat);
     unsigned int pk = portable_from_cg(kc);
     unsigned int mods = mods_from_flags(CGEventGetFlags(event));
-    if (down && kc == kVK_Escape && mac_hotkey_match(mods)) {
-      g_hotkey_fired = 1;
-      capture_lock();
-      return NULL;
-    }
     cap_push(pk, down, mods, location_from_pk(pk), repeat);
     return NULL;
   }

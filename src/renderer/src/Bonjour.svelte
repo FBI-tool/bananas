@@ -52,6 +52,7 @@
   let signalingFailed = false
   let lastPresence: 'available' | 'busy' | null = null
   let signalQueue: Promise<void> = Promise.resolve()
+  let acceptSignals = true
   let pendingSignals: Array<{
     callId?: string
     senderId?: string
@@ -86,7 +87,15 @@
     )
   }
 
+  const isClosedSignalError = (error: unknown): boolean => {
+    if (!(error instanceof Error)) return false
+    if (error.message === 'closed') return true
+    return error.cause instanceof Error && error.cause.message === 'closed'
+  }
+
   const sendSignal = (payload: BonjourSignalPayload): void => {
+    if (payload.type === 'hangup') acceptSignals = false
+    if (!acceptSignals && payload.type !== 'hangup') return
     const callId = room.bonjourCallId
     const key = keyFor(activePeerId)
     if (!callId || !key) {
@@ -97,6 +106,7 @@
       return
     }
     const post = async (): Promise<void> => {
+      if (!acceptSignals && payload.type !== 'hangup') return
       await window.KiwiApi.bonjour.signal(callId, payload.type, key, payload)
     }
     if (payload.type === 'ice') {
@@ -105,6 +115,7 @@
     }
     if (signalingFailed) return
     signalQueue = signalQueue.then(post).catch((error) => {
+      if (isClosedSignalError(error)) return
       if (signalingFailed) return
       signalingFailed = true
       toast.show('error', error instanceof Error ? error.message : L.bonjour_error())
@@ -112,6 +123,7 @@
   }
 
   const bindPeer = (peerId: string, publicKey?: string | null): void => {
+    acceptSignals = true
     activePeerId = peerId
     if (publicKey) peerKeys.set(peerId, publicKey)
     room.bindBonjour(sendSignal)
@@ -400,6 +412,7 @@
   }
 
   const reset = (): void => {
+    acceptSignals = true
     sessionStarted = false
     signalingFailed = false
     bonjourIncoming.call = null

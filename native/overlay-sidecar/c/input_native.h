@@ -14,6 +14,8 @@ void native_input_pump(void);
 int native_hotkey_poll(void);
 int native_hotkey_register(int ctrl, int alt, int shift, int meta, int key_escape);
 void native_hotkey_unregister(void);
+/* Wayland: post one XTest event so XWayland opens the Remote Desktop prompt. */
+void native_input_activate_injection(void);
 int native_pointer_move(double x, double y);
 int native_pointer_button(int button, int down);
 int native_pointer_wheel(double dx, double dy);

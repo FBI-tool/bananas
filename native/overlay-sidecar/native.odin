@@ -87,6 +87,7 @@ when ODIN_TEST {
 		return 1
 	}
 	native_hotkey_unregister :: proc() {}
+	native_input_activate_injection :: proc() {}
 	native_pointer_move :: proc(x, y: f64) -> i32 { _ = x; _ = y; return 0 }
 	native_pointer_button :: proc(button, down: i32) -> i32 { _ = button; _ = down; return 0 }
 	native_pointer_wheel :: proc(dx, dy: f64) -> i32 { _ = dx; _ = dy; return 0 }
@@ -131,6 +132,7 @@ when ODIN_TEST {
 		native_hotkey_poll :: proc() -> i32 ---
 		native_hotkey_register :: proc(ctrl, alt, shift, meta, key_escape: i32) -> i32 ---
 		native_hotkey_unregister :: proc() ---
+		native_input_activate_injection :: proc() ---
 		native_pointer_move :: proc(x, y: f64) -> i32 ---
 		native_pointer_button :: proc(button, down: i32) -> i32 ---
 		native_pointer_wheel :: proc(dx, dy: f64) -> i32 ---

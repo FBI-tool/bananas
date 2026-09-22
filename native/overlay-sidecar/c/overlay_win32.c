@@ -4,6 +4,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <dwmapi.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -21,6 +22,11 @@ typedef struct Overlay {
   uint8_t *pixels;
   int pw;
   int ph;
+  int place_logged;
+  int place_x;
+  int place_y;
+  int place_w;
+  int place_h;
 } Overlay;
 
 static Overlay g_overlays[MAX_OVERLAYS];
@@ -53,6 +59,92 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
   return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
+static int iabs(int v) { return v < 0 ? -v : v; }
+
+typedef struct WinEnumCtx {
+  const NativeSource *source;
+  int found;
+  int score;
+  int x;
+  int y;
+  int w;
+  int h;
+} WinEnumCtx;
+
+static BOOL CALLBACK monitor_enum(HMONITOR monitor, HDC hdc, LPRECT rect, LPARAM param) {
+  (void)monitor;
+  (void)hdc;
+  WinEnumCtx *ctx = (WinEnumCtx *)param;
+  if (!ctx || !ctx->source || !rect) return TRUE;
+  int ow = rect->right - rect->left;
+  int oh = rect->bottom - rect->top;
+  int hw = ctx->source->width > 0 ? ctx->source->width : 1;
+  int hh = ctx->source->height > 0 ? ctx->source->height : 1;
+  float ratio = 1.f;
+  if (!overlay_sizes_share_ratio(ow, oh, hw, hh, &ratio)) return TRUE;
+  int ex = (int)llroundf((float)ctx->source->x * ratio);
+  int ey = (int)llroundf((float)ctx->source->y * ratio);
+  int origin = iabs(rect->left - ex) + iabs(rect->top - ey);
+  float hint = ctx->source->scale > 0.f ? ctx->source->scale : 1.f;
+  int bias = (int)llroundf(fabsf(ratio - hint) * 100.f);
+  int score = origin * 1000 + bias;
+  if (!ctx->found || score < ctx->score) {
+    ctx->found = 1;
+    ctx->score = score;
+    ctx->x = rect->left;
+    ctx->y = rect->top;
+    ctx->w = ow;
+    ctx->h = oh;
+  }
+  return TRUE;
+}
+
+static void win_rect_fallback(const NativeSource *source, int *x, int *y, int *w, int *h) {
+  float scale = source && source->scale > 1.f ? source->scale : 1.f;
+  int sx = source ? source->x : 0;
+  int sy = source ? source->y : 0;
+  *x = (int)llroundf((float)sx * scale);
+  *y = (int)llroundf((float)sy * scale);
+  overlay_physical_size(source, w, h);
+}
+
+/* rcMonitor is physical pixels under per-monitor DPI awareness. Electron
+ * bounds only choose which monitor. */
+static int win_rect(const NativeSource *source, int *x, int *y, int *w, int *h) {
+  SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+  WinEnumCtx ctx;
+  memset(&ctx, 0, sizeof(ctx));
+  ctx.source = source;
+  EnumDisplayMonitors(NULL, NULL, monitor_enum, (LPARAM)&ctx);
+  if (ctx.found && ctx.w > 0 && ctx.h > 0) {
+    *x = ctx.x;
+    *y = ctx.y;
+    *w = ctx.w;
+    *h = ctx.h;
+    return 1;
+  }
+  win_rect_fallback(source, x, y, w, h);
+  return 0;
+}
+
+static void log_win_placement(Overlay *o, int matched, int x, int y, int w, int h) {
+  if (o->place_logged && o->place_x == x && o->place_y == y && o->place_w == w && o->place_h == h) return;
+  o->place_logged = 1;
+  o->place_x = x;
+  o->place_y = y;
+  o->place_w = w;
+  o->place_h = h;
+  const NativeSource *source = &o->source;
+  if (matched) {
+    fprintf(stderr,
+            "p2p.kiwi sidecar: windows overlay monitor %dx%d at %d,%d (electron %dx%d at %d,%d scale %.2f)\n", w, h,
+            x, y, source->width, source->height, source->x, source->y, source->scale);
+  } else {
+    fprintf(stderr, "p2p.kiwi sidecar: windows overlay electron %dx%d at %d,%d scale %.2f (no monitor match)\n",
+            source->width, source->height, source->x, source->y, source->scale);
+  }
+}
+
 static void register_class(void) {
   if (g_class_registered) return;
   WNDCLASSA wc;
@@ -82,9 +174,14 @@ static void present(Overlay *o) {
   if (dib && bits) {
     memcpy(bits, o->pixels, (size_t)o->pw * (size_t)o->ph * 4);
     HGDIOBJ old = SelectObject(mem, dib);
-    SIZE size = {o->pw, o->ph};
+    int place_x = 0;
+    int place_y = 0;
+    int place_w = o->pw;
+    int place_h = o->ph;
+    (void)win_rect(&o->source, &place_x, &place_y, &place_w, &place_h);
+    SIZE size = {place_w, place_h};
     POINT src = {0, 0};
-    POINT dst = {o->source.x, o->source.y};
+    POINT dst = {place_x, place_y};
     BLENDFUNCTION blend;
     blend.BlendOp = AC_SRC_OVER;
     blend.BlendFlags = 0;
@@ -111,15 +208,20 @@ int native_overlay_create(const NativeSource *source) {
   if (!o) return 0;
   register_class();
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-  int w = source->width > 0 ? source->width : 1;
-  int h = source->height > 0 ? source->height : 1;
+  o->source = *source;
+  int x = 0;
+  int y = 0;
+  int w = 1;
+  int h = 1;
+  int matched = win_rect(source, &x, &y, &w, &h);
+  log_win_placement(o, matched, x, y, w, h);
   HWND hwnd = CreateWindowExA(
       WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
       CLASS_NAME,
       "p2p.kiwi overlay",
       WS_POPUP,
-      source->x,
-      source->y,
+      x,
+      y,
       w,
       h,
       NULL,
@@ -131,9 +233,8 @@ int native_overlay_create(const NativeSource *source) {
     return 0;
   }
   ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-  SetWindowPos(hwnd, HWND_TOPMOST, source->x, source->y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
   o->hwnd = hwnd;
-  o->source = *source;
   o->pw = w;
   o->ph = h;
   o->pixels = calloc((size_t)w * (size_t)h, 4);
@@ -148,14 +249,20 @@ int native_overlay_update(int overlay_id, const NativeSource *source, const Nati
   if (source) o->source = *source;
   o->cursor_count = n > MAX_CURSORS ? MAX_CURSORS : n;
   if (cursors && o->cursor_count > 0) memcpy(o->cursors, cursors, sizeof(NativeCursor) * (size_t)o->cursor_count);
-  int w = o->source.width > 0 ? o->source.width : 1;
-  int h = o->source.height > 0 ? o->source.height : 1;
+  int x = 0;
+  int y = 0;
+  int w = 1;
+  int h = 1;
+  int matched = win_rect(&o->source, &x, &y, &w, &h);
+  log_win_placement(o, matched, x, y, w, h);
   if (w != o->pw || h != o->ph) {
     free(o->pixels);
     o->pixels = calloc((size_t)w * (size_t)h, 4);
     o->pw = w;
     o->ph = h;
-    SetWindowPos(o->hwnd, HWND_TOPMOST, o->source.x, o->source.y, w, h, SWP_NOACTIVATE);
+    SetWindowPos(o->hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE);
+  } else {
+    SetWindowPos(o->hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_NOSIZE);
   }
   overlay_draw_cursors(o->pixels, o->pw, o->ph, &o->source, o->cursors, o->cursor_count);
   present(o);

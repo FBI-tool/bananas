@@ -12,52 +12,6 @@ if ! command -v "$ODIN" >/dev/null 2>&1; then
   exit 1
 fi
 
-gen_cursor_png_h() {
-  local png="$ROOT/../../assets/cursor.png"
-  local out="$ROOT/c/cursor_png.h"
-  if [[ ! -f "$png" ]]; then
-    echo "missing cursor asset: $png" >&2
-    exit 1
-  fi
-  if command -v python3 >/dev/null 2>&1; then
-    python3 - "$png" "$out" <<'PY'
-import sys
-png, out = sys.argv[1], sys.argv[2]
-data = open(png, "rb").read()
-parts = []
-line = []
-for b in data:
-    line.append("0x%02x" % b)
-    if len(line) == 12:
-        parts.append(", ".join(line))
-        line = []
-if line:
-    parts.append(", ".join(line))
-open(out, "w").write(
-    "#ifndef P2P_KIWI_CURSOR_PNG_H\n"
-    "#define P2P_KIWI_CURSOR_PNG_H\n"
-    "static const unsigned char cursor_png[] = {\n  "
-    + ",\n  ".join(parts)
-    + "\n};\n"
-    "static const unsigned int cursor_png_len = %d;\n"
-    "#endif\n" % len(data)
-)
-PY
-    return
-  fi
-  if command -v xxd >/dev/null 2>&1; then
-    {
-      echo '#ifndef P2P_KIWI_CURSOR_PNG_H'
-      echo '#define P2P_KIWI_CURSOR_PNG_H'
-      xxd -i "$png" | sed -e 's/unsigned char .*\[\]/static const unsigned char cursor_png[]/' -e 's/unsigned int .*_len/static const unsigned int cursor_png_len/'
-      echo '#endif'
-    } > "$out"
-    return
-  fi
-  echo "python3 or xxd required to embed assets/cursor.png" >&2
-  exit 1
-}
-
 build_darwin() {
   local clang_arch="$1"
   local odin_target="$2"
@@ -90,7 +44,53 @@ assert_universal_sidecar() {
   fi
 }
 
+gen_embed_h() {
+  local src="$1"
+  local out="$2"
+  local sym="$3"
+  local guard="$4"
+  if [[ ! -f "$src" ]]; then
+    echo "missing asset: $src" >&2
+    exit 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 required to embed $src" >&2
+    exit 1
+  fi
+  python3 - "$src" "$out" "$sym" "$guard" <<'PY'
+import sys
+src, out, sym, guard = sys.argv[1:]
+data = open(src, "rb").read()
+parts = []
+line = []
+for b in data:
+    line.append("0x%02x" % b)
+    if len(line) == 12:
+        parts.append(", ".join(line))
+        line = []
+if line:
+    parts.append(", ".join(line))
+open(out, "w").write(
+    "#ifndef %s\n#define %s\n" % (guard, guard)
+    + "static const unsigned char %s[] = {\n  " % sym
+    + ",\n  ".join(parts)
+    + "\n};\n"
+    + "static const unsigned int %s_len = %d;\n" % (sym, len(data))
+    + "#endif\n"
+)
+PY
+}
+
+gen_cursor_png_h() {
+  gen_embed_h "$ROOT/../../assets/cursor.png" "$ROOT/c/cursor_png.h" cursor_png P2P_KIWI_CURSOR_PNG_H
+}
+
+gen_maple_mono_h() {
+  gen_embed_h "$ROOT/c/vendor/MapleMono-Regular.ttf" "$ROOT/c/maple_mono.h" maple_mono_ttf P2P_KIWI_MAPLE_MONO_H
+}
+
 gen_cursor_png_h
+gen_maple_mono_h
 
 EXTRA_FLAGS=()
 UNAME="$(uname -s)"
@@ -104,6 +104,7 @@ case "$UNAME" in
     LINUX_OBJ="$OUT_DIR/overlay_linux.o"
     INPUT_OBJ="$OUT_DIR/input_linux.o"
     WAYLAND_OBJ="$OUT_DIR/wlr-layer-shell-protocol.o"
+    VIEWPORT_OBJ="$OUT_DIR/viewporter-protocol.o"
     "$CC" -c "$ROOT/c/overlay_draw.c" -o "$DRAW_OBJ" -fPIC -O2 -I"$ROOT/c"
     WAYLAND_FLAGS=()
     if command -v wayland-scanner >/dev/null 2>&1 && pkg-config --exists wayland-client; then
@@ -113,15 +114,22 @@ case "$UNAME" in
       wayland-scanner private-code \
         "$ROOT/protocol/wlr-layer-shell-unstable-v1.xml" \
         "$OUT_DIR/wlr-layer-shell-protocol.c"
+      wayland-scanner client-header \
+        "$ROOT/protocol/viewporter.xml" \
+        "$ROOT/c/viewporter-client-protocol.h"
+      wayland-scanner private-code \
+        "$ROOT/protocol/viewporter.xml" \
+        "$OUT_DIR/viewporter-protocol.c"
       "$CC" -c "$OUT_DIR/wlr-layer-shell-protocol.c" -o "$WAYLAND_OBJ" -fPIC -O2 $(pkg-config --cflags wayland-client)
+      "$CC" -c "$OUT_DIR/viewporter-protocol.c" -o "$VIEWPORT_OBJ" -fPIC -O2 $(pkg-config --cflags wayland-client)
       WAYLAND_FLAGS=(-DHAVE_WAYLAND -I"$ROOT/c" $(pkg-config --cflags wayland-client))
       "$CC" -c "$ROOT/c/overlay_linux.c" -o "$LINUX_OBJ" -fPIC -O2 "${WAYLAND_FLAGS[@]}" $(pkg-config --cflags x11 xfixes xext xrandr 2>/dev/null || true)
-      "$CC" -c "$ROOT/c/input_linux.c" -o "$INPUT_OBJ" -fPIC -O2 -I"$ROOT/c" $(pkg-config --cflags x11 xtst 2>/dev/null || true)
-      LIBS="$DRAW_OBJ $LINUX_OBJ $INPUT_OBJ $WAYLAND_OBJ $(pkg-config --libs x11 xfixes xext xrandr xtst wayland-client 2>/dev/null || echo '-lX11 -lXfixes -lXext -lXrandr -lXtst -lwayland-client') -lm"
+      "$CC" -c "$ROOT/c/input_linux.c" -o "$INPUT_OBJ" -fPIC -O2 -I"$ROOT/c" $(pkg-config --cflags x11 xtst xi 2>/dev/null || true)
+      LIBS="$DRAW_OBJ $LINUX_OBJ $INPUT_OBJ $WAYLAND_OBJ $VIEWPORT_OBJ $(pkg-config --libs x11 xfixes xext xrandr xtst xi wayland-client 2>/dev/null || echo '-lX11 -lXfixes -lXext -lXrandr -lXtst -lXi -lwayland-client') -lm"
     else
       "$CC" -c "$ROOT/c/overlay_linux.c" -o "$LINUX_OBJ" -fPIC -O2 -I"$ROOT/c" $(pkg-config --cflags x11 xfixes xext xrandr 2>/dev/null || true)
-      "$CC" -c "$ROOT/c/input_linux.c" -o "$INPUT_OBJ" -fPIC -O2 -I"$ROOT/c" $(pkg-config --cflags x11 xtst 2>/dev/null || true)
-      LIBS="$DRAW_OBJ $LINUX_OBJ $INPUT_OBJ $(pkg-config --libs x11 xfixes xext xrandr xtst 2>/dev/null || echo '-lX11 -lXfixes -lXext -lXrandr -lXtst') -lm"
+      "$CC" -c "$ROOT/c/input_linux.c" -o "$INPUT_OBJ" -fPIC -O2 -I"$ROOT/c" $(pkg-config --cflags x11 xtst xi 2>/dev/null || true)
+      LIBS="$DRAW_OBJ $LINUX_OBJ $INPUT_OBJ $(pkg-config --libs x11 xfixes xext xrandr xtst xi 2>/dev/null || echo '-lX11 -lXfixes -lXext -lXrandr -lXtst -lXi') -lm"
     fi
     EXTRA_FLAGS+=("-extra-linker-flags:$LIBS")
     ;;

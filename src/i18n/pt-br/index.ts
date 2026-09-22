@@ -155,6 +155,8 @@ const pt_br = {
   remote_control_emergency: 'Controle remoto desativado pelo atalho do anfitrião',
   remote_control_emergency_hotkey: 'Parada de emergência: {hotkey}',
   remote_control_unavailable: 'O controle remoto está indisponível',
+  remote_control_evdev_permission:
+    'A parada de emergência não vê todos os teclados. Instale build/udev/70-p2p-kiwi-input.rules em /etc/udev/rules.d/ e entre de novo.',
   remote_control_request_permission: 'Permitir Acessibilidade',
   remote_control_request_listen: 'Permitir Monitoramento de Entrada',
   remote_control_permission_helper:

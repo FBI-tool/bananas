@@ -13,6 +13,7 @@
 
 #include <sys/ioctl.h>
 #include <X11/Xlib.h>
+#include <X11/extensions/XInput2.h>
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
 
@@ -45,8 +46,28 @@ static int g_hotkey_want_shift;
 static int g_hotkey_want_meta;
 static int g_capture_evdev;
 static int g_capture_x11;
+static int g_evdev_access_denied;
+static unsigned char g_kbd_event[32];
+static int g_xi_opcode;
+static int g_xi_ready;
+static int g_xtest_keyboard = -1;
+static int g_xi_ctrl;
+static int g_xi_alt;
+static int g_xi_shift;
+static int g_xi_meta;
+static int g_kc_esc;
+static int g_kc_ctrl_l;
+static int g_kc_ctrl_r;
+static int g_kc_alt_l;
+static int g_kc_alt_r;
+static int g_kc_shift_l;
+static int g_kc_shift_r;
+static int g_kc_meta_l;
+static int g_kc_meta_r;
 
 static int linux_key_for_portable(unsigned int code);
+static int session_is_wayland(void);
+static void init_xi_hotkey(void);
 
 static unsigned int portable_from_linux(int linux_code) {
   unsigned int pk;
@@ -80,12 +101,12 @@ static void note_linux_key(int linux_code, int value) {
   else if (linux_code == KEY_LEFTSHIFT || linux_code == KEY_RIGHTSHIFT) g_shift_down = down;
   else if (linux_code == KEY_LEFTMETA || linux_code == KEY_RIGHTMETA) g_meta_down = down;
   else if (linux_code == KEY_ESC) g_esc_down = down;
-  if (hotkey_chord_down()) {
+  /* Controller capture forwards the chord. Only a physical host key stops control. */
+  if (!g_capture_active && hotkey_chord_down()) {
     g_hotkey_fired = 1;
     capture_lock();
   }
-  /* Emergency swallows the rest of this chord, including while capturing. */
-  if (g_hotkey_fired) return;
+  if (g_hotkey_fired && !g_capture_active) return;
   if (g_capture_active) {
     unsigned int pk = portable_from_linux(linux_code);
     int loc = 0;
@@ -413,11 +434,148 @@ static int open_x11_input(void) {
   g_xtest = XTestQueryExtension(g_dpy, &event_base, &error_base, &major, &minor) ? 1 : 0;
   XDisplayKeycodes(g_dpy, &g_x_min_kc, &g_x_max_kc);
   if (g_x_min_kc < 1) g_x_min_kc = 8;
+  if (!session_is_wayland()) init_xi_hotkey();
   return g_xtest;
+}
+
+static int evdev_hotkey_complete(void) {
+  return g_evdev_n > 0 && !g_evdev_access_denied;
+}
+
+static int event_index_from_name(const char *name) {
+  if (!name || strncmp(name, "event", 5) != 0) return -1;
+  char *end = NULL;
+  long n = strtol(name + 5, &end, 10);
+  if (!end || *end != '\0' || n < 0 || n >= 256) return -1;
+  return (int)n;
+}
+
+static void mark_keyboard_event(int idx) {
+  if (idx < 0 || idx >= 256) return;
+  g_kbd_event[idx / 8] = (unsigned char)(g_kbd_event[idx / 8] | (1u << (idx % 8)));
+}
+
+static int is_keyboard_event(int idx) {
+  if (idx < 0 || idx >= 256) return 0;
+  return (g_kbd_event[idx / 8] & (1u << (idx % 8))) != 0;
+}
+
+/* /proc lists keyboards even when open() returns EACCES. The last KEY word is bits 0-63. */
+static int key_word_has_keyboard(const char *line) {
+  const char *p = strstr(line, "KEY=");
+  if (!p) return 0;
+  p += 4;
+  const char *last = p;
+  for (const char *s = p; *s && *s != '\n'; s++) {
+    if (*s == ' ') last = s + 1;
+  }
+  char word[32];
+  int n = 0;
+  while (last[n] && last[n] != ' ' && last[n] != '\n' && n < 31) {
+    word[n] = last[n];
+    n++;
+  }
+  word[n] = 0;
+  if (!n) return 0;
+  unsigned long long bits = strtoull(word, NULL, 16);
+  int esc = (bits & (1ULL << KEY_ESC)) != 0;
+  int ctrl = (bits & (1ULL << KEY_LEFTCTRL)) != 0;
+  int a = (bits & (1ULL << KEY_A)) != 0;
+  return esc && ctrl && a;
+}
+
+static void load_keyboard_events(void) {
+  memset(g_kbd_event, 0, sizeof(g_kbd_event));
+  FILE *f = fopen("/proc/bus/input/devices", "r");
+  if (!f) return;
+  char line[512];
+  int event_idx = -1;
+  while (fgets(line, sizeof(line), f)) {
+    if (line[0] == '\n') {
+      event_idx = -1;
+      continue;
+    }
+    if (strncmp(line, "H: Handlers=", 12) == 0) {
+      event_idx = -1;
+      char *tok = line + 12;
+      while (*tok && *tok != '\n') {
+        while (*tok == ' ') tok++;
+        if (*tok == '\0' || *tok == '\n') break;
+        if (strncmp(tok, "event", 5) == 0) {
+          char *end = NULL;
+          long n = strtol(tok + 5, &end, 10);
+          if (end && end != tok + 5 && n >= 0 && n < 256) event_idx = (int)n;
+        }
+        while (*tok && *tok != ' ' && *tok != '\n') tok++;
+      }
+    } else if (strncmp(line, "B: KEY=", 7) == 0 && event_idx >= 0 && key_word_has_keyboard(line)) {
+      mark_keyboard_event(event_idx);
+    }
+  }
+  fclose(f);
+}
+
+static int keycode_is(int keycode, int want) {
+  return want && keycode == want;
+}
+
+static void note_xi_key(int keycode, int down) {
+  if (keycode_is(keycode, g_kc_ctrl_l) || keycode_is(keycode, g_kc_ctrl_r)) g_xi_ctrl = down;
+  else if (keycode_is(keycode, g_kc_alt_l) || keycode_is(keycode, g_kc_alt_r)) g_xi_alt = down;
+  else if (keycode_is(keycode, g_kc_shift_l) || keycode_is(keycode, g_kc_shift_r)) g_xi_shift = down;
+  else if (keycode_is(keycode, g_kc_meta_l) || keycode_is(keycode, g_kc_meta_r)) g_xi_meta = down;
+  if (g_capture_active || !down || !keycode_is(keycode, g_kc_esc)) return;
+  int ok = (!g_hotkey_want_ctrl || g_xi_ctrl) &&
+           (!g_hotkey_want_alt || g_xi_alt) &&
+           (!g_hotkey_want_shift || g_xi_shift) &&
+           (!g_hotkey_want_meta || g_xi_meta);
+  if (!ok) return;
+  g_hotkey_fired = 1;
+  capture_lock();
+}
+
+static void init_xi_hotkey(void) {
+  g_xi_ready = 0;
+  g_xtest_keyboard = -1;
+  if (!g_dpy) return;
+  int event = 0, error = 0;
+  if (!XQueryExtension(g_dpy, "XInputExtension", &g_xi_opcode, &event, &error)) return;
+  int major = 2, minor = 0;
+  if (XIQueryVersion(g_dpy, &major, &minor) != Success) return;
+  int n = 0;
+  XIDeviceInfo *info = XIQueryDevice(g_dpy, XIAllDevices, &n);
+  if (info) {
+    for (int i = 0; i < n; i++) {
+      if (info[i].use == XISlaveKeyboard && info[i].name && strstr(info[i].name, "XTEST"))
+        g_xtest_keyboard = (int)info[i].deviceid;
+    }
+    XIFreeDeviceInfo(info);
+  }
+  unsigned char mask_bits[XIMaskLen(XI_RawKeyRelease)];
+  memset(mask_bits, 0, sizeof(mask_bits));
+  XIEventMask mask;
+  mask.deviceid = XIAllDevices;
+  mask.mask_len = sizeof(mask_bits);
+  mask.mask = mask_bits;
+  XISetMask(mask_bits, XI_RawKeyPress);
+  XISetMask(mask_bits, XI_RawKeyRelease);
+  if (XISelectEvents(g_dpy, DefaultRootWindow(g_dpy), &mask, 1) != Success) return;
+  g_kc_esc = (int)XKeysymToKeycode(g_dpy, XK_Escape);
+  g_kc_ctrl_l = (int)XKeysymToKeycode(g_dpy, XK_Control_L);
+  g_kc_ctrl_r = (int)XKeysymToKeycode(g_dpy, XK_Control_R);
+  g_kc_alt_l = (int)XKeysymToKeycode(g_dpy, XK_Alt_L);
+  g_kc_alt_r = (int)XKeysymToKeycode(g_dpy, XK_Alt_R);
+  g_kc_shift_l = (int)XKeysymToKeycode(g_dpy, XK_Shift_L);
+  g_kc_shift_r = (int)XKeysymToKeycode(g_dpy, XK_Shift_R);
+  g_kc_meta_l = (int)XKeysymToKeycode(g_dpy, XK_Super_L);
+  g_kc_meta_r = (int)XKeysymToKeycode(g_dpy, XK_Super_R);
+  g_xi_ready = 1;
 }
 
 static int open_evdev(void) {
   close_evdev();
+  g_evdev_access_denied = 0;
+  load_keyboard_events();
   DIR *dir = opendir("/dev/input");
   if (!dir) return 0;
   struct dirent *ent;
@@ -426,7 +584,14 @@ static int open_evdev(void) {
     char path[256];
     snprintf(path, sizeof(path), "/dev/input/%s", ent->d_name);
     int fd = open(path, O_RDONLY | O_NONBLOCK);
-    if (fd < 0) continue;
+    if (fd < 0) {
+      int idx = event_index_from_name(ent->d_name);
+      if (errno == EACCES && is_keyboard_event(idx)) {
+        g_evdev_access_denied = 1;
+        fprintf(stderr, "p2p.kiwi sidecar: keyboard %s not readable\n", path);
+      }
+      continue;
+    }
     char name[256];
     memset(name, 0, sizeof(name));
     if (ioctl(fd, EVIOCGNAME(sizeof(name)), name) >= 0 && strstr(name, "p2p-kiwi")) {
@@ -491,31 +656,31 @@ int native_input_init(void) {
   g_hotkey_grabbed = 0;
   g_x11_hotkey_grabbed = 0;
 
-  if (session_is_wayland()) {
-    g_uinput_fd = open_uinput();
-    open_evdev();
-    if (g_uinput_fd >= 0 && g_evdev_n > 0) {
-      g_wayland = 1;
-      g_hotkey_grabbed = 1;
-      if (env_set("DISPLAY") && open_x11_input()) grab_x11_hotkey();
-      fprintf(stderr, "p2p.kiwi sidecar: input backend wayland uinput=1 evdev=%d xhotkey=%d\n",
-              g_evdev_n, g_x11_hotkey_grabbed);
-      return 1;
-    }
-    fprintf(stderr,
-            "p2p.kiwi sidecar: wayland input unavailable (uinput=%d evdev=%d), trying X11\n",
-            g_uinput_fd >= 0, g_evdev_n);
-    close_uinput();
-    /* Keep evdev if it opened: physical Ctrl+Esc still works with XTest injection. */
-    if (g_evdev_n == 0) close_evdev();
-  }
+  if (session_is_wayland()) open_evdev();
 
+  /* XTest on XWayland is what makes GNOME show "Allow remote interaction".
+     uinput never opens that dialog, so Mutter never grants control. */
   if (open_x11_input()) {
     if (g_evdev_n > 0) g_hotkey_grabbed = 1;
     grab_x11_hotkey();
-    fprintf(stderr, "p2p.kiwi sidecar: input backend x11 xtest=1 hotkey=%d evdev=%d xhotkey=%d minkc=%d\n",
-            g_hotkey_grabbed, g_evdev_n, g_x11_hotkey_grabbed, g_x_min_kc);
+    fprintf(stderr, "p2p.kiwi sidecar: input backend x11 xtest=1 hotkey=%d evdev=%d xhotkey=%d minkc=%d wayland=%d\n",
+            g_hotkey_grabbed, g_evdev_n, g_x11_hotkey_grabbed, g_x_min_kc, session_is_wayland());
     return 1;
+  }
+
+  if (session_is_wayland()) {
+    g_uinput_fd = open_uinput();
+    if (g_uinput_fd >= 0 && g_evdev_n > 0) {
+      g_wayland = 1;
+      g_hotkey_grabbed = 1;
+      fprintf(stderr, "p2p.kiwi sidecar: input backend wayland uinput=1 evdev=%d denied=%d (no XTest)\n",
+              g_evdev_n, g_evdev_access_denied);
+      return 1;
+    }
+    fprintf(stderr,
+            "p2p.kiwi sidecar: wayland input unavailable (uinput=%d evdev=%d xtest=0)\n",
+            g_uinput_fd >= 0, g_evdev_n);
+    close_uinput();
   }
 
   fprintf(stderr, "p2p.kiwi sidecar: input backend none uinput=%d evdev=%d xtest=%d\n",
@@ -536,17 +701,19 @@ void native_input_shutdown(void) {
 
 void native_input_query_caps(NativeCaps *out) {
   if (!out) return;
+  /* One readable keyboard is enough to arm. An unreadable built-in keyboard
+   * cannot raise the chord, but it must not disable remote control. */
   if (g_wayland) {
     int inject = g_uinput_fd >= 0;
-    /* Wayland: arm only when both injection and emergency observation exist. */
-    out->pointer_injection = inject && (g_evdev_n > 0);
+    int watched = g_evdev_n > 0;
+    out->pointer_injection = inject && watched;
     out->keyboard_injection = out->pointer_injection;
-    out->global_keyboard_observation = g_evdev_n > 0;
+    out->global_keyboard_observation = watched;
     out->emergency_hotkey = out->pointer_injection;
-    out->keyboard_capture = g_evdev_n > 0;
+    out->keyboard_capture = watched;
     if (!inject) {
       snprintf(out->unavailable_reason, sizeof(out->unavailable_reason), "uinput-permission");
-    } else if (g_evdev_n == 0) {
+    } else if (!watched) {
       snprintf(out->unavailable_reason, sizeof(out->unavailable_reason), "evdev-permission");
     } else {
       out->unavailable_reason[0] = 0;
@@ -558,7 +725,7 @@ void native_input_query_caps(NativeCaps *out) {
   out->keyboard_injection = out->pointer_injection;
   out->global_keyboard_observation = emergency;
   out->emergency_hotkey = out->pointer_injection;
-  out->keyboard_capture = g_evdev_n > 0 || g_dpy != NULL;
+  out->keyboard_capture = g_evdev_n > 0 || (g_dpy != NULL && !session_is_wayland());
   if (!g_xtest) {
     if (session_is_wayland()) {
       snprintf(out->unavailable_reason, sizeof(out->unavailable_reason), "uinput-permission");
@@ -591,10 +758,24 @@ void native_input_pump(void) {
     while (XPending(g_dpy)) {
       XEvent ev;
       XNextEvent(g_dpy, &ev);
-      if (ev.type == KeyPress && x_event_matches_hotkey(&ev.xkey)) {
+      if (ev.type == GenericEvent && g_xi_ready && !evdev_hotkey_complete() && !session_is_wayland()) {
+        XGenericEventCookie *cookie = &ev.xcookie;
+        if (cookie->extension == g_xi_opcode && XGetEventData(g_dpy, cookie)) {
+          if (cookie->evtype == XI_RawKeyPress || cookie->evtype == XI_RawKeyRelease) {
+            XIRawEvent *raw = (XIRawEvent *)cookie->data;
+            if (g_xtest_keyboard < 0 || (int)raw->deviceid != g_xtest_keyboard)
+              note_xi_key((int)raw->detail, cookie->evtype == XI_RawKeyPress);
+          }
+          XFreeEventData(g_dpy, cookie);
+        }
+        continue;
+      }
+      /* Evdev is the physical watch. Core KeyPress also sees XTest and XWayland echoes. */
+      int honor_core = ev.type == KeyPress && x_event_matches_hotkey(&ev.xkey);
+      if (g_capture_active || evdev_hotkey_complete() || g_xi_ready || session_is_wayland()) honor_core = 0;
+      if (honor_core) {
         g_hotkey_fired = 1;
         capture_lock();
-        if (g_capture_active && g_capture_x11) continue;
       }
       if (g_capture_active && g_capture_x11 && (ev.type == KeyPress || ev.type == KeyRelease)) {
         int linux_code = (int)ev.xkey.keycode - g_x_min_kc;
@@ -760,6 +941,19 @@ int native_key_event(unsigned int key_code, int down, unsigned int modifiers) {
   XTestFakeKeyEvent(g_dpy, (KeyCode)kc, down ? True : False, CurrentTime);
   XFlush(g_dpy);
   return 0;
+}
+
+void native_input_activate_injection(void) {
+  if (!session_is_wayland() || g_wayland || !g_dpy || !g_xtest) return;
+  Window root = DefaultRootWindow(g_dpy);
+  Window child = 0;
+  int rx = 0, ry = 0, wx = 0, wy = 0;
+  unsigned int mask = 0;
+  if (!XQueryPointer(g_dpy, root, &root, &child, &rx, &ry, &wx, &wy, &mask)) return;
+  /* Same point the pointer is already at. XWayland still asks Mutter. */
+  XTestFakeMotionEvent(g_dpy, -1, rx, ry, CurrentTime);
+  XFlush(g_dpy);
+  fprintf(stderr, "p2p.kiwi sidecar: prompted wayland remote interaction via XTest\n");
 }
 
 int native_input_request_permission(int kind) {

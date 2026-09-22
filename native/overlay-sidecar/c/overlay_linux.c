@@ -11,6 +11,7 @@
 #include <X11/extensions/Xrandr.h>
 
 #include <fcntl.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,7 @@
 #ifdef HAVE_WAYLAND
 #include <wayland-client.h>
 #include "wlr-layer-shell-client-protocol.h"
+#include "viewporter-client-protocol.h"
 #endif
 
 #define MAX_OVERLAYS 4
@@ -33,6 +35,7 @@ struct WlOutput {
   int y;
   int width;
   int height;
+  int scale;
 };
 
 struct WlShmBuffer {
@@ -50,6 +53,7 @@ struct WlState {
   struct wl_compositor *compositor;
   struct wl_shm *shm;
   struct zwlr_layer_shell_v1 *shell;
+  struct wp_viewporter *viewporter;
   struct WlOutput outputs[MAX_WL_OUTPUTS];
   int output_count;
   struct WlShmBuffer buffers[2];
@@ -80,7 +84,15 @@ typedef struct Overlay {
   struct WlState *wl;
   struct wl_surface *surface;
   struct zwlr_layer_surface_v1 *layer;
+  struct wp_viewport *viewport;
 #endif
+  int buffer_scale;
+  int surface_w;
+  int surface_h;
+  int x11_cached;
+  int x11_key_x, x11_key_y, x11_key_w, x11_key_h;
+  float x11_key_scale;
+  int x11_win_x, x11_win_y, x11_win_w, x11_win_h;
 } Overlay;
 
 static Overlay g_overlays[MAX_OVERLAYS];
@@ -178,6 +190,92 @@ static void x11_set_atom_window_type(Display *dpy, Window win) {
   XChangeProperty(dpy, win, net_wm_state, XA_ATOM, 32, PropModeReplace, (unsigned char *)states, 3);
 }
 
+static int iabs(int v) { return v < 0 ? -v : v; }
+
+/* The window rectangle is the RandR CRTC. Electron bounds only choose which
+ * CRTC: origin is compared in CRTC pixels (hint origin * size ratio). */
+static int x11_match_crtc(Display *dpy, const NativeSource *source, int *x, int *y, int *w, int *h) {
+  int hw = source && source->width > 0 ? source->width : 1;
+  int hh = source && source->height > 0 ? source->height : 1;
+  int hx = source ? source->x : 0;
+  int hy = source ? source->y : 0;
+  float hint_scale = source && source->scale > 0.f ? source->scale : 1.f;
+  Window root = RootWindow(dpy, DefaultScreen(dpy));
+  XRRScreenResources *res = XRRGetScreenResourcesCurrent(dpy, root);
+  if (!res) return 0;
+  int best = 0x7fffffff;
+  int found = 0;
+  int bx = 0;
+  int by = 0;
+  int bw = 0;
+  int bh = 0;
+  for (int i = 0; i < res->ncrtc; i++) {
+    XRRCrtcInfo *ci = XRRGetCrtcInfo(dpy, res, res->crtcs[i]);
+    if (!ci) continue;
+    float ratio = 1.f;
+    if (ci->width > 0 && ci->height > 0 && overlay_sizes_share_ratio((int)ci->width, (int)ci->height, hw, hh, &ratio)) {
+      int ex = (int)llroundf((float)hx * ratio);
+      int ey = (int)llroundf((float)hy * ratio);
+      int origin = iabs(ci->x - ex) + iabs(ci->y - ey);
+      int bias = (int)llroundf(fabsf(ratio - hint_scale) * 100.f);
+      int score = origin * 1000 + bias;
+      if (score < best) {
+        best = score;
+        found = 1;
+        bx = ci->x;
+        by = ci->y;
+        bw = (int)ci->width;
+        bh = (int)ci->height;
+      }
+    }
+    XRRFreeCrtcInfo(ci);
+  }
+  XRRFreeScreenResources(res);
+  if (!found || bw < 1 || bh < 1) return 0;
+  *x = bx;
+  *y = by;
+  *w = bw;
+  *h = bh;
+  return 1;
+}
+
+static void x11_window_rect(Overlay *o, int *x, int *y, int *w, int *h) {
+  const NativeSource *source = &o->source;
+  int lw = source->width > 0 ? source->width : 1;
+  int lh = source->height > 0 ? source->height : 1;
+  if (o->x11_cached && o->x11_key_x == source->x && o->x11_key_y == source->y && o->x11_key_w == lw &&
+      o->x11_key_h == lh && fabsf(o->x11_key_scale - source->scale) < 0.01f) {
+    *x = o->x11_win_x;
+    *y = o->x11_win_y;
+    *w = o->x11_win_w;
+    *h = o->x11_win_h;
+    return;
+  }
+  if (!x11_match_crtc(o->dpy, source, x, y, w, h)) {
+    *x = source->x;
+    *y = source->y;
+    *w = lw;
+    *h = lh;
+    fprintf(stderr, "p2p.kiwi sidecar: x11 overlay electron %dx%d at %d,%d scale %.2f (no crtc match)\n", lw, lh,
+            source->x, source->y, source->scale);
+  } else {
+    fprintf(stderr, "p2p.kiwi sidecar: x11 overlay crtc %dx%d at %d,%d (electron %dx%d at %d,%d scale %.2f)\n", *w,
+            *h, *x, *y, lw, lh, source->x, source->y, source->scale);
+  }
+  if (*w < 1) *w = 1;
+  if (*h < 1) *h = 1;
+  o->x11_cached = 1;
+  o->x11_key_x = source->x;
+  o->x11_key_y = source->y;
+  o->x11_key_w = lw;
+  o->x11_key_h = lh;
+  o->x11_key_scale = source->scale;
+  o->x11_win_x = *x;
+  o->x11_win_y = *y;
+  o->x11_win_w = *w;
+  o->x11_win_h = *h;
+}
+
 static int x11_probe(void) {
   Display *dpy = XOpenDisplay(NULL);
   if (!dpy) return 0;
@@ -186,6 +284,7 @@ static int x11_probe(void) {
 }
 
 static int x11_create(Overlay *o, const NativeSource *source) {
+  (void)source;
   Display *dpy = XOpenDisplay(NULL);
   if (!dpy) return 0;
   int screen = DefaultScreen(dpy);
@@ -205,10 +304,12 @@ static int x11_create(Overlay *o, const NativeSource *source) {
   swa.save_under = True;
   swa.event_mask = StructureNotifyMask | VisibilityChangeMask;
   unsigned long mask = CWColormap | CWBorderPixel | CWBackPixel | CWOverrideRedirect | CWSaveUnder | CWEventMask;
-  int x = source->x;
-  int y = source->y;
-  int w = source->width > 0 ? source->width : DisplayWidth(dpy, screen);
-  int h = source->height > 0 ? source->height : DisplayHeight(dpy, screen);
+  int x = 0;
+  int y = 0;
+  int w = 1;
+  int h = 1;
+  o->dpy = dpy;
+  x11_window_rect(o, &x, &y, &w, &h);
   Window win = XCreateWindow(
       dpy,
       RootWindow(dpy, screen),
@@ -369,9 +470,9 @@ static void output_done(void *data, struct wl_output *output) {
 }
 
 static void output_scale(void *data, struct wl_output *output, int32_t factor) {
-  (void)data;
   (void)output;
-  (void)factor;
+  struct WlOutput *o = data;
+  o->scale = factor > 0 ? factor : 1;
 }
 
 static const struct wl_output_listener output_listener = {
@@ -394,12 +495,15 @@ static void registry_global(
     st->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
   } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
     st->shell = wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, version < 4 ? version : 4);
+  } else if (strcmp(interface, wp_viewporter_interface.name) == 0) {
+    st->viewporter = wl_registry_bind(registry, name, &wp_viewporter_interface, 1);
   } else if (strcmp(interface, wl_output_interface.name) == 0) {
     if (st->output_count >= MAX_WL_OUTPUTS) return;
     uint32_t ver = version < 3 ? version : 3;
     struct WlOutput *out = &st->outputs[st->output_count++];
     memset(out, 0, sizeof(*out));
     out->output = wl_registry_bind(registry, name, &wl_output_interface, ver);
+    out->scale = 1;
     wl_output_add_listener(out->output, &output_listener, out);
   }
 }
@@ -523,15 +627,87 @@ static void wayland_apply_click_through(struct WlState *st, struct wl_surface *s
   wl_region_destroy(empty);
 }
 
-static struct wl_output *pick_output(struct WlState *st, const NativeSource *source) {
+static struct WlOutput *pick_wl_output(struct WlState *st, const NativeSource *source) {
+  struct WlOutput *best = NULL;
+  int best_score = 0x7fffffff;
+  struct WlOutput *origin_best = NULL;
+  int best_origin = 0x7fffffff;
+  if (!st || !source) return NULL;
+  int hw = source->width > 0 ? source->width : 1;
+  int hh = source->height > 0 ? source->height : 1;
   for (int i = 0; i < st->output_count; i++) {
     struct WlOutput *out = &st->outputs[i];
-    if (!out->output || out->width <= 0 || out->height <= 0) continue;
-    if (source->x >= out->x && source->y >= out->y && source->x < out->x + out->width && source->y < out->y + out->height) {
-      return out->output;
+    if (!out->output) continue;
+    int origin = iabs(out->x - source->x) + iabs(out->y - source->y);
+    if (origin < best_origin) {
+      best_origin = origin;
+      origin_best = out;
+    }
+    int scale = out->scale > 1 ? out->scale : 1;
+    int logical_w = out->width > 0 ? out->width / scale : 0;
+    int logical_h = out->height > 0 ? out->height / scale : 0;
+    int score = 0x7fffffff;
+    if (overlay_sizes_share_ratio(logical_w, logical_h, hw, hh, NULL)) {
+      score = origin;
+    }
+    if (overlay_sizes_share_ratio(out->width, out->height, hw, hh, NULL) && origin < score) {
+      score = origin;
+    }
+    if (score < best_score) {
+      best_score = score;
+      best = out;
     }
   }
-  return NULL;
+  if (best_score == 0x7fffffff) return origin_best;
+  return best;
+}
+
+static void wayland_geometry(
+    struct WlState *st,
+    const NativeSource *source,
+    int has_viewport,
+    int *lw,
+    int *lh,
+    int *pw,
+    int *ph,
+    int *buf_scale) {
+  struct WlOutput *out = pick_wl_output(st, source);
+  int hint_w = source && source->width > 0 ? source->width : 1;
+  int hint_h = source && source->height > 0 ? source->height : 1;
+  if (out && out->width > 0 && out->height > 0) {
+    int scale = out->scale > 1 ? out->scale : 1;
+    *pw = out->width;
+    *ph = out->height;
+    *lw = *pw / scale;
+    *lh = *ph / scale;
+    if (*lw < 1) *lw = 1;
+    if (*lh < 1) *lh = 1;
+    *buf_scale = has_viewport ? 1 : scale;
+    return;
+  }
+  float scale = source && source->scale > 1.f ? source->scale : 1.f;
+  *lw = hint_w;
+  *lh = hint_h;
+  if (has_viewport) {
+    *buf_scale = 1;
+    *pw = (int)llroundf((float)hint_w * scale);
+    *ph = (int)llroundf((float)hint_h * scale);
+  } else {
+    int integer = (int)lroundf(scale);
+    if (integer < 1) integer = 1;
+    if (fabsf(scale - (float)integer) > 0.02f) integer = 1;
+    *buf_scale = integer;
+    *pw = hint_w * integer;
+    *ph = hint_h * integer;
+  }
+  if (*pw < 1) *pw = 1;
+  if (*ph < 1) *ph = 1;
+}
+
+static void wayland_target_size(Overlay *o, int *lw, int *lh, int *pw, int *ph, int *buf_scale) {
+  wayland_geometry(o->wl, &o->source, o->viewport != NULL, lw, lh, pw, ph, buf_scale);
+  o->surface_w = *lw;
+  o->surface_h = *lh;
 }
 
 static void wayland_state_destroy(struct WlState *st) {
@@ -540,6 +716,7 @@ static void wayland_state_destroy(struct WlState *st) {
   for (int i = 0; i < st->output_count; i++) {
     if (st->outputs[i].output) wl_output_destroy(st->outputs[i].output);
   }
+  if (st->viewporter) wp_viewporter_destroy(st->viewporter);
   if (st->shell) zwlr_layer_shell_v1_destroy(st->shell);
   if (st->compositor) wl_compositor_destroy(st->compositor);
   if (st->shm) wl_shm_destroy(st->shm);
@@ -558,6 +735,7 @@ static int wayland_probe_layer_shell(void) {
   wl_registry_add_listener(st.registry, &registry_listener, &st);
   wl_display_roundtrip(d);
   int ok = st.shell != NULL;
+  if (st.viewporter) wp_viewporter_destroy(st.viewporter);
   if (st.shell) zwlr_layer_shell_v1_destroy(st.shell);
   if (st.compositor) wl_compositor_destroy(st.compositor);
   if (st.shm) wl_shm_destroy(st.shm);
@@ -591,7 +769,8 @@ static int wayland_create(Overlay *o, const NativeSource *source) {
     wayland_state_destroy(st);
     return 0;
   }
-  struct wl_output *output = pick_output(st, source);
+  struct WlOutput *picked = pick_wl_output(st, source);
+  struct wl_output *output = picked ? picked->output : NULL;
   struct zwlr_layer_surface_v1 *layer = zwlr_layer_shell_v1_get_layer_surface(
       st->shell,
       surface,
@@ -599,24 +778,19 @@ static int wayland_create(Overlay *o, const NativeSource *source) {
       ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
       "p2p.kiwi");
   zwlr_layer_surface_v1_add_listener(layer, &layer_listener, st);
-  int w = source->width > 0 ? source->width : 1;
-  int h = source->height > 0 ? source->height : 1;
-  zwlr_layer_surface_v1_set_size(layer, (uint32_t)w, (uint32_t)h);
+  int lw = source->width > 0 ? source->width : 1;
+  int lh = source->height > 0 ? source->height : 1;
+  int pw = lw;
+  int ph = lh;
+  int bscale = 1;
+  wayland_geometry(st, source, st->viewporter != NULL, &lw, &lh, &pw, &ph, &bscale);
+  fprintf(stderr, "p2p.kiwi sidecar: wayland overlay mode %dx%d logical %dx%d (electron %dx%d scale %.2f)\n", pw, ph,
+          lw, lh, source->width, source->height, source->scale);
+  zwlr_layer_surface_v1_set_size(layer, (uint32_t)lw, (uint32_t)lh);
   zwlr_layer_surface_v1_set_anchor(
       layer,
       ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
-  if (output) {
-    for (int i = 0; i < st->output_count; i++) {
-      if (st->outputs[i].output == output) {
-        int top = source->y - st->outputs[i].y;
-        int left = source->x - st->outputs[i].x;
-        if (top < 0) top = 0;
-        if (left < 0) left = 0;
-        zwlr_layer_surface_v1_set_margin(layer, top, 0, 0, left);
-        break;
-      }
-    }
-  }
+  zwlr_layer_surface_v1_set_margin(layer, 0, 0, 0, 0);
   zwlr_layer_surface_v1_set_keyboard_interactivity(layer, 0);
   zwlr_layer_surface_v1_set_exclusive_zone(layer, 0);
   wayland_apply_click_through(st, surface);
@@ -626,7 +800,11 @@ static int wayland_create(Overlay *o, const NativeSource *source) {
   o->surface = surface;
   o->layer = layer;
   o->is_wayland = 1;
-  ensure_pixels(o, w, h);
+  o->surface_w = lw;
+  o->surface_h = lh;
+  o->buffer_scale = bscale;
+  if (st->viewporter) o->viewport = wp_viewporter_get_viewport(st->viewporter, surface);
+  ensure_pixels(o, pw, ph);
   snprintf(g_backend, sizeof(g_backend), "wayland");
   fprintf(stderr, "p2p.kiwi sidecar: overlay backend wayland\n");
   return 1;
@@ -659,13 +837,22 @@ static void wayland_present(Overlay *o) {
   memcpy(b->data, o->pixels, b->size);
   b->busy = 1;
   wayland_apply_click_through(st, o->surface);
+  if (o->viewport) {
+    int lw = o->surface_w > 0 ? o->surface_w : 1;
+    int lh = o->surface_h > 0 ? o->surface_h : 1;
+    wp_viewport_set_destination(o->viewport, lw, lh);
+  }
+  if (o->buffer_scale < 1) o->buffer_scale = 1;
+  wl_surface_set_buffer_scale(o->surface, o->buffer_scale);
   wl_surface_attach(o->surface, b->buffer, 0, 0);
-  wl_surface_damage(o->surface, 0, 0, o->pw, o->ph);
+  wl_surface_damage_buffer(o->surface, 0, 0, o->pw, o->ph);
   wl_surface_commit(o->surface);
   wl_display_flush(st->display);
 }
 
 static void wayland_destroy(Overlay *o) {
+  if (o->viewport) wp_viewport_destroy(o->viewport);
+  o->viewport = NULL;
   if (o->layer) zwlr_layer_surface_v1_destroy(o->layer);
   if (o->surface) wl_surface_destroy(o->surface);
   o->layer = NULL;
@@ -736,19 +923,51 @@ int native_overlay_update(int overlay_id, const NativeSource *source, const Nati
   if (cursors && o->cursor_count > 0) {
     memcpy(o->cursors, cursors, sizeof(NativeCursor) * (size_t)o->cursor_count);
   }
-  int w = o->source.width > 0 ? o->source.width : 1;
-  int h = o->source.height > 0 ? o->source.height : 1;
-  int moved = o->source.x != prev.x || o->source.y != prev.y || w != o->pw || h != o->ph;
-  if (o->dpy && moved) {
-    XMoveResizeWindow(o->dpy, o->win, o->source.x, o->source.y, (unsigned)w, (unsigned)h);
+  int sw = o->source.width > 0 ? o->source.width : 1;
+  int sh = o->source.height > 0 ? o->source.height : 1;
+  int prev_w = prev.width > 0 ? prev.width : 1;
+  int prev_h = prev.height > 0 ? prev.height : 1;
+  int w = sw;
+  int h = sh;
+  int pw = w;
+  int ph = h;
+  int wx = o->source.x;
+  int wy = o->source.y;
+  int ww = w;
+  int wh = h;
+  int prev_surface_w = o->surface_w;
+  int prev_surface_h = o->surface_h;
+#ifdef HAVE_WAYLAND
+  if (o->is_wayland) {
+    int bscale = 1;
+    wayland_target_size(o, &w, &h, &pw, &ph, &bscale);
+    o->buffer_scale = bscale;
+  }
+#endif
+  int prev_wx = o->x11_win_x;
+  int prev_wy = o->x11_win_y;
+  int prev_ww = o->x11_win_w;
+  int prev_wh = o->x11_win_h;
+  int had_x11 = o->x11_cached;
+  if (o->dpy && !o->is_wayland) {
+    x11_window_rect(o, &wx, &wy, &ww, &wh);
+    pw = ww;
+    ph = wh;
+  }
+  int moved = o->source.x != prev.x || o->source.y != prev.y || sw != prev_w || sh != prev_h ||
+              fabsf(o->source.scale - prev.scale) > 0.01f;
+  int x11_rect_changed = !had_x11 || wx != prev_wx || wy != prev_wy || ww != prev_ww || wh != prev_wh;
+  if (o->dpy && !o->is_wayland && (moved || x11_rect_changed)) {
+    XMoveResizeWindow(o->dpy, o->win, wx, wy, (unsigned)ww, (unsigned)wh);
     x11_apply_click_through(o->dpy, o->win);
   }
 #ifdef HAVE_WAYLAND
-  if (o->is_wayland && o->layer && moved) {
+  if (o->is_wayland && o->layer && (moved || w != prev_surface_w || h != prev_surface_h)) {
     zwlr_layer_surface_v1_set_size(o->layer, (uint32_t)w, (uint32_t)h);
+    zwlr_layer_surface_v1_set_margin(o->layer, 0, 0, 0, 0);
   }
 #endif
-  ensure_pixels(o, w, h);
+  ensure_pixels(o, pw, ph);
   overlay_draw_cursors(o->pixels, o->pw, o->ph, &o->source, o->cursors, o->cursor_count);
   if (!o->is_wayland) x11_present(o);
 #ifdef HAVE_WAYLAND

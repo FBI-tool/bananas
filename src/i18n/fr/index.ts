@@ -156,6 +156,8 @@ const fr = {
   remote_control_emergency: 'Contrôle à distance désactivé par le raccourci hôte',
   remote_control_emergency_hotkey: 'Arrêt d’urgence : {hotkey}',
   remote_control_unavailable: 'Le contrôle à distance est indisponible',
+  remote_control_evdev_permission:
+    'L’arrêt d’urgence ne voit pas tous les claviers. Installez build/udev/70-p2p-kiwi-input.rules dans /etc/udev/rules.d/, puis reconnectez-vous.',
   remote_control_request_permission: 'Autoriser l’accessibilité',
   remote_control_request_listen: 'Autoriser la surveillance de l’entrée',
   remote_control_permission_helper:

@@ -1,6 +1,16 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte'
   import { L } from './translations'
   import { bonjourIncoming } from './bonjourIncoming.svelte'
+  import { syncIncomingRing } from './session/incomingCallSound'
+
+  $effect(() => {
+    syncIncomingRing(bonjourIncoming.call?.callId ?? null)
+  })
+
+  onDestroy(() => {
+    syncIncomingRing(null)
+  })
 </script>
 
 {#if bonjourIncoming.call}

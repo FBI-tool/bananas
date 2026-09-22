@@ -8,7 +8,9 @@ out
 .vite
 native/overlay-sidecar/dist/
 native/overlay-sidecar/c/wlr-layer-shell-client-protocol.h
+native/overlay-sidecar/c/viewporter-client-protocol.h
 native/overlay-sidecar/c/cursor_png.h
+native/overlay-sidecar/c/maple_mono.h
 .pnpm-store/
 bun.lock
 bun.lockb

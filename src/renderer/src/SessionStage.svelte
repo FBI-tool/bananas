@@ -36,7 +36,6 @@
   let connectToUserName = $state('')
   let username = $state('')
   let color = $state('#ffffff')
-  let overlayAutoOpened = false
   let inviteInFlight = false
 
   const showVideo = $derived(!room.isPresenter || Boolean(room.sessionEndedReason))
@@ -310,14 +309,6 @@
         connectToUserName = kiwiData.data.username
       }
     })()
-  })
-
-  $effect(() => {
-    if (room.isLive && !overlayAutoOpened) {
-      overlayAutoOpened = true
-      void window.KiwiApi.toggleCallOverlay(true)
-    }
-    if (!room.isLive) overlayAutoOpened = false
   })
 
   $effect(() => {
@@ -609,6 +600,8 @@
         caps={room.remoteControlCaps}
         onRequest={(capability) => room.requestRemoteControlPermission(capability)}
       />
+    {:else if room.remoteControlCaps.unavailableReason === 'evdev-permission'}
+      <p class="text-sm">{L.remote_control_evdev_permission()}</p>
     {:else if room.remoteControlCaps.unavailableReason === 'accessibility-permission'}
       <button class="btn btn-sm" onclick={() => room.requestRemoteControlPermission('post')}>
         {L.remote_control_request_permission()}

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { TrpcHttp, trpcErrorMessage } from './trpc'
+import { TrpcHttp, isClosedStreamError, trpcErrorMessage } from './trpc'
 
 describe('trpcErrorMessage', () => {
   it('reads tRPC 11 flat errors and wrapped json errors', () => {
@@ -9,6 +9,17 @@ describe('trpcErrorMessage', () => {
     )
     expect(trpcErrorMessage({ data: { message: 'UNAUTHORIZED' } })).toBe('UNAUTHORIZED')
     expect(trpcErrorMessage({})).toBe('bonjour request failed')
+  })
+})
+
+describe('isClosedStreamError', () => {
+  it('matches a body read closed by the peer', () => {
+    expect(isClosedStreamError(new Error('closed'))).toBe(true)
+    expect(isClosedStreamError(new Error('closed', { cause: new Error('closed') }))).toBe(true)
+    expect(isClosedStreamError(new Error('terminated', { cause: { message: 'closed', code: 'UND_ERR_SOCKET' } }))).toBe(
+      true,
+    )
+    expect(isClosedStreamError(new Error('username taken'))).toBe(false)
   })
 })
 

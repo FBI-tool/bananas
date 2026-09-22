@@ -151,6 +151,8 @@ const zh = {
   remote_control_emergency: '主机快捷键已关闭远程控制',
   remote_control_emergency_hotkey: '紧急停止：{hotkey}',
   remote_control_unavailable: '远程控制不可用',
+  remote_control_evdev_permission:
+    '紧急停止看不到所有键盘。请把 build/udev/70-p2p-kiwi-input.rules 安装到 /etc/udev/rules.d/，然后重新登录。',
   remote_control_request_permission: '允许辅助功能',
   remote_control_request_listen: '允许输入监视',
   remote_control_permission_helper:

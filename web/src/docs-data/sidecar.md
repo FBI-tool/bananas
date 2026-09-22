@@ -51,13 +51,23 @@ Wayland and X11 are separate backends. Capabilities include an optional
 interactivity, `exclusive_zone = 0`, and an empty `wl_surface` input
 region re-applied on every commit. This is the koverlay-equivalent path
 on compositors that implement layer-shell (KWin, Hyprland, Sway, and
-similar).
+similar). The sidecar measures `wl_output` itself. Electron bounds only
+select which output. The layer is that output's logical size
+(`mode / scale`). The cursor buffer is the mode size, in physical
+pixels. `wp_viewporter` maps that buffer onto the logical surface.
+Without a viewporter, the integer output scale is `wl_surface` buffer
+scale.
 
 **X11 / XWayland (GNOME and other non-layer-shell sessions):**
 override-redirect notification window, empty Shape/XFixes input region
 after map, ARGB visual. Weaker than layer-shell: stacking and
 click-through are best-effort, and XWayland passthrough is compositor-
 dependent. Used only when layer-shell is missing but `DISPLAY` works.
+The window and cursor bitmap are the RandR CRTC rectangle, not
+Electron's logical bounds. A 1920×1080 hint still matches a 3840×2160
+CRTC when that is the X screen, including when Electron reports
+`scaleFactor` 1. If RandR returns no matching CRTC, the hint rectangle
+is used.
 
 There is no fallback to global input grabs. If neither layer-shell nor
 X11 is usable, `overlays` is false and Electron keeps the cursor window.
@@ -69,17 +79,24 @@ Electron. They are not used to draw overlays.
 
 Layered, non-activating, topmost tool window
 (`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW`).
-Coordinates are per-monitor DPI aware. Display hot-plug remaps the
-overlay without restarting the sidecar.
+The process is per-monitor DPI aware. Electron bounds only select
+which monitor. The layered window and the cursor bitmap are that
+monitor's `rcMonitor`, in physical pixels, including when Electron
+reports `scaleFactor` 1. If no monitor matches, the window falls back
+to `bounds * scaleFactor`. Display hot-plug remaps the overlay without
+restarting the sidecar.
 
 ## macOS
 
 Borderless transparent `NSWindow` at `NSPopUpMenuWindowLevel`,
 `ignoresMouseEvents`, no activation, and `NSWindowSharingNone` so the
-overlay is not part of the captured screen. The window frame is in
-Cocoa points (bottom-left, y-up), including negative origins for
-displays left of or below the primary display. The bitmap is
-`bounds * scaleFactor`, so Retina cursors stay sharp. A display
+overlay is not part of the captured screen. The window frame is the matched `NSScreen` frame, in Cocoa points
+(bottom-left, y-up), including negative origins for displays left of
+or below the primary display. Electron bounds only select which
+screen. The bitmap and `contentsScale` use that screen's
+`backingScaleFactor`, so Retina cursors stay sharp even when Electron
+reports scale 1. If no screen matches, the frame falls back to the
+Electron bounds. A display
 reconfiguration hides the overlay until the next update, instead of
 leaving it on the previous monitor. Lock screen and some fullscreen
 Spaces are not covered; the helper does not try to draw over them.
@@ -112,8 +129,8 @@ peer authorization. Odin owns only:
 - the physical emergency hotkey (`Ctrl+Esc` by default)
 - exclusive keyboard capture on the controlling peer
   (`keyboard-capture-arm` / `captured-key`); mouse still comes from the
-  renderer video element. Ctrl+Esc still fires the emergency stop while
-  capturing (the grab is released immediately).
+  renderer video element. Capture forwards Ctrl+Esc like any other key.
+  Only the host's physical keyboard stops remote control.
 
 Emergency disable order inside Odin, without waiting for Electron:
 
@@ -123,32 +140,48 @@ Emergency disable order inside Odin, without waiting for Electron:
 3. release every remotely-held key and button
 4. emit `remote-control-disabled` with `generation`
 
-Ctrl+Esc is observed from evdev on a real keyboard **and** from an X11
-root grab when `DISPLAY` is available. XTest injects via
+Ctrl+Esc is observed from evdev on each real keyboard. When every
+keyboard node is readable, X11 key events are not treated as the chord,
+so XTest and XWayland echoes of injected keys cannot stop control. On a
+pure X11 session with no readable evdev node, the chord comes from
+XInput raw events that ignore the XTEST keyboard. XTest injects via
 `XKeysymToKeycode`, not a hardcoded evdev+8 offset.
 
 ### Platform backends
 
 - **Windows:** `SendInput` with `MOUSEEVENTF_ABSOLUTE |
-MOUSEEVENTF_VIRTUALDESK`; `RegisterHotKey` on a message-only window
+MOUSEEVENTF_VIRTUALDESK`. The emergency chord is a low-level keyboard
+hook that ignores injected keys (`LLKHF_INJECTED`).
 - **macOS:** CoreGraphics event posts after Accessibility is granted.
   Emergency stop is a listen-only event tap and needs Input Monitoring.
   The helper does not capture the screen.
-- **Linux X11:** XTest injection and `XGrabKey` on the root window.
-  Controller-side capture uses `EVIOCGRAB` when evdev is readable,
+- **Linux X11:** XTest injection. The emergency chord is evdev when every
+  keyboard is readable, otherwise XInput raw events that ignore the XTEST
+  keyboard. Controller-side capture uses `EVIOCGRAB` when evdev is readable,
   otherwise `XGrabKeyboard`.
-- **Linux Wayland:** `/dev/uinput` virtual device (not XWayland fakery)
-  plus evdev observation of the physical emergency chord. Remote control
-  is not armable unless **both** succeed. Distros may need a udev rule
-  granting the user `/dev/uinput` and keyboard `event*` nodes; do not
-  run the sidecar as root. The sidecar ignores its own uinput device
-  when watching evdev so injected keys cannot trip the emergency chord.
-  Controller-side capture requires an evdev `EVIOCGRAB`; XGrabKeyboard
-  is not treated as success on Wayland sessions.
+- **Linux Wayland:** XTest through XWayland. Arming control posts one
+  motion event at the pointer's current position so GNOME opens the
+  Remote Desktop dialog ("Allow remote interaction"). Until that is
+  shared, injected input does not reach the session. The emergency
+  chord is still evdev on the physical keyboard, so XWayland echoes of
+  injected keys are not the chord. Remote control arms when XTest works
+  and at least one keyboard event node is readable. A keyboard the
+  sidecar cannot open (typically the laptop keyboard, mode `660` group
+  `input`) cannot raise the chord itself; keyboards that did open still
+  can. The Arch package installs the rule to `/usr/lib/udev/rules.d/`
+  and reloads udev. A `.deb` install copies it to `/etc/udev/rules.d/`.
+  Sign in again so the built-in keyboard is tagged `uaccess` for the
+  active session. Do not run the sidecar as root, and do not make
+  keyboard nodes mode `666`. If X11 cannot be opened, injection falls
+  back to a `/dev/uinput` device named `p2p-kiwi-remote`. That device
+  is ignored while watching evdev so injected keys cannot trip the
+  chord, and it does not open the GNOME dialog. Controller-side capture
+  requires an evdev `EVIOCGRAB`; XGrabKeyboard is not treated as success
+  on Wayland sessions.
 - **Linux hybrid (common):** many Wayland sessions still report overlay
-  `backend: x11` (XWayland / no layer-shell). Input still prefers
-  uinput+evdev, but if those devices are not usable it falls back to
-  XTest + `XGrabKey`. That fallback only reaches X11/XWayland windows.
+  `backend: x11` (XWayland / no layer-shell). The overlay window is the
+  RandR CRTC for the shared display. Electron bounds only identify
+  which CRTC. Input uses the same XTest path as Wayland above.
 
 Logs record event types and counters only, never key identities or
 typed text.

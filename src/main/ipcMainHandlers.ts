@@ -11,6 +11,7 @@ import { capturedSidecarKeyToLocal, setLocalKeyCapture } from './sidecar/localKe
 import { DEFAULT_EMERGENCY_HOTKEY, isEmergencyHotkey } from '../shared/emergencyHotkey'
 import { loadOrCreateIdentity } from './identityStore'
 import { bonjourClient } from './bonjour/client'
+import { isClosedStreamError } from './bonjour/trpc'
 import type { CallKind, PresenceStatus, SignalType } from './bonjour/types'
 
 export const sidecarManager = createAppSidecarManager()
@@ -349,8 +350,14 @@ export const ipcMainHandlersInit = (): void => {
   ipcMain.handle('bonjour:hangup', async (_, callId: string) => bonjourClient.hangup(callId))
   ipcMain.handle(
     'bonjour:signal',
-    async (_, callId: string, type: SignalType, peerPublicKey: string, payload: unknown) =>
-      bonjourClient.signal(callId, type, peerPublicKey, payload as never),
+    async (_, callId: string, type: SignalType, peerPublicKey: string, payload: unknown) => {
+      try {
+        return await bonjourClient.signal(callId, type, peerPublicKey, payload as never)
+      } catch (error) {
+        if (isClosedStreamError(error)) return
+        throw error
+      }
+    },
   )
   ipcMain.handle('bonjour:setPresence', async (_, status: PresenceStatus) => {
     bonjourClient.setPresence(status)

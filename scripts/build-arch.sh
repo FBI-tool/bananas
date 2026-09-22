@@ -185,6 +185,7 @@ depends=(
   'xdg-utils'
 )
 options=('!strip' '!debug')
+install=${PKGNAME}.install
 source=('${deb_name}' 'LICENSE')
 noextract=('${deb_name}')
 sha256sums=('${deb_sha}' '${license_sha}')
@@ -210,6 +211,37 @@ package() {
   fi
 
   install -Dm644 "\$srcdir/LICENSE" "\$pkgdir/usr/share/licenses/${PKGNAME}/LICENSE"
+
+  # Debian postinst is not part of the extracted data archive, so the
+  # .deb afterInstall hook never runs. Ship the rule where udev reads it.
+  local rules
+  rules="\$(find "\$pkgdir" -path '*/udev/70-p2p-kiwi-input.rules' -type f | head -n 1 || true)"
+  if [[ -z "\$rules" ]]; then
+    echo "Error: 70-p2p-kiwi-input.rules was not in the .deb" >&2
+    exit 1
+  fi
+  install -Dm644 "\$rules" "\$pkgdir/usr/lib/udev/rules.d/70-p2p-kiwi-input.rules"
+}
+EOF
+
+  cat > "$WORKDIR/${PKGNAME}.install" <<'EOF'
+reload_udev() {
+  if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules || true
+    udevadm trigger --subsystem-match=input --subsystem-match=misc || true
+  fi
+}
+
+post_install() {
+  reload_udev
+}
+
+post_upgrade() {
+  reload_udev
+}
+
+post_remove() {
+  reload_udev
 }
 EOF
 }

@@ -19,6 +19,8 @@ extraResources:
     filter:
       - p2p-kiwi-sidecar
       - p2p-kiwi-sidecar.exe
+  - from: build/udev/70-p2p-kiwi-input.rules
+    to: udev/70-p2p-kiwi-input.rules
 win:
   executableName: p2p-kiwi
   icon: build/icon.ico
@@ -71,6 +73,8 @@ flatpak:
   artifactName: p2p-kiwi_${arch}.${ext}
 deb:
   artifactName: p2p-kiwi_${arch}.${ext}
+  afterInstall: build/linux/after-install.sh
+  afterRemove: build/linux/after-remove.sh
 npmRebuild: false
 afterPack: scripts/after-pack-macos.cjs
 afterSign: scripts/after-sign-macos.cjs

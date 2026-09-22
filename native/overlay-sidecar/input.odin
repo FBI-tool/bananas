@@ -53,6 +53,9 @@ input_arm :: proc(state: ^Input_State, pointer: bool, keyboard: bool) -> Input_E
 	if !state.armed {
 		return .Not_Armed
 	}
+	when ODIN_OS == .Linux {
+		native_input_activate_injection()
+	}
 	return .None
 }
 

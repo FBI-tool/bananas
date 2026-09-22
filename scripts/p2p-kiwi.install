@@ -1,0 +1,18 @@
+reload_udev() {
+  if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules || true
+    udevadm trigger --subsystem-match=input --subsystem-match=misc || true
+  fi
+}
+
+post_install() {
+  reload_udev
+}
+
+post_upgrade() {
+  reload_udev
+}
+
+post_remove() {
+  reload_udev
+}

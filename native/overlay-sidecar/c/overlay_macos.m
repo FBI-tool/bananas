@@ -40,6 +40,11 @@ typedef struct Overlay {
   void *window;
   void *view;
   int hidden;
+  int place_logged;
+  int place_w;
+  int place_h;
+  int place_x;
+  int place_y;
 } Overlay;
 
 static Overlay g_overlays[MAX_OVERLAYS];
@@ -86,6 +91,7 @@ static int g_next_id = 1;
   NSGraphicsContext *nsctx = [NSGraphicsContext currentContext];
   CGContextRef draw = nsctx.CGContext;
   NSRect bounds = self.bounds;
+  CGContextSetInterpolationQuality(draw, kCGInterpolationHigh);
   CGContextDrawImage(draw, CGRectMake(0, 0, bounds.size.width, bounds.size.height), image);
   CGImageRelease(image);
   CGContextRelease(ctx);
@@ -112,6 +118,8 @@ static Overlay *alloc_overlay(void) {
   return NULL;
 }
 
+static int iabs(int v) { return v < 0 ? -v : v; }
+
 /* Matches cocoa_frame_from_top_left in coords.odin. */
 static NSRect cocoa_frame_for_source(const NativeSource *source) {
   int w = source->width > 0 ? source->width : 1;
@@ -123,15 +131,92 @@ static NSRect cocoa_frame_for_source(const NativeSource *source) {
   return NSMakeRect(source->x, y, w, h);
 }
 
-static void bitmap_size_for_source(const NativeSource *source, int *bw, int *bh) {
-  float scale = source->scale > 0.f ? source->scale : 1.f;
+typedef struct MacPlacement {
+  NSRect frame;
+  int bw;
+  int bh;
+  float scale;
+  int matched;
+} MacPlacement;
+
+/* Electron bounds only choose the NSScreen. The window is that screen's
+ * point frame; the bitmap uses its backingScaleFactor. */
+static MacPlacement macos_placement(const NativeSource *source) {
+  int hw = source && source->width > 0 ? source->width : 1;
+  int hh = source && source->height > 0 ? source->height : 1;
+  int hx = source ? source->x : 0;
+  int hy = source ? source->y : 0;
+  NSArray<NSScreen *> *screens = [NSScreen screens];
+  int primary = 0;
+  if (screens.count > 0) primary = (int)llround(NSMaxY(screens[0].frame));
+  int best = 0x7fffffff;
+  NSScreen *picked = nil;
+  for (NSScreen *screen in screens) {
+    NSRect frame = screen.frame;
+    int lw = (int)llround(frame.size.width);
+    int lh = (int)llround(frame.size.height);
+    if (lw < 1 || lh < 1) continue;
+    int lx = (int)llround(frame.origin.x);
+    int top = primary - (int)llround(NSMaxY(frame));
+    CGFloat backing = screen.backingScaleFactor > 0 ? screen.backingScaleFactor : 1;
+    int pw = (int)llround(frame.size.width * backing);
+    int ph = (int)llround(frame.size.height * backing);
+    int origin = iabs(lx - hx) + iabs(top - hy);
+    int score = 0x7fffffff;
+    if (overlay_sizes_share_ratio(lw, lh, hw, hh, NULL)) score = origin;
+    if (overlay_sizes_share_ratio(pw, ph, hw, hh, NULL) && origin < score) score = origin;
+    if (score < best) {
+      best = score;
+      picked = screen;
+    }
+  }
+  MacPlacement place;
+  memset(&place, 0, sizeof(place));
+  if (picked && best != 0x7fffffff) {
+    place.matched = 1;
+    place.frame = picked.frame;
+    CGFloat backing = picked.backingScaleFactor > 0 ? picked.backingScaleFactor : 1;
+    place.scale = (float)backing;
+    place.bw = (int)llround(place.frame.size.width * backing);
+    place.bh = (int)llround(place.frame.size.height * backing);
+  } else {
+    place.frame = cocoa_frame_for_source(source);
+    overlay_physical_size(source, &place.bw, &place.bh);
+    place.scale = source && source->scale > 1.f ? source->scale : 1.f;
+  }
+  if (place.bw < 1) place.bw = 1;
+  if (place.bh < 1) place.bh = 1;
+  if (place.scale < 1.f) place.scale = 1.f;
+  return place;
+}
+
+static void log_macos_placement(Overlay *o, const MacPlacement *place) {
+  int fx = (int)llround(place->frame.origin.x);
+  int fy = (int)llround(place->frame.origin.y);
+  if (o->place_logged && o->place_w == place->bw && o->place_h == place->bh && o->place_x == fx && o->place_y == fy) {
+    return;
+  }
+  o->place_logged = 1;
+  o->place_w = place->bw;
+  o->place_h = place->bh;
+  o->place_x = fx;
+  o->place_y = fy;
+  const NativeSource *source = &o->source;
+  if (place->matched) {
+    fprintf(stderr,
+            "p2p.kiwi sidecar: macos overlay screen %dx%d at %d,%d scale %.2f (electron %dx%d at %d,%d scale %.2f)\n",
+            place->bw, place->bh, fx, fy, place->scale, source->width, source->height, source->x, source->y,
+            source->scale);
+  } else {
+    fprintf(stderr, "p2p.kiwi sidecar: macos overlay electron %dx%d at %d,%d scale %.2f (no screen match)\n",
+            source->width, source->height, source->x, source->y, source->scale);
+  }
+}
+
+static void apply_contents_scale(KiwiOverlayView *view, float scale) {
   if (scale < 1.f) scale = 1.f;
-  int w = source->width > 0 ? source->width : 1;
-  int h = source->height > 0 ? source->height : 1;
-  *bw = (int)llroundf((float)w * scale);
-  *bh = (int)llroundf((float)h * scale);
-  if (*bw < 1) *bw = 1;
-  if (*bh < 1) *bh = 1;
+  view.wantsLayer = YES;
+  view.layer.contentsScale = scale;
 }
 
 static void hide_overlays_for_display_change(void) {
@@ -159,13 +244,14 @@ int native_overlay_create(const NativeSource *source) {
   Overlay *o = alloc_overlay();
   if (!o) return 0;
   o->source = *source;
-  int w = 1;
-  int h = 1;
-  bitmap_size_for_source(source, &w, &h);
+  MacPlacement place = macos_placement(source);
+  log_macos_placement(o, &place);
+  int w = place.bw;
+  int h = place.bh;
   o->pw = w;
   o->ph = h;
   o->pixels = calloc((size_t)w * (size_t)h, 4);
-  NSRect frame = cocoa_frame_for_source(source);
+  NSRect frame = place.frame;
   KiwiOverlayWindow *win = [[KiwiOverlayWindow alloc] initWithContentRect:frame
                                                                  styleMask:NSWindowStyleMaskBorderless
                                                                    backing:NSBackingStoreBuffered
@@ -183,6 +269,7 @@ int native_overlay_create(const NativeSource *source) {
   [win setSharingType:NSWindowSharingNone];
   KiwiOverlayView *view = [[KiwiOverlayView alloc] initWithFrame:NSMakeRect(0, 0, frame.size.width, frame.size.height)];
   view.overlay = o;
+  apply_contents_scale(view, place.scale);
   [win setContentView:view];
   [win orderFrontRegardless];
   [win setAcceptsMouseMovedEvents:NO];
@@ -200,9 +287,10 @@ int native_overlay_update(int overlay_id, const NativeSource *source, const Nati
   if (source) o->source = *source;
   o->cursor_count = n > MAX_CURSORS ? MAX_CURSORS : n;
   if (cursors && o->cursor_count > 0) memcpy(o->cursors, cursors, sizeof(NativeCursor) * (size_t)o->cursor_count);
-  int w = 1;
-  int h = 1;
-  bitmap_size_for_source(&o->source, &w, &h);
+  MacPlacement place = macos_placement(&o->source);
+  log_macos_placement(o, &place);
+  int w = place.bw;
+  int h = place.bh;
   if (w != o->pw || h != o->ph) {
     free(o->pixels);
     o->pixels = calloc((size_t)w * (size_t)h, 4);
@@ -212,9 +300,10 @@ int native_overlay_update(int overlay_id, const NativeSource *source, const Nati
   overlay_draw_cursors(o->pixels, o->pw, o->ph, &o->source, o->cursors, o->cursor_count);
   NSWindow *win = (__bridge NSWindow *)o->window;
   KiwiOverlayView *view = (__bridge KiwiOverlayView *)o->view;
-  NSRect frame = cocoa_frame_for_source(&o->source);
+  NSRect frame = place.frame;
   [win setFrame:frame display:YES];
   [view setFrame:NSMakeRect(0, 0, frame.size.width, frame.size.height)];
+  apply_contents_scale(view, place.scale);
   o->hidden = 0;
   [win orderFrontRegardless];
   [view setNeedsDisplay:YES];
