@@ -6,14 +6,12 @@
   import { debugLog } from './debugLog.svelte'
   import { mayBeConnectionString, getDataFromKiwiUrl, ConnectionType } from './Utils'
   import { sessionRoom as room } from './session/sessionStore.svelte'
-  import SessionStage from './SessionStage.svelte'
 
   let sessionStarted = $state(false)
   let connectionStringIsValid = $state<boolean | null>(null)
   let connectToUserName = $state('')
   let startingSession = $state(false)
   let username = $state('')
-  let remoteScreen: HTMLVideoElement | undefined = $state()
   let copiedConnectionString: string | null = null
   let copyInFlight = false
 
@@ -34,6 +32,7 @@
   })
 
   $effect(() => {
+    if (appState.sessionSource !== 'host') return
     switch (room.connectionState) {
       case 'connected':
         toast.show('success', L.connection_established())
@@ -107,6 +106,7 @@
       appState.navigationEnabled = false
       appState.isHosting = true
       appState.isCoordinator = true
+      appState.beginSession('host', reset)
     } finally {
       startingSession = false
     }
@@ -121,6 +121,7 @@
     appState.navigationEnabled = true
     appState.isHosting = false
     appState.isCoordinator = false
+    appState.clearSession()
   }
 
   const onDisconnectClick = async (): Promise<void> => {
@@ -148,10 +149,6 @@
   <h1 class="text-3xl font-bold mb-4">
     {!room.isLive ? L.host_a_session() : L.hosting_a_session()}
   </h1>
-
-  {#if room.isLive || room.sessionEndedReason}
-    <SessionStage {room} bind:remoteScreen showInvite={true} onReset={reset} />
-  {/if}
 
   {#if sessionStarted && !room.isLive && !room.sessionEndedReason}
     <div class="flex flex-wrap gap-2 mb-4">

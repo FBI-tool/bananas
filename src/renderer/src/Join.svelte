@@ -6,9 +6,7 @@
   import { toast } from './toastState.svelte'
   import { debugLog } from './debugLog.svelte'
   import { sessionRoom as room } from './session/sessionStore.svelte'
-  import SessionStage from './SessionStage.svelte'
 
-  let remoteScreen: HTMLVideoElement | undefined = $state()
   let isConnected = $state(false)
   let connectionStringIsValid = $state<boolean | null>(null)
   let connectToUserName = $state('')
@@ -33,6 +31,7 @@
   })
 
   $effect(() => {
+    if (appState.sessionSource !== 'join') return
     switch (room.connectionState) {
       case 'connected':
         toast.show('success', L.connection_established())
@@ -50,7 +49,7 @@
   })
 
   const onConnectClick = async (): Promise<void> => {
-    const setupResult = await room.Setup(remoteScreen ?? document.createElement('video'))
+    const setupResult = await room.Setup(document.createElement('video'))
     if (setupResult !== 'ok') {
       debugLog.error('join', `Setup returned ${setupResult}`)
       toast.show('error', L.connection_failed())
@@ -68,6 +67,7 @@
       isConnected = true
       appState.isWatching = true
       appState.navigationEnabled = false
+      appState.beginSession('join', reset)
     } catch (error) {
       console.error(error)
       debugLog.error('join', 'Connect click failed', error)
@@ -112,6 +112,7 @@
     appState.navigationEnabled = true
     appState.isWatching = false
     appState.isCoordinator = false
+    appState.clearSession()
   }
 
   const onDisconnectClick = async (): Promise<void> => {
@@ -187,12 +188,4 @@
     </div>
   {/if}
 
-  <div class={room.isLive || room.sessionEndedReason ? '' : 'hidden'}>
-    <SessionStage
-      {room}
-      bind:remoteScreen
-      showInvite={room.isCoordinator}
-      onReset={reset}
-    />
-  </div>
 </div>

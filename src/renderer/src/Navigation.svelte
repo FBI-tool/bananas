@@ -13,7 +13,7 @@
 </script>
 
 <div class="navbar bg-base-100 px-4">
-  <div class="flex flex-wrap gap-2">
+  <div class="navbar-start flex flex-wrap gap-2">
     <button
       class="btn {appState.activeView === 'join' ? 'btn-primary' : 'btn-ghost'}"
       data-action="join"

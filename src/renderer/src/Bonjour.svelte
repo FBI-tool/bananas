@@ -4,11 +4,10 @@
   import { appState } from './appState.svelte'
   import { toast } from './toastState.svelte'
   import { sessionRoom as room } from './session/sessionStore.svelte'
-  import SessionStage from './SessionStage.svelte'
+  import { bonjourIncoming } from './bonjourIncoming.svelte'
   import {
     mergeIncomingCallSignal,
     type BonjourSignalPayload,
-    type IncomingBonjourCall,
   } from './session/bonjourSignal'
   import { applyContactPresence, isPresenceStatus } from './bonjourPresence'
   import { debugLog } from './debugLog.svelte'
@@ -17,7 +16,6 @@
 
   const CONTACTS_POLL_MS = 30_000
 
-  let remoteScreen: HTMLVideoElement | undefined = $state()
   const BonjourRequestProgressEnum = {
     'WAITING': 'waiting',
   } as const
@@ -47,7 +45,6 @@
   let outgoing = $state<Array<{ id: string; toUserId: string; username: string }>>([])
   let ignored = $state<Array<{ userId: string; username: string }>>([])
   // let lists = $state<Array<{ id: string; name: string; memberIds: string[] }>>([])
-  let incomingCall = $state<IncomingBonjourCall | null>(null)
   let sessionStarted = $state(false)
   let outgoingCallId: string | null = null
   let peerKeys = new Map<string, string>()
@@ -68,7 +65,7 @@
     if (!peerId) return null
     return (
       peerKeys.get(peerId) ??
-      incomingCall?.peerPublicKey ??
+      bonjourIncoming.call?.peerPublicKey ??
       contacts.find((contact) => contact.userId === peerId)?.devicePublicKey ??
       null
     )
@@ -139,6 +136,15 @@
   }
 
   onMount(() => {
+    bonjourIncoming.accept = (): void => {
+      void onAcceptCall()
+    }
+    bonjourIncoming.reject = (): void => {
+      const call = bonjourIncoming.call
+      if (call) void window.KiwiApi.bonjour.rejectCall(call.callId)
+      bonjourIncoming.call = null
+      bonjourIncoming.callerName = ''
+    }
     room.bindBonjour(sendSignal)
     window.KiwiApi.bonjour.onAuth((payload) => {
       me = (payload as typeof me) ?? null
@@ -160,29 +166,30 @@
       }
       if (event.type === 'incoming-call' && event.callId && event.fromUserId) {
         if (sessionStarted || room.isLive) return
-        if (incomingCall?.callId === event.callId) return
+        if (bonjourIncoming.call?.callId === event.callId) return
         const peerPublicKey =
           (typeof event.devicePublicKey === 'string' && event.devicePublicKey) ||
           peerKeys.get(event.fromUserId) ||
           null
         if (peerPublicKey) peerKeys.set(event.fromUserId, peerPublicKey)
-        incomingCall = {
+        bonjourIncoming.call = {
           callId: event.callId,
           fromUserId: event.fromUserId,
           kind: String(event.kind ?? 'start'),
           peerPublicKey,
         }
-        if (appState.activeView !== 'bonjour') {
-          appState.activeView = 'bonjour'
-        }
+        bonjourIncoming.callerName = contactName(event.fromUserId)
       }
       if (event.type === 'signal' && !event.plain && event.signalType && event.signalType !== 'ice') {
         toast.show('error', L.bonjour_error())
       }
       if (event.type === 'signal' && event.plain) {
-        if (incomingCall) incomingCall = mergeIncomingCallSignal(incomingCall, event)
+        if (bonjourIncoming.call) {
+          bonjourIncoming.call = mergeIncomingCallSignal(bonjourIncoming.call, event)
+        }
         if (event.plain.type === 'hangup') {
-          incomingCall = null
+          bonjourIncoming.call = null
+          bonjourIncoming.callerName = ''
           pendingSignals = []
           if (!room.bonjourCallId) {
             reset()
@@ -235,6 +242,10 @@
     }, CONTACTS_POLL_MS)
     return (): void => {
       clearInterval(poll)
+      bonjourIncoming.call = null
+      bonjourIncoming.callerName = ''
+      bonjourIncoming.accept = (): void => {}
+      bonjourIncoming.reject = (): void => {}
       void window.KiwiApi.bonjour.setPresence('offline')
     }
   })
@@ -248,7 +259,13 @@
   })
 
   $effect(() => {
-    if (appState.activeView !== 'bonjour') return
+    const call = bonjourIncoming.call
+    if (!call) return
+    bonjourIncoming.callerName = contactName(call.fromUserId)
+  })
+
+  $effect(() => {
+    if (appState.sessionSource !== 'bonjour') return
     switch (room.connectionState) {
       case 'connected':
         toast.show('success', L.connection_established())
@@ -301,9 +318,10 @@
         appState.isHosting = true
         appState.isCoordinator = true
         appState.navigationEnabled = false
+        appState.beginSession('bonjour', reset)
       }
       if (kind === 'join' && !room.isLive) {
-        const setup = await room.Setup(remoteScreen ?? document.createElement('video'))
+        const setup = await room.Setup(document.createElement('video'))
         if (setup !== 'ok') {
           toast.show('error', L.connection_failed())
           return
@@ -311,6 +329,7 @@
         appState.isWatching = true
         appState.navigationEnabled = false
         sessionStarted = true
+        appState.beginSession('bonjour', reset)
       }
       const started = await window.KiwiApi.bonjour.startCall(contact.userId, kind)
       outgoingCallId = started.callId
@@ -332,9 +351,10 @@
   }
 
   const onAcceptCall = async (): Promise<void> => {
-    if (!incomingCall) return
-    const call = incomingCall
-    incomingCall = null
+    if (!bonjourIncoming.call) return
+    const call = bonjourIncoming.call
+    bonjourIncoming.call = null
+    bonjourIncoming.callerName = ''
     try {
       signalingFailed = false
       let key = call.peerPublicKey ?? keyFor(call.fromUserId)
@@ -352,12 +372,13 @@
         flushPendingSignals()
         return
       }
-      const setup = await room.Setup(remoteScreen ?? document.createElement('video'))
+      const setup = await room.Setup(document.createElement('video'))
       if (setup !== 'ok') return
       bindPeer(call.fromUserId, key)
       appState.isWatching = true
       appState.navigationEnabled = false
       sessionStarted = true
+      appState.beginSession('bonjour', reset)
       if (call.offer) {
         await room.acceptBonjourCall({
           callId: call.callId,
@@ -381,7 +402,8 @@
   const reset = (): void => {
     sessionStarted = false
     signalingFailed = false
-    incomingCall = null
+    bonjourIncoming.call = null
+    bonjourIncoming.callerName = ''
     pendingSignals = []
     outgoingCallId = null
     activePeerId = null
@@ -390,6 +412,7 @@
     appState.isHosting = false
     appState.isWatching = false
     appState.isCoordinator = false
+    appState.clearSession()
     void window.KiwiApi.bonjour.setPresence('available')
   }
 
@@ -424,11 +447,7 @@
   </div>
 {/if}
 
-{#if (room.isLive || room.sessionEndedReason) && appState.activeView === 'bonjour'}
-  <SessionStage {room} bind:remoteScreen showInvite={false} onReset={reset} />
-{/if}
-
-{#if !sessionStarted}
+{#if !sessionStarted || room.isLive || room.sessionEndedReason}
 {#if !me || ('error' in me === true && me.error === BonjourServerErrorEnum.SERVER_UNAUTHORIZED)}
   <p class="mb-4">{L.bonjour_sign_in_description()}</p>
   <button class="btn btn-primary" onclick={onLogin}>{L.bonjour_sign_in()}</button>
@@ -573,12 +592,17 @@
           <div>{contact.username}</div>
         </div>
         {#if contact.presence === 'available'}
-          <button class="btn btn-square btn-ghost hover:btn-success" aria-label={L.bonjour_call()} onclick={() => onCall(contact, 'start')}>
+          <button
+            class="btn btn-square btn-ghost hover:btn-success"
+            aria-label={L.bonjour_call()}
+            disabled={sessionStarted || room.isLive}
+            onclick={() => onCall(contact, 'start')}
+          >
             <i class="fas fa-phone"></i>
           </button>
         {/if}
         {#if contact.presence === 'busy' && contact.acceptCallJoins}
-          <button class="btn btn-sm" onclick={() => onCall(contact, 'join')}>{L.bonjour_ask_to_join()}</button>
+          <button class="btn btn-sm" disabled={sessionStarted || room.isLive} onclick={() => onCall(contact, 'join')}>{L.bonjour_ask_to_join()}</button>
         {/if}
         <button class="btn btn-square btn-ghost hover:btn-error" aria-label={L.bonjour_remove()} onclick={() => {
           const reply = window.confirm(`${L.bonjour_remove()} ${contact.username}?`);
@@ -643,29 +667,4 @@
     {/each}
   {/if}
 {/if}
-{/if}
-<video bind:this={remoteScreen} class={room.isLive && appState.activeView === 'bonjour' ? '' : 'hidden'} autoplay></video>
-
-{#if incomingCall}
-  <div class="toast">
-    <div class="alert alert-soft">
-      <div class="hero min-w-0 max-w-full">
-        <div class="hero-content flex-col lg:flex-row">
-          <div class="avatar avatar-online avatar-placeholder">
-            <div class="bg-neutral text-neutral-content w-16 rounded-full">
-              <i class="fa-solid fa-phone text-2xl"></i>
-            </div>
-          </div>
-          <div>
-            <h1 class="text-xl font-bold">{L.bonjour_incoming_call()}</h1>
-            <p class="py-6">
-              {contactName(incomingCall.fromUserId)}
-            </p>
-            <button class="btn btn-success" onclick={onAcceptCall}>{L.approve()}</button>
-            <button class="btn btn-error" onclick={() => { if (incomingCall) void window.KiwiApi.bonjour.rejectCall(incomingCall.callId); incomingCall = null }}>{L.deny()}</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
 {/if}

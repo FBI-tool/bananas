@@ -24,6 +24,7 @@
 
 static int g_wayland;
 static Display *g_dpy;
+static int g_x_error_code;
 static int g_xtest;
 static int g_hotkey_grabbed;
 static int g_x11_hotkey_grabbed;
@@ -391,8 +392,19 @@ static int session_is_wayland(void) {
          (getenv("XDG_SESSION_TYPE") && strcmp(getenv("XDG_SESSION_TYPE"), "wayland") == 0);
 }
 
+static int x_error_handler(Display *dpy, XErrorEvent *ev) {
+  (void)dpy;
+  g_x_error_code = (int)ev->error_code;
+  return 0;
+}
+
 static int open_x11_input(void) {
-  if (!g_dpy) g_dpy = XOpenDisplay(NULL);
+  if (!g_dpy) {
+    /* BadAccess from a second XGrabKey must not hit Xlib's default handler,
+       which exits the process. Keep this handler for the life of the display. */
+    XSetErrorHandler(x_error_handler);
+    g_dpy = XOpenDisplay(NULL);
+  }
   if (!g_dpy) {
     g_xtest = 0;
     return 0;
@@ -452,10 +464,23 @@ static void grab_x11_hotkey(void) {
   if (g_hotkey_want_shift) base |= ShiftMask;
   if (g_hotkey_want_meta) base |= Mod4Mask;
   unsigned int extras[] = {0, Mod2Mask, LockMask, Mod2Mask | LockMask};
+  g_x_error_code = 0;
   for (int i = 0; i < 4; i++) {
     XGrabKey(g_dpy, kc, base | extras[i], root, True, GrabModeAsync, GrabModeAsync);
   }
-  XFlush(g_dpy);
+  /* X errors are async. Sync now so a BadAccess from another sidecar is
+     reported here instead of aborting the process on a later XPending. */
+  XSync(g_dpy, False);
+  if (g_x_error_code) {
+    fprintf(stderr, "p2p.kiwi sidecar: XGrabKey unavailable (X error %d); another client owns this hotkey\n",
+            g_x_error_code);
+    g_x_error_code = 0;
+    XUngrabKey(g_dpy, kc, AnyModifier, root);
+    XSync(g_dpy, False);
+    g_x_error_code = 0;
+    g_x11_hotkey_grabbed = 0;
+    return;
+  }
   g_x11_hotkey_grabbed = 1;
   g_hotkey_grabbed = 1;
 }

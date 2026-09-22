@@ -8,12 +8,33 @@
   import Bonjour from './Bonjour.svelte'
   import ScreenPicker from './ScreenPicker.svelte'
   import Toast from './Toast.svelte'
+  import SessionStage from './SessionStage.svelte'
+  import IncomingCallNotice from './IncomingCallNotice.svelte'
   import { appState } from './appState.svelte'
   import { debugLog } from './debugLog.svelte'
   import { getDataFromKiwiUrl } from './Utils'
+  import { sessionRoom as room } from './session/sessionStore.svelte'
+  import { L } from './translations'
   import { onMount } from 'svelte'
 
   let screenPicker: ScreenPicker | undefined = $state()
+  let closedDrawerForCall = false
+
+  const presenting = $derived(Boolean(room.isLive || room.sessionEndedReason))
+  const showInvite = $derived(
+    appState.sessionSource !== 'bonjour' &&
+      (appState.sessionSource === 'host' || room.isCoordinator),
+  )
+  const stageTitle = $derived(appState.isHosting ? L.hosting_a_session() : L.joined_a_session())
+
+  $effect(() => {
+    const liveBonjour = appState.sessionSource === 'bonjour' && room.isLive
+    if (liveBonjour && !closedDrawerForCall) {
+      closedDrawerForCall = true
+      appState.bonjourVisible = false
+    }
+    if (!room.isLive || appState.sessionSource !== 'bonjour') closedDrawerForCall = false
+  })
 
   onMount(async () => {
     window.KiwiApi.onSelectScreenShareSource((sources) =>
@@ -50,16 +71,24 @@
   <div class="drawer-content">
     <Navigation />
     <Toast />
-    {#if appState.activeView === 'join'}
-      <Join />
-    {:else if appState.activeView === 'host'}
-      <Host />
-    {:else if appState.activeView === 'settings'}
-      <Settings />
-    {:else if appState.activeView === 'about'}
-      <About />
-    {:else if appState.activeView === 'debug'}
-      <Debug />
+    <div class={presenting ? 'hidden' : ''}>
+      {#if appState.activeView === 'join'}
+        <Join />
+      {:else if appState.activeView === 'host'}
+        <Host />
+      {:else if appState.activeView === 'settings'}
+        <Settings />
+      {:else if appState.activeView === 'about'}
+        <About />
+      {:else if appState.activeView === 'debug'}
+        <Debug />
+      {/if}
+    </div>
+    {#if presenting}
+      <div class="container mx-auto p-5">
+        <h1 class="text-3xl font-bold mb-4">{stageTitle}</h1>
+        <SessionStage {room} {showInvite} onReset={() => appState.resetSession()} />
+      </div>
     {/if}
   </div>
   <div class="drawer-side">
@@ -72,4 +101,5 @@
   </div>
 </div>
 
+<IncomingCallNotice />
 <ScreenPicker bind:this={screenPicker} />
