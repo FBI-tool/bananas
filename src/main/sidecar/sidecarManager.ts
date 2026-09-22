@@ -131,6 +131,12 @@ export const ipcPathForId = (id: string): string => {
   return join(tmpdir(), `p2p-kiwi-sidecar-${id}.sock`)
 }
 
+export const tokenFileForId = (id: string): string => {
+  const dir = join(tmpdir(), 'p2p-kiwi')
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  return join(dir, `${id}.token`)
+}
+
 export class SidecarManager {
   private child: ChildProcess | null = null
   private socket: net.Socket | null = null
@@ -243,7 +249,7 @@ export class SidecarManager {
     const id = randomBytes(8).toString('hex')
     const token = randomBytes(32).toString('hex')
     const path = ipcPathForId(id)
-    const tokenFile = `${path}.token`
+    const tokenFile = tokenFileForId(id)
     writeFileSync(tokenFile, token, { encoding: 'utf8', mode: 0o600 })
     if (process.platform !== 'win32') {
       try {
@@ -276,6 +282,7 @@ export class SidecarManager {
 
     this.child = this.spawnImpl(binary, ['--socket', path, '--token-file', tokenFile], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
       env: { ...process.env },
     })
     this.attachChildLogs()

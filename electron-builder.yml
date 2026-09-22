@@ -23,6 +23,7 @@ win:
   executableName: p2p-kiwi
   icon: build/icon.ico
 nsis:
+  include: build/installer.nsh
   artifactName: p2p-kiwi-setup_${arch}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}

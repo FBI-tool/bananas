@@ -5,7 +5,7 @@ import { PassThrough } from 'node:stream'
 import { join } from 'node:path'
 import net from 'node:net'
 import type { ChildProcess } from 'node:child_process'
-import { SidecarManager, defaultCapabilities, ipcPathForId } from './sidecarManager'
+import { SidecarManager, defaultCapabilities, ipcPathForId, tokenFileForId } from './sidecarManager'
 import { encodeEnvelope, FrameDecoder, SIDECAR_PROTOCOL_VERSION, type Envelope } from './protocol'
 
 const sidecarBin = join(process.cwd(), 'native', 'overlay-sidecar', 'dist', 'p2p-kiwi-sidecar')
@@ -31,6 +31,12 @@ describe('SidecarManager', () => {
     await mgr.stop()
     expect(mgr.isAvailable()).toBe(false)
   }, 15000)
+
+  it('writes the handshake token to a file path, not the named pipe', () => {
+    const tokenPath = tokenFileForId('abc123')
+    expect(tokenPath.startsWith('\\\\.\\pipe\\')).toBe(false)
+    expect(tokenPath.endsWith(join('p2p-kiwi', 'abc123.token'))).toBe(true)
+  })
 
   it('builds runtime socket paths without throwing', () => {
     const path = ipcPathForId('abc123')
