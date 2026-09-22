@@ -4,10 +4,15 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { redirect } from '@sveltejs/kit';
+	import { resolve } from '$app/paths';
 	const installSystems = [
 		{
 			name: 'Linux',
 			value: 'linux'
+		},
+		{
+			name: 'Arch Linux (AUR)',
+			value: 'aur'
 		},
 		{
 			name: 'MacOS',
@@ -81,22 +86,99 @@
 			</form>
 			<div class={installSystem === 'linux' ? '' : 'hidden'}>
 				<p class="mb-5">Linux:</p>
-				<div class="text-left">
+				<div class="mb-5 text-left">
 					<CodeBlock lang="sh" code={`brew install --cask p2p-kiwi`} />
 				</div>
+				<p class="mb-5">.. or download the one of the pre-built binaries here:</p>
+				<ul class="list-inside list-disc text-left">
+					<li>
+						<a
+							class="link link-info link-external"
+							href={resolve('/(redirects)/download/linux/deb/amd64')}>Linux .deb (amd64)</a
+						>
+					</li>
+					<li>
+						<a
+							class="link link-info link-external"
+							href={resolve('/(redirects)/download/linux/deb/arm64')}>Linux .deb (arm64)</a
+						>
+					</li>
+					<li>
+						<a
+							class="link link-info link-external"
+							href={resolve('/(redirects)/download/linux/appimage/x86_64')}
+							>Linux .AppImage (x86_64)</a
+						>
+					</li>
+					<li>
+						<a
+							class="link link-info link-external"
+							href={resolve('/(redirects)/download/linux/appimage/arm64')}
+							>Linux .AppImage (arm64)</a
+						>
+					</li>
+					<li>
+						<a
+							class="link link-info link-external"
+							href={resolve('/(redirects)/download/linux/flatpak/x86_64')}
+							>Linux .flatpak (x86_64)</a
+						>
+					</li>
+					<li>
+						<a
+							class="link link-info link-external"
+							href={resolve('/(redirects)/download/linux/flatpak/aarch64')}
+							>Linux .flatpak (aarch64)</a
+						>
+					</li>
+					<li>
+						<a
+							class="link link-info link-external"
+							href={resolve('/(redirects)/download/linux/snap/amd64')}>Linux .snap (amd64)</a
+						>
+					</li>
+				</ul>
 			</div>
 			<div class={installSystem === 'macos' ? '' : 'hidden'}>
 				<p class="mb-5">MacOS:</p>
-				<div class="text-left">
+				<div class="mb-5 text-left">
 					<CodeBlock lang="sh" code={`brew install --cask p2p-kiwi`} />
 				</div>
+				<p>
+					.. or download the <a
+						class="link link-info link-external"
+						href={resolve('/(redirects)/download/macos')}>universal.dmg</a
+					> manually.
+				</p>
 			</div>
 			<div class={installSystem === 'windows' ? '' : 'hidden'}>
-				<p class="mb-5">Windows (PowerShell):</p>
-				<div class="text-left">
-					<CodeBlock lang="powershell" code={`iwr https://remnix.app/install.ps1 -useb | iex`} />
+				<p class="mb-5">
+					Windows (via <a class="link link-info link-external" href="https://chocolatey.org/install"
+						>chocolatey</a
+					>):
+				</p>
+				<div role="alert" class="alert alert-warning mb-5">
+					<span class="fa fa-exclamation-triangle mr-2"></span>
+					<span
+						>The chocolatey package is not maintained by <a
+							class="link text-warning-content link-external"
+							href="https://the-dont-be-evil-company.com">us</a
+						>; so
+						<a
+							class="link text-warning-content link-external"
+							href="https://community.chocolatey.org/packages/p2p-kiwi">inspect carefully</a
+						>, before installing.</span
+					>
 				</div>
-				<p class="mb-5">Update later with <code>remnix update</code>.</p>
+				<div class="mb-5 text-left">
+					<CodeBlock lang="powershell" code={`choco install p2p-kiwi`} />
+				</div>
+				<p>
+					.. or download the <a
+						class="link link-info link-external"
+						href={resolve('/(redirects)/download/windows')}>setup.exe</a
+					> manually.
+				</p>
 			</div>
 			<div class={installSystem === 'manual' ? '' : 'hidden'}>
 				<p class="mb-5">
@@ -106,6 +188,19 @@
 				</p>
 			</div>
 			<div class={installSystem === 'aur' ? '' : 'hidden'}>
+				<div role="alert" class="alert alert-warning mb-5">
+					<span class="fa fa-exclamation-triangle mr-2"></span>
+					<span
+						>The AUR package is not maintained by <a
+							class="link text-warning-content link-external"
+							href="https://the-dont-be-evil-company.com">us</a
+						>; so
+						<a
+							class="link text-warning-content link-external"
+							href="https://aur.archlinux.org/packages/p2p-kiwi-bin">inspect carefully</a
+						>, before installing.</span
+					>
+				</div>
 				<p class="mb-5">
 					Via AUR, using an AUR helper like <a
 						href="https://github.com/Jguer/yay"
@@ -113,13 +208,13 @@
 					>
 				</p>
 				<div class="text-left">
-					<CodeBlock lang="sh" code={`yay -S remnix-bin`} />
+					<CodeBlock lang="sh" code={`yay -S p2p-kiwi-bin`} />
 				</div>
 				<p class="mt-5 mb-5">
 					.. or via <a href="https://github.com/morganamilo/paru" class="text-secondary">paru</a>
 				</p>
 				<div class="text-left">
-					<CodeBlock lang="sh" code={`paru -S remnix-bin`} />
+					<CodeBlock lang="sh" code={`paru -S p2p-kiwi-bin`} />
 				</div>
 			</div>
 			<p>
