@@ -92,7 +92,7 @@ exports.default = async function afterSign(context) {
     throw new Error(`sidecar is not signed with hardened runtime:\n${displayOut}`)
   }
 
-  const entitlements = commandOutput('codesign', ['-d', '--entitlements', ':-', sidecar])
+  const entitlements = commandOutput('codesign', ['-d', '--entitlements', '-', sidecar])
   for (const key of FORBIDDEN_HELPER_ENTITLEMENTS) {
     if (entitlements.output.includes(key)) {
       throw new Error(`sidecar entitlements must not contain ${key}`)

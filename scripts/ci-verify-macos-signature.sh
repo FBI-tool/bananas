@@ -28,10 +28,10 @@ echo "codesign -dv helper"
 codesign -dv --verbose=4 "$HELPER"
 
 echo "codesign entitlements app"
-codesign -d --entitlements :- "$APP"
+codesign -d --entitlements - "$APP"
 
 echo "codesign entitlements helper"
-HELPER_ENT="$(codesign -d --entitlements :- "$HELPER_BIN" 2>&1 || true)"
+HELPER_ENT="$(codesign -d --entitlements - "$HELPER_BIN" 2>&1 || true)"
 printf '%s\n' "$HELPER_ENT"
 
 for forbidden in \
