@@ -44,18 +44,27 @@ exports.default = async function afterPack(context) {
 
   const appName = context.packager.appInfo.productFilename
   const appPath = path.join(context.appOutDir, `${appName}.app`)
-  const source = path.join(appPath, 'Contents', 'Resources', 'sidecar', 'p2p-kiwi-sidecar')
-  if (!fs.existsSync(source)) {
-    throw new Error(`sidecar missing before helper assembly: ${source}`)
+  const helperRoot = path.join(appPath, 'Contents', 'Helpers', HELPER_NAME)
+  const helperBin = path.join(helperRoot, 'Contents', 'MacOS', 'p2p-kiwi-sidecar')
+  // Universal builds pack x64 and arm64 first. afterPack runs for each of
+  // those apps, then again on the merged app after the per-arch Resources
+  // copy has already been moved into the helper.
+  if (fs.existsSync(helperBin)) return
+
+  const packaged = path.join(appPath, 'Contents', 'Resources', 'sidecar', 'p2p-kiwi-sidecar')
+  const built = path.join(__dirname, '..', 'native', 'overlay-sidecar', 'dist', 'p2p-kiwi-sidecar')
+  const source = [packaged, built].find((candidate) => fs.existsSync(candidate))
+  if (!source) {
+    throw new Error(`sidecar missing before helper assembly: ${packaged}`)
   }
 
   const version = context.packager.appInfo.version || '1.0.0'
-  const helperRoot = path.join(appPath, 'Contents', 'Helpers', HELPER_NAME)
-  const macOSDir = path.join(helperRoot, 'Contents', 'MacOS')
-  const helperBin = path.join(macOSDir, 'p2p-kiwi-sidecar')
+  const macOSDir = path.dirname(helperBin)
   fs.mkdirSync(macOSDir, { recursive: true })
   fs.copyFileSync(source, helperBin)
   fs.chmodSync(helperBin, 0o755)
   fs.writeFileSync(path.join(helperRoot, 'Contents', 'Info.plist'), infoPlist(version))
-  fs.rmSync(path.join(appPath, 'Contents', 'Resources', 'sidecar'), { recursive: true, force: true })
+  if (source === packaged) {
+    fs.rmSync(path.dirname(packaged), { recursive: true, force: true })
+  }
 }
