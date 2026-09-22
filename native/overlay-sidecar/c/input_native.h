@@ -18,7 +18,8 @@ int native_pointer_move(double x, double y);
 int native_pointer_button(int button, int down);
 int native_pointer_wheel(double dx, double dy);
 int native_key_event(unsigned int key_code, int down, unsigned int modifiers);
-int native_input_request_permission(void);
+/* kind: 1 = post/accessibility, 2 = listen/input monitoring */
+int native_input_request_permission(int kind);
 
 typedef struct {
   unsigned int key_code;

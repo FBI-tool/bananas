@@ -610,6 +610,12 @@ type RootTranslation = {
 	 * G​r​a​n​t​ ​a​c​c​e​s​s​i​b​i​l​i​t​y​ ​p​e​r​m​i​s​s​i​o​n
 	 */
 	remote_control_request_permission: string
+	remote_control_request_listen: string
+	remote_control_permission_helper: string
+	remote_control_restart_required: string
+	remote_control_open_accessibility: string
+	remote_control_open_input_monitoring: string
+	remote_control_recheck: string
 	/**
 	 * R​e​q​u​e​s​t​ ​c​o​n​t​r​o​l
 	 */
@@ -1205,6 +1211,12 @@ export type TranslationFunctions = {
 	 * Grant accessibility permission
 	 */
 	remote_control_request_permission: () => LocalizedString
+	remote_control_request_listen: () => LocalizedString
+	remote_control_permission_helper: () => LocalizedString
+	remote_control_restart_required: () => LocalizedString
+	remote_control_open_accessibility: () => LocalizedString
+	remote_control_open_input_monitoring: () => LocalizedString
+	remote_control_recheck: () => LocalizedString
 	/**
 	 * Request control
 	 */

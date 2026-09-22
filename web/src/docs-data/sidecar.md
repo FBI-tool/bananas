@@ -74,11 +74,30 @@ overlay without restarting the sidecar.
 
 ## macOS
 
-Borderless transparent `NSWindow` at a high overlay level,
-`ignoresMouseEvents`, no activation, Retina scale. Remote input uses
-Quartz `CGEvent` injection and a Carbon global hotkey. Both require
-Accessibility permission. Capability probes never prompt; the session UI
-exposes an explicit action to open the macOS permission dialog.
+Borderless transparent `NSWindow` at `NSPopUpMenuWindowLevel`,
+`ignoresMouseEvents`, no activation, and `NSWindowSharingNone` so the
+overlay is not part of the captured screen. The window frame is in
+Cocoa points (bottom-left, y-up), including negative origins for
+displays left of or below the primary display. The bitmap is
+`bounds * scaleFactor`, so Retina cursors stay sharp. A display
+reconfiguration hides the overlay until the next update, instead of
+leaving it on the previous monitor. Lock screen and some fullscreen
+Spaces are not covered; the helper does not try to draw over them.
+
+Remote input uses Quartz `CGEventPost`. That needs Accessibility
+(`CGRequestPostEventAccess`). The emergency stop is a listen-only event
+tap for the configured chord, which needs Input Monitoring
+(`CGRequestListenEventAccess`). The tap does not record other local
+keys. Overlay drawing does not request either permission. Probes never
+prompt; Settings and the session UI ask only after a click, and they
+name the helper macOS will show: **p2p.kiwi Sidecar**
+(`kiwi.p2p.desktop.sidecar`). If macOS still reports access as missing
+after you approve it, quit p2p.kiwi and open it again.
+
+While a mouse button is held, moves are posted as drag events. Secure
+input (password fields and similar) is reported as a failure instead of
+being bypassed. If the emergency tap is disabled by timeout or by
+revoked listen permission, both grants are cleared immediately.
 
 ## Remote input
 
@@ -86,6 +105,8 @@ The sidecar protocol version is **2**. Renderer and Electron main own
 peer authorization. Odin owns only:
 
 - armed / allow pointer / allow keyboard
+- the armed `sessionId`, `peerId`, and `grantEpoch`, when Electron sends
+  them; events for another session, peer, or epoch are rejected
 - injection of sanitized desktop coordinates and portable key ids
 - tracking of keys/buttons it injected, and `release-all`
 - the physical emergency hotkey (`Ctrl+Esc` by default)
@@ -110,7 +131,9 @@ root grab when `DISPLAY` is available. XTest injects via
 
 - **Windows:** `SendInput` with `MOUSEEVENTF_ABSOLUTE |
 MOUSEEVENTF_VIRTUALDESK`; `RegisterHotKey` on a message-only window
-- **macOS:** CoreGraphics event posts; Accessibility-gated
+- **macOS:** CoreGraphics event posts after Accessibility is granted.
+  Emergency stop is a listen-only event tap and needs Input Monitoring.
+  The helper does not capture the screen.
 - **Linux X11:** XTest injection and `XGrabKey` on the root window.
   Controller-side capture uses `EVIOCGRAB` when evdev is readable,
   otherwise `XGrabKeyboard`.
@@ -137,10 +160,15 @@ The binary is an electron-builder extra resource
 asar. If the binary is missing (for example Linux arm64 cross-builds),
 the app starts without native overlays.
 
-macOS release builds ship a universal (`arm64` + `x86_64`) sidecar
-inside the universal DMG. The helper is codesigned with hardened
-runtime as part of the app bundle; release CI fails if it is missing,
-thin, or unsigned. Local `sidecar:dev` builds remain host-arch.
+macOS release builds ship a universal (`arm64` + `x86_64`) helper app at
+`Contents/Helpers/p2p.kiwi Sidecar.app`. It is signed on its own, with
+hardened runtime and an empty entitlement set, before the outer app is
+sealed. Electron keeps the JIT, camera, and microphone entitlements.
+GitHub Actions on `macos-latest` runs `codesign`, entitlement checks,
+and `lipo` on every macOS build. The release job also runs
+`spctl --assess` and `xcrun stapler validate` after notarization.
+Local `sidecar:dev` builds remain a host-arch binary under
+`native/overlay-sidecar/dist`.
 
 ## Phase A acceptance gate
 

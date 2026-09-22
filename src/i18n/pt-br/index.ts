@@ -155,7 +155,14 @@ const pt_br = {
   remote_control_emergency: 'Controle remoto desativado pelo atalho do anfitrião',
   remote_control_emergency_hotkey: 'Parada de emergência: {hotkey}',
   remote_control_unavailable: 'O controle remoto está indisponível',
-  remote_control_request_permission: 'Conceder permissão de acessibilidade',
+  remote_control_request_permission: 'Permitir Acessibilidade',
+  remote_control_request_listen: 'Permitir Monitoramento de Entrada',
+  remote_control_permission_helper:
+    'Aprove p2p.kiwi Sidecar (kiwi.p2p.desktop.sidecar) em Ajustes do Sistema. Desenhar o cursor não exige essas permissões. Acessibilidade permite digitar e mover o ponteiro. O Monitoramento de Entrada vale só para o atalho de emergência.',
+  remote_control_restart_required: 'Se você já aprovou o acesso, encerre o p2p.kiwi e abra de novo.',
+  remote_control_open_accessibility: 'Abrir Acessibilidade',
+  remote_control_open_input_monitoring: 'Abrir Monitoramento de Entrada',
+  remote_control_recheck: 'Verificar permissões de novo',
   remote_control_request_button: 'Pedir controle',
 } satisfies BaseTranslation
 

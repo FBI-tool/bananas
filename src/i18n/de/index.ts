@@ -156,7 +156,14 @@ const en = {
   remote_control_emergency: 'Fernsteuerung durch Host-Hotkey deaktiviert',
   remote_control_emergency_hotkey: 'Not-Aus: {hotkey}',
   remote_control_unavailable: 'Fernsteuerung ist nicht verfügbar',
-  remote_control_request_permission: 'Bedienungshilfen-Berechtigung erteilen',
+  remote_control_request_permission: 'Bedienungshilfen erlauben',
+  remote_control_request_listen: 'Eingabeüberwachung erlauben',
+  remote_control_permission_helper:
+    'Erlaube p2p.kiwi Sidecar (kiwi.p2p.desktop.sidecar) in den Systemeinstellungen. Das Zeichnen der Overlay braucht keine dieser Berechtigungen. Bedienungshilfen erlauben Tippen und Mausbewegung. Die Eingabeüberwachung gilt nur für den Notstopp.',
+  remote_control_restart_required: 'Wenn du den Zugriff schon erlaubt hast, beende p2p.kiwi und öffne es erneut.',
+  remote_control_open_accessibility: 'Bedienungshilfen öffnen',
+  remote_control_open_input_monitoring: 'Eingabeüberwachung öffnen',
+  remote_control_recheck: 'Berechtigungen erneut prüfen',
   remote_control_request_button: 'Steuerung anfragen',
 } satisfies BaseTranslation
 

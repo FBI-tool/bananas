@@ -147,9 +147,9 @@ export class Room {
     backend?: string
     unavailableReason?: string
     permissions?: {
-      accessibility?: 'unknown' | 'granted' | 'denied'
-      screenRecording?: 'unknown' | 'granted' | 'denied'
-      inputMonitoring?: 'unknown' | 'granted' | 'denied'
+      accessibility?: 'unknown' | 'granted' | 'denied' | 'unavailable' | 'restart-required'
+      screenRecording?: 'unknown' | 'granted' | 'denied' | 'unavailable' | 'restart-required'
+      inputMonitoring?: 'unknown' | 'granted' | 'denied' | 'unavailable' | 'restart-required'
     }
   } | null>(null)
   emergencyStopMessage = $state<string | null>(null)
@@ -433,8 +433,8 @@ export class Room {
     await this.syncSidecarArm()
   }
 
-  async requestRemoteControlPermission(): Promise<void> {
-    await window.KiwiApi.remoteControl?.requestPermission?.()
+  async requestRemoteControlPermission(capability: 'post' | 'listen' = 'post'): Promise<void> {
+    await window.KiwiApi.remoteControl?.requestPermission?.(capability)
     this.remoteControlCaps = (await window.KiwiApi.remoteControl?.getCapabilities?.()) ?? null
   }
 
@@ -2576,6 +2576,8 @@ export class Room {
         mouse: active.state.mouse,
         keyboard: active.state.keyboard,
         generation: active.state.generation,
+        sessionId: this.invite?.roomId,
+        peerId: active.peerId,
       })
     } catch (error) {
       debugLog.warn('room', 'remote control arm failed', error)

@@ -68,7 +68,7 @@ class DebugLog {
     this.log('error', scope, message, detail)
   }
 
-  /** High-frequency events (pointer moves) — at most one line per key each intervalMs. */
+  /** High-frequency events (pointer moves) - at most one line per key each intervalMs. */
   sample(scope: string, message: string, detail?: unknown, intervalMs = 200): void {
     if (!this.enabled) return
     const key = `${scope}:${message}`

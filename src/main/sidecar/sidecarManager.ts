@@ -58,6 +58,20 @@ const isCapabilities = (value: unknown): value is SidecarCapabilities => {
 const asBool = (value: unknown, fallback: boolean): boolean =>
   typeof value === 'boolean' ? value : fallback
 
+const PERMISSION_STATES = [
+  'unknown',
+  'granted',
+  'denied',
+  'unavailable',
+  'restart-required',
+] as const
+
+const asPermission = (value: unknown): SidecarCapabilities['permissions']['accessibility'] =>
+  typeof value === 'string' &&
+  (PERMISSION_STATES as readonly string[]).includes(value)
+    ? (value as SidecarCapabilities['permissions']['accessibility'])
+    : 'unknown'
+
 const sanitizeCapabilities = (value: SidecarCapabilities): SidecarCapabilities => ({
   overlays: asBool(value.overlays, false),
   clickThrough: asBool(value.clickThrough, false),
@@ -72,9 +86,9 @@ const sanitizeCapabilities = (value: SidecarCapabilities): SidecarCapabilities =
   unavailableReason:
     typeof value.unavailableReason === 'string' ? value.unavailableReason : undefined,
   permissions: {
-    accessibility: value.permissions?.accessibility ?? 'unknown',
-    screenRecording: value.permissions?.screenRecording ?? 'unknown',
-    inputMonitoring: value.permissions?.inputMonitoring ?? 'unknown',
+    accessibility: asPermission(value.permissions?.accessibility),
+    screenRecording: asPermission(value.permissions?.screenRecording),
+    inputMonitoring: asPermission(value.permissions?.inputMonitoring),
   },
 })
 
@@ -83,6 +97,18 @@ export const resolveSidecarPath = (
   resourcesPath = process.resourcesPath,
 ): string | null => {
   const exe = process.platform === 'win32' ? 'p2p-kiwi-sidecar.exe' : 'p2p-kiwi-sidecar'
+  if (process.platform === 'darwin' && resourcesPath) {
+    const helper = join(
+      resourcesPath,
+      '..',
+      'Helpers',
+      'p2p.kiwi Sidecar.app',
+      'Contents',
+      'MacOS',
+      exe,
+    )
+    if (existsSync(helper)) return helper
+  }
   const packaged = join(resourcesPath ?? '', 'sidecar', exe)
   if (existsSync(packaged)) return packaged
   const dev = join(cwd, 'native', 'overlay-sidecar', 'dist', exe)

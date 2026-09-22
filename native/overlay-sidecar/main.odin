@@ -17,6 +17,7 @@ Session :: struct {
 	read_buf:       [8192]u8,
 	pending:        [dynamic]u8,
 	input:          Input_State,
+	grant:          Grant_Scope,
 	emergency_generation: i64,
 }
 
@@ -128,11 +129,48 @@ reject_stale_emergency_arm :: proc(session: ^Session, env: Envelope, payload: js
 	return true
 }
 
-apply_emergency :: proc(session: ^Session) {
+clear_grant :: proc(scope: ^Grant_Scope) {
+	if scope.session_id != "" do delete(scope.session_id)
+	if scope.peer_id != "" do delete(scope.peer_id)
+	scope^ = {}
+}
+
+set_grant :: proc(scope: ^Grant_Scope, session_id, peer_id: string, epoch: i64, scoped: bool) {
+	clear_grant(scope)
+	if !scoped do return
+	scope^ = Grant_Scope{
+		active = true,
+		session_id = strings.clone(session_id),
+		peer_id = strings.clone(peer_id),
+		epoch = epoch,
+	}
+}
+
+payload_has_grant_fields :: proc(payload: json.Object) -> bool {
+	_, session_ok := object_string(payload, "sessionId")
+	_, peer_ok := object_string(payload, "peerId")
+	_, epoch_ok := object_int(payload, "grantEpoch")
+	return session_ok && peer_ok && epoch_ok
+}
+
+reject_stale_grant :: proc(session: ^Session, env: Envelope, payload: json.Object) -> bool {
+	session_id, _ := object_string(payload, "sessionId")
+	peer_id, _ := object_string(payload, "peerId")
+	epoch, epoch_ok := object_int(payload, "grantEpoch")
+	has_fields := payload_has_grant_fields(payload)
+	if grant_event_allowed(session.grant, session_id, peer_id, epoch, has_fields && epoch_ok) {
+		return false
+	}
+	_ = send_env(session, "error", env.request_id, make_error_payload("stale-grant", "event does not match the armed grant"))
+	return true
+}
+
+apply_control_revoke :: proc(session: ^Session, reason: string) {
 	session.emergency_generation += 1
 	input_emergency_disable(&session.input)
+	clear_grant(&session.grant)
 	native_keyboard_capture_stop()
-	emit_remote_disabled(session, "emergency-hotkey")
+	emit_remote_disabled(session, reason)
 }
 
 emit_captured_key :: proc(session: ^Session, cap: NativeCapturedKey) {
@@ -175,11 +213,21 @@ handle_remote_control :: proc(session: ^Session, env: Envelope) {
 			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "remote control is not armed"))
 			return
 		}
+		if payload_has_grant_fields(payload_obj) {
+			session_id, _ := object_string(payload_obj, "sessionId")
+			peer_id, _ := object_string(payload_obj, "peerId")
+			epoch, _ := object_int(payload_obj, "grantEpoch")
+			set_grant(&session.grant, session_id, peer_id, epoch, true)
+		} else {
+			set_grant(&session.grant, "", "", 0, false)
+		}
 		_ = send_env(session, "ok", env.request_id, make_ok_payload())
 	case "remote-control-disarm":
 		input_disarm(&session.input)
+		clear_grant(&session.grant)
 		_ = send_env(session, "ok", env.request_id, make_ok_payload())
 	case "pointer-move":
+		if reject_stale_grant(session, env, payload_obj) do return
 		x, _ := object_f64(payload_obj, "x")
 		y, _ := object_f64(payload_obj, "y")
 		err := input_pointer_move(&session.input, x, y)
@@ -189,6 +237,7 @@ handle_remote_control :: proc(session: ^Session, env: Envelope) {
 		}
 		_ = send_env(session, "ok", env.request_id, make_ok_payload())
 	case "pointer-button":
+		if reject_stale_grant(session, env, payload_obj) do return
 		button, _ := object_int(payload_obj, "button")
 		down_i, _ := object_int(payload_obj, "down")
 		err := input_pointer_button(&session.input, i32(button), down_i != 0)
@@ -198,6 +247,7 @@ handle_remote_control :: proc(session: ^Session, env: Envelope) {
 		}
 		_ = send_env(session, "ok", env.request_id, make_ok_payload())
 	case "pointer-wheel":
+		if reject_stale_grant(session, env, payload_obj) do return
 		dx, _ := object_f64(payload_obj, "deltaX")
 		dy, _ := object_f64(payload_obj, "deltaY")
 		err := input_wheel(&session.input, dx, dy)
@@ -207,6 +257,7 @@ handle_remote_control :: proc(session: ^Session, env: Envelope) {
 		}
 		_ = send_env(session, "ok", env.request_id, make_ok_payload())
 	case "keyboard-event":
+		if reject_stale_grant(session, env, payload_obj) do return
 		code, _ := object_int(payload_obj, "keyCode")
 		down_i, _ := object_int(payload_obj, "down")
 		mods: u32 = 0
@@ -238,7 +289,11 @@ handle_remote_control :: proc(session: ^Session, env: Envelope) {
 		refresh_caps(session)
 		_ = send_env(session, "ok", env.request_id, make_ok_payload())
 	case "request-input-permission":
-		_ = native_input_request_permission()
+		kind: i32 = 1
+		if capability, ok := object_string(payload_obj, "capability"); ok && capability == "listen" {
+			kind = 2
+		}
+		_ = native_input_request_permission(kind)
 		refresh_caps(session)
 		_ = send_env(session, "capabilities", env.request_id, make_capabilities_payload(session.caps))
 	case "keyboard-capture-arm":
@@ -364,8 +419,11 @@ main :: proc() {
 	for session.running {
 		native_overlay_pump()
 		native_input_pump()
-		if native_hotkey_poll() != 0 {
-			apply_emergency(&session)
+		poll := native_hotkey_poll()
+		if poll == 1 {
+			apply_control_revoke(&session, "emergency-hotkey")
+		} else if poll == 2 {
+			apply_control_revoke(&session, "permission-lost")
 		}
 		cap: NativeCapturedKey
 		for native_keyboard_capture_poll(&cap) != 0 {
@@ -374,7 +432,9 @@ main :: proc() {
 		n, rok := ipc_read_some(session.conn, session.read_buf[:])
 		if !rok {
 			input_disarm(&session.input)
+			clear_grant(&session.grant)
 			native_keyboard_capture_stop()
+			emit_remote_disabled(&session, "ipc-lost")
 			break
 		}
 		if n > 0 {
@@ -408,6 +468,7 @@ main :: proc() {
 		time.sleep(8 * time.Millisecond)
 	}
 	input_disarm(&session.input)
+	clear_grant(&session.grant)
 	if session.overlay_id != 0 {
 		native_overlay_destroy(session.overlay_id)
 	}

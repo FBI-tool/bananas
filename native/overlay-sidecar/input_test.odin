@@ -157,3 +157,28 @@ test_pointer_hold_repeats_then_fully_releases :: proc(t: ^testing.T) {
 	testing.expect_value(t, input_pointer_button(&state, 1, false), Input_Error.None)
 	testing.expect_value(t, state.held_buttons, u32(0))
 }
+
+@(test)
+test_grant_scope_rejects_stale_epoch_and_other_peer :: proc(t: ^testing.T) {
+	scope := Grant_Scope{active = true, session_id = "room", peer_id = "alice", epoch = 4}
+	testing.expect(t, grant_event_allowed(scope, "room", "alice", 4, true))
+	testing.expect(t, !grant_event_allowed(scope, "room", "alice", 3, true))
+	testing.expect(t, !grant_event_allowed(scope, "room", "bob", 4, true))
+	testing.expect(t, !grant_event_allowed(scope, "other", "alice", 4, true))
+	testing.expect(t, !grant_event_allowed(scope, "", "", 0, false))
+	legacy: Grant_Scope
+	testing.expect(t, grant_event_allowed(legacy, "", "", 0, false))
+}
+
+@(test)
+test_mouse_only_grant_rejects_keyboard :: proc(t: ^testing.T) {
+	state: Input_State
+	_ = input_arm(&state, true, false)
+	testing.expect_value(t, input_pointer_move(&state, 1, 1), Input_Error.None)
+	testing.expect_value(t, input_keyboard(&state, 12, true, 0), Input_Error.Keyboard_Denied)
+	input_emergency_disable(&state)
+	testing.expect_value(t, input_pointer_move(&state, 1, 1), Input_Error.Not_Armed)
+	testing.expect(t, state.emergency_triggered)
+	_ = input_arm(&state, true, false)
+	testing.expect(t, !state.emergency_triggered)
+}

@@ -44,9 +44,9 @@ type RemoteControlCapabilities = {
     | 'evdev-permission'
     | 'hotkey-registration-failed'
   permissions?: {
-    accessibility?: 'unknown' | 'granted' | 'denied'
-    screenRecording?: 'unknown' | 'granted' | 'denied'
-    inputMonitoring?: 'unknown' | 'granted' | 'denied'
+    accessibility?: 'unknown' | 'granted' | 'denied' | 'unavailable' | 'restart-required'
+    screenRecording?: 'unknown' | 'granted' | 'denied' | 'unavailable' | 'restart-required'
+    inputMonitoring?: 'unknown' | 'granted' | 'denied' | 'unavailable' | 'restart-required'
   }
 }
 
@@ -72,7 +72,13 @@ type KiwiApi = {
   removeRemoteCursor: (peerId: string) => Promise<void>
   remoteControl: {
     getCapabilities: () => Promise<RemoteControlCapabilities>
-    arm: (grant: { mouse: boolean; keyboard: boolean; generation?: number }) => Promise<void>
+    arm: (grant: {
+      mouse: boolean
+      keyboard: boolean
+      generation?: number
+      sessionId?: string
+      peerId?: string
+    }) => Promise<void>
     disarm: () => Promise<void>
     pointerMove: (input: {
       generation: number
@@ -103,7 +109,8 @@ type KiwiApi = {
       modifiers?: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }
     }) => Promise<void>
     releaseAll: () => Promise<void>
-    requestPermission: () => Promise<void>
+    requestPermission: (capability?: 'post' | 'listen') => Promise<void>
+    recheck: () => Promise<RemoteControlCapabilities>
     onEmergencyDisabled: (cb: (event: { reason: string }) => void) => () => void
     onStatusChanged: (cb: (event: unknown) => void) => () => void
     setLocalCapture: (enabled: boolean) => Promise<void>

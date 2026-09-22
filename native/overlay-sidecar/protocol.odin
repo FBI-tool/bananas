@@ -180,6 +180,10 @@ make_capabilities_payload :: proc(caps: NativeCaps) -> json.Value {
 			return "granted"
 		case 2:
 			return "denied"
+		case 3:
+			return "unavailable"
+		case 4:
+			return "restart-required"
 		case:
 			return "unknown"
 		}

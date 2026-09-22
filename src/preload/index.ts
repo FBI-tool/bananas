@@ -169,8 +169,13 @@ const KiwiApi = {
   },
   remoteControl: {
     getCapabilities: async () => ipcRenderer.invoke('remoteControl:getCapabilities'),
-    arm: async (grant: { mouse: boolean; keyboard: boolean; generation?: number }) =>
-      ipcRenderer.invoke('remoteControl:arm', grant),
+    arm: async (grant: {
+      mouse: boolean
+      keyboard: boolean
+      generation?: number
+      sessionId?: string
+      peerId?: string
+    }) => ipcRenderer.invoke('remoteControl:arm', grant),
     disarm: async () => ipcRenderer.invoke('remoteControl:disarm'),
     pointerMove: async (input: unknown) => ipcRenderer.invoke('remoteControl:pointerMove', input),
     pointerButton: async (input: unknown) =>
@@ -178,7 +183,9 @@ const KiwiApi = {
     wheel: async (input: unknown) => ipcRenderer.invoke('remoteControl:wheel', input),
     key: async (input: unknown) => ipcRenderer.invoke('remoteControl:key', input),
     releaseAll: async () => ipcRenderer.invoke('remoteControl:releaseAll'),
-    requestPermission: async () => ipcRenderer.invoke('remoteControl:requestPermission'),
+    requestPermission: async (capability?: 'post' | 'listen') =>
+      ipcRenderer.invoke('remoteControl:requestPermission', capability),
+    recheck: async () => ipcRenderer.invoke('remoteControl:recheck'),
     onEmergencyDisabled: (cb: (event: { reason: string }) => void): (() => void) => {
       const listener = (_: unknown, event: { reason: string }): void => cb(event)
       ipcRenderer.on('remote-control-emergency', listener)

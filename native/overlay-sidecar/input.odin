@@ -19,6 +19,21 @@ Input_State :: struct {
 	held_keys:           [MAX_TRACKED_KEYS]bool,
 }
 
+// Set only when the arm message included sessionId, peerId, and grantEpoch.
+// Legacy arms leave active false so older peers keep working.
+Grant_Scope :: struct {
+	active:     bool,
+	session_id: string,
+	peer_id:    string,
+	epoch:      i64,
+}
+
+grant_event_allowed :: proc(scope: Grant_Scope, session_id, peer_id: string, epoch: i64, has_fields: bool) -> bool {
+	if !scope.active do return true
+	if !has_fields do return false
+	return scope.session_id == session_id && scope.peer_id == peer_id && scope.epoch == epoch
+}
+
 input_reset :: proc(state: ^Input_State) {
 	state^ = {}
 }

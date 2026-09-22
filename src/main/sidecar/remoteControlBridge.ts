@@ -22,7 +22,13 @@ export type RemoteControlStatus = {
 }
 
 export type EmergencyDisableEvent = {
-  reason: 'emergency-hotkey' | 'native-error' | 'shutdown'
+  reason:
+    | 'emergency-hotkey'
+    | 'permission-lost'
+    | 'explicit-revoke'
+    | 'ipc-lost'
+    | 'shutdown'
+    | 'native-error'
   generation?: number
 }
 
@@ -99,6 +105,9 @@ export class RemoteControlBridge {
   private mainWindow: BrowserWindow | null = null
   private hotkey: EmergencyHotkey = DEFAULT_EMERGENCY_HOTKEY
   private emergencyGeneration = 0
+  private injectEpoch = 0
+  private sessionId = ''
+  private peerId = ''
   private unsubscribers: Array<() => void> = []
 
   constructor(
@@ -165,17 +174,31 @@ export class RemoteControlBridge {
     return this.emergencyGeneration
   }
 
-  async arm(grant: { mouse: boolean; keyboard: boolean; generation?: number }): Promise<void> {
+  async arm(grant: {
+    mouse: boolean
+    keyboard: boolean
+    generation?: number
+    sessionId?: string
+    peerId?: string
+  }): Promise<void> {
     await this.ensureStarted()
     if (!this.canArm(grant)) {
       throw new Error('remote control is not available')
     }
     const emergencyGeneration = this.emergencyGeneration
-    const res = await this.sidecar.send('remote-control-arm', {
+    const sessionId = typeof grant.sessionId === 'string' ? grant.sessionId : ''
+    const peerId = typeof grant.peerId === 'string' ? grant.peerId : ''
+    const payload: Record<string, unknown> = {
       mouse: Boolean(grant.mouse),
       keyboard: Boolean(grant.keyboard),
       emergencyGeneration,
-    })
+    }
+    if (sessionId !== '' && peerId !== '' && typeof grant.generation === 'number') {
+      payload.sessionId = sessionId
+      payload.peerId = peerId
+      payload.grantEpoch = grant.generation
+    }
+    const res = await this.sidecar.send('remote-control-arm', payload)
     if (this.emergencyGeneration !== emergencyGeneration) {
       await this.sidecar.send('remote-control-disarm', {}).catch(() => undefined)
       this.failClosed()
@@ -188,6 +211,8 @@ export class RemoteControlBridge {
     if (typeof grant.generation === 'number' && Number.isFinite(grant.generation)) {
       this.generation = grant.generation
     }
+    this.sessionId = sessionId
+    this.peerId = peerId
     this.notifyRenderer('remote-control-status', this.getStatus())
   }
 
@@ -204,10 +229,18 @@ export class RemoteControlBridge {
     await this.sidecar.send('release-all', {}).catch(() => undefined)
   }
 
-  async requestPermission(): Promise<void> {
+  async recheck(): Promise<SidecarCapabilities> {
+    if (this.sidecar.isStarted()) {
+      await this.configureHotkey()
+      await this.sidecar.refreshCapabilities()
+    }
+    return this.sidecar.getCapabilities()
+  }
+
+  async requestPermission(capability: 'post' | 'listen' = 'post'): Promise<void> {
     await this.ensureStarted()
     if (!this.sidecar.isStarted()) return
-    await this.sidecar.send('request-input-permission', {}).catch(() => undefined)
+    await this.sidecar.send('request-input-permission', { capability }).catch(() => undefined)
   }
 
   async pointerMove(input: unknown): Promise<void> {
@@ -235,6 +268,7 @@ export class RemoteControlBridge {
     await this.sidecar.send('pointer-button', {
       button: BUTTON_IDS[parsed.button],
       down: parsed.action === 'down' ? 1 : 0,
+      ...this.grantStamp(),
     })
   }
 
@@ -248,6 +282,7 @@ export class RemoteControlBridge {
       this.sidecar.send('pointer-wheel', {
         deltaX: parsed.deltaX,
         deltaY: parsed.deltaY,
+        ...this.grantStamp(),
       }),
     )
   }
@@ -271,23 +306,45 @@ export class RemoteControlBridge {
           shift: Boolean(parsed.modifiers?.shift),
           meta: Boolean(parsed.modifiers?.meta),
         },
+        ...this.grantStamp(),
       }),
     )
   }
 
+  private grantStamp(): Record<string, unknown> {
+    if (this.sessionId === '' || this.peerId === '') return {}
+    return {
+      sessionId: this.sessionId,
+      peerId: this.peerId,
+      grantEpoch: this.generation,
+    }
+  }
+
   private enqueueActionInject(send: () => Promise<unknown>): void {
+    const epoch = this.injectEpoch
     this.actionInjectQueue = this.actionInjectQueue
-      .then(send)
-      .then(() => undefined)
+      .then(async () => {
+        if (epoch !== this.injectEpoch || !this.armed) return
+        await send()
+      })
       .catch(() => undefined)
   }
 
   private async flushMove(point: { x: number; y: number }): Promise<void> {
+    const epoch = this.injectEpoch
     this.moveInFlight = true
     try {
       let current: { x: number; y: number } | null = point
       while (current) {
-        await this.sidecar.send('pointer-move', current, MOVE_TIMEOUT_MS)
+        if (epoch !== this.injectEpoch || !this.armed) {
+          this.pendingMove = null
+          return
+        }
+        await this.sidecar.send(
+          'pointer-move',
+          { ...current, ...this.grantStamp() },
+          MOVE_TIMEOUT_MS,
+        )
         current = this.pendingMove
         this.pendingMove = null
       }
@@ -299,10 +356,13 @@ export class RemoteControlBridge {
   }
 
   private failClosed(notifyStatus = true): void {
+    this.injectEpoch += 1
     this.armed = false
     this.mouse = false
     this.keyboard = false
     this.pendingMove = null
+    this.sessionId = ''
+    this.peerId = ''
     if (notifyStatus) this.notifyRenderer('remote-control-status', this.getStatus())
   }
 

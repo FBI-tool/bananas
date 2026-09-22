@@ -155,7 +155,14 @@ const en = {
   remote_control_emergency: 'Remote control disabled by host hotkey',
   remote_control_emergency_hotkey: 'Emergency stop: {hotkey}',
   remote_control_unavailable: 'Remote control is unavailable',
-  remote_control_request_permission: 'Grant accessibility permission',
+  remote_control_request_permission: 'Allow Accessibility',
+  remote_control_request_listen: 'Allow Input Monitoring',
+  remote_control_permission_helper:
+    'Approve p2p.kiwi Sidecar (kiwi.p2p.desktop.sidecar) in System Settings. Overlay drawing does not need either permission. Accessibility lets the helper type and move the pointer. Input Monitoring lets it see only the emergency-stop shortcut.',
+  remote_control_restart_required: 'If you already approved access, quit p2p.kiwi and open it again.',
+  remote_control_open_accessibility: 'Open Accessibility settings',
+  remote_control_open_input_monitoring: 'Open Input Monitoring settings',
+  remote_control_recheck: 'Recheck permissions',
   remote_control_request_button: 'Request control',
 } satisfies BaseTranslation
 

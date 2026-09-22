@@ -15,6 +15,7 @@
   import PresenterVoteModal from './PresenterVoteModal.svelte'
   import type { Room } from './session/room.svelte'
   import { debugLog } from './debugLog.svelte'
+  import MacSidecarPermissions from './MacSidecarPermissions.svelte'
 
   let {
     room,
@@ -603,8 +604,13 @@
 {#if room.isPresenter && room.remoteControlCaps && !room.remoteControlCaps.emergencyHotkey}
   <div class="alert alert-warning mb-4">
     <span>{L.remote_control_unavailable()}</span>
-    {#if room.remoteControlCaps.unavailableReason === 'accessibility-permission'}
-      <button class="btn btn-sm" onclick={() => room.requestRemoteControlPermission()}>
+    {#if room.remoteControlCaps.backend === 'macos'}
+      <MacSidecarPermissions
+        caps={room.remoteControlCaps}
+        onRequest={(capability) => room.requestRemoteControlPermission(capability)}
+      />
+    {:else if room.remoteControlCaps.unavailableReason === 'accessibility-permission'}
+      <button class="btn btn-sm" onclick={() => room.requestRemoteControlPermission('post')}>
         {L.remote_control_request_permission()}
       </button>
     {/if}

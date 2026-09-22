@@ -94,7 +94,7 @@ when ODIN_TEST {
 		_ = key_code; _ = down; _ = modifiers
 		return 0
 	}
-	native_input_request_permission :: proc() -> i32 { return 0 }
+	native_input_request_permission :: proc(kind: i32) -> i32 { _ = kind; return 0 }
 	native_keyboard_capture_start :: proc() -> i32 { return 1 }
 	native_keyboard_capture_stop :: proc() {}
 	native_keyboard_capture_unlock :: proc() {}
@@ -135,7 +135,7 @@ when ODIN_TEST {
 		native_pointer_button :: proc(button, down: i32) -> i32 ---
 		native_pointer_wheel :: proc(dx, dy: f64) -> i32 ---
 		native_key_event :: proc(key_code: u32, down: i32, modifiers: u32) -> i32 ---
-		native_input_request_permission :: proc() -> i32 ---
+		native_input_request_permission :: proc(kind: i32) -> i32 ---
 		native_keyboard_capture_start :: proc() -> i32 ---
 		native_keyboard_capture_stop :: proc() ---
 		native_keyboard_capture_unlock :: proc() ---

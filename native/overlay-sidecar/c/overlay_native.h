@@ -15,7 +15,7 @@ typedef struct {
   int global_keyboard_observation;
   int pointer_injection;
   int keyboard_injection;
-  int accessibility;     /* 0 unknown, 1 granted, 2 denied */
+  int accessibility;     /* 0 unknown, 1 granted, 2 denied, 3 unavailable, 4 restart-required */
   int screen_recording;
   int input_monitoring;
   int emergency_hotkey;
@@ -50,6 +50,7 @@ int native_overlay_update(int overlay_id, const NativeSource *source, const Nati
 void native_overlay_destroy(int overlay_id);
 void native_overlay_pump(void);
 void native_shutdown(void);
+void native_macos_ensure_app(void);
 
 #ifdef __cplusplus
 }

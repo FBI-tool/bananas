@@ -46,7 +46,12 @@ export type SidecarRequestType = (typeof SIDECAR_REQUEST_TYPES)[number]
 export type SidecarResponseType = (typeof SIDECAR_RESPONSE_TYPES)[number]
 export type SidecarEventType = (typeof SIDECAR_EVENT_TYPES)[number]
 
-export type PermissionState = 'unknown' | 'granted' | 'denied'
+export type PermissionState =
+  | 'unknown'
+  | 'granted'
+  | 'denied'
+  | 'unavailable'
+  | 'restart-required'
 
 export type RemoteControlUnavailableReason =
   | 'unsupported'
@@ -77,7 +82,13 @@ export type SidecarCapabilities = {
 
 export type SidecarEventMap = {
   'remote-control-disabled': {
-    reason: 'emergency-hotkey' | 'native-error' | 'shutdown'
+    reason:
+      | 'emergency-hotkey'
+      | 'permission-lost'
+      | 'explicit-revoke'
+      | 'ipc-lost'
+      | 'shutdown'
+      | 'native-error'
     generation?: number
   }
   'remote-control-status': {

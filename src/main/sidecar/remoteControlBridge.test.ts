@@ -217,6 +217,48 @@ describe('RemoteControlBridge', () => {
     expect(buttons.some((call) => call[1].down === 0 && call[1].button === 1)).toBe(true)
   })
 
+  it('drops a queued key after disarm so it cannot run after re-arm', async () => {
+    const sidecar = mockSidecar()
+    const bridge = new RemoteControlBridge(sidecar, () => source)
+    await bridge.arm({
+      mouse: false,
+      keyboard: true,
+      generation: 1,
+      sessionId: 'room',
+      peerId: 'alice',
+    })
+    sidecar.send.mockClear()
+    let releaseDown: (() => void) | undefined
+    sidecar.send.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseDown = () => resolve({ protocolVersion: 2, type: 'ok', payload: {} })
+        }),
+    )
+    const down = bridge.key({ generation: 1, seq: 1, action: 'down', code: 'KeyA' })
+    const queued = bridge.key({ generation: 1, seq: 2, action: 'down', code: 'KeyB' })
+    await Promise.resolve()
+    await bridge.disarm()
+    await bridge.arm({
+      mouse: false,
+      keyboard: true,
+      generation: 2,
+      sessionId: 'room',
+      peerId: 'bob',
+    })
+    releaseDown?.()
+    await down
+    await queued
+    const keys = sidecar.send.mock.calls.filter((call) => call[0] === 'keyboard-event')
+    expect(keys).toHaveLength(1)
+    expect(keys[0][1]).toMatchObject({
+      keyCode: portableKeyId('KeyA'),
+      sessionId: 'room',
+      peerId: 'alice',
+      grantEpoch: 1,
+    })
+  })
+
   it('injects a pointer-button down without waiting behind a slow key inject', async () => {
     const sidecar = mockSidecar()
     const bridge = new RemoteControlBridge(sidecar, () => source)

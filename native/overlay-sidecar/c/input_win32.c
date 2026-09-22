@@ -249,7 +249,10 @@ int native_key_event(unsigned int key_code, int down, unsigned int modifiers) {
   return SendInput(1, &in, sizeof(INPUT)) == 1 ? 0 : -1;
 }
 
-int native_input_request_permission(void) { return 0; }
+int native_input_request_permission(int kind) {
+  (void)kind;
+  return 0;
+}
 
 static unsigned int portable_from_vk(int vk) {
   int extended = 0;

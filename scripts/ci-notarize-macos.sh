@@ -27,7 +27,7 @@ if [ ! -f "$DMG" ]; then
   exit 1
 fi
 
-SIDECAR="${SIDECAR:-$APP/Contents/Resources/sidecar/p2p-kiwi-sidecar}"
+SIDECAR="${SIDECAR:-$APP/Contents/Helpers/p2p.kiwi Sidecar.app/Contents/MacOS/p2p-kiwi-sidecar}"
 if [ ! -f "$SIDECAR" ]; then
   echo "Error: sidecar not found: $SIDECAR"
   exit 1
@@ -67,4 +67,6 @@ if ! echo "$output" | grep -q "status: Accepted"; then
   exit 1
 fi
 
+xcrun stapler staple "$APP"
 xcrun stapler staple "$DMG"
+./scripts/ci-verify-macos-signature.sh notarized

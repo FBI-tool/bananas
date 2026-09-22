@@ -41,3 +41,5 @@ jobs:
         run: |
           export CSC_NAME=$(base64 --decode <<< "$CODESIGNING_IDENTITY")
           make macos
+      - name: Verify macOS signatures
+        run: ./scripts/ci-verify-macos-signature.sh signed

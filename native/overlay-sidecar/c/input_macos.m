@@ -7,8 +7,6 @@
 #import <Carbon/Carbon.h>
 #import <Foundation/Foundation.h>
 
-static EventHandlerRef g_hotkey_handler;
-static EventHotKeyRef g_hotkey_ref;
 static int g_hotkey_fired;
 static int g_hotkey_registered;
 static int g_hotkey_want_ctrl = 1;
@@ -16,10 +14,18 @@ static int g_hotkey_want_alt;
 static int g_hotkey_want_shift;
 static int g_hotkey_want_meta;
 static int g_inited;
+static int g_post_requested;
+static int g_listen_requested;
+static int g_emergency_dead;
+static int g_held_buttons;
 static CFMachPortRef g_tap;
 static CFRunLoopSourceRef g_tap_src;
-static unsigned int g_mac_mods;
+static CFMachPortRef g_emergency_tap;
+static CFRunLoopSourceRef g_emergency_src;
 static CGEventFlags g_mac_last_flags;
+
+static unsigned int mods_from_flags(CGEventFlags flags);
+static int mac_hotkey_match(unsigned int mods);
 
 static CGKeyCode cg_for_portable(unsigned int code) {
   if (code == PK_ESCAPE) return kVK_Escape;
@@ -87,16 +93,31 @@ static CGKeyCode cg_for_portable(unsigned int code) {
   }
 }
 
-static OSStatus hotkey_callback(EventHandlerCallRef call, EventRef event, void *user) {
-  (void)call;
-  (void)event;
-  (void)user;
-  g_hotkey_fired = 1;
-  capture_lock();
-  return noErr;
+static int post_granted(void) {
+  return CGPreflightPostEventAccess() && AXIsProcessTrusted();
+}
+
+static int post_state(void) {
+  int post = CGPreflightPostEventAccess() ? 1 : 0;
+  int ax = AXIsProcessTrusted() ? 1 : 0;
+  if (post && ax) return 1;
+  if (post || ax || g_post_requested) return 4;
+  return 0;
+}
+
+static int listen_state(void) {
+  if (CGPreflightListenEventAccess()) return 1;
+  if (g_listen_requested) return 4;
+  return 0;
+}
+
+static int injection_allowed(void) {
+  if (IsSecureEventInputEnabled()) return 0;
+  return post_granted();
 }
 
 int native_input_init(void) {
+  native_macos_ensure_app();
   g_inited = 1;
   return 1;
 }
@@ -104,21 +125,26 @@ int native_input_init(void) {
 void native_input_shutdown(void) {
   native_keyboard_capture_stop();
   native_hotkey_unregister();
+  g_held_buttons = 0;
   g_inited = 0;
 }
 
 void native_input_query_caps(NativeCaps *out) {
   if (!out) return;
-  int trusted = AXIsProcessTrusted() ? 1 : 0;
-  out->accessibility = trusted ? 1 : 2;
-  out->pointer_injection = trusted;
-  out->keyboard_injection = trusted;
-  out->emergency_hotkey = trusted && g_hotkey_registered;
-  out->keyboard_capture = trusted;
+  int post = post_state();
+  int listen = listen_state();
+  out->accessibility = post;
+  out->input_monitoring = listen;
+  out->pointer_injection = post_granted();
+  out->keyboard_injection = post_granted();
+  out->keyboard_capture = post_granted();
+  out->emergency_hotkey = listen == 1 && g_hotkey_registered && !g_emergency_dead;
   out->global_keyboard_observation = out->emergency_hotkey;
-  if (!trusted) {
+  if (!post_granted()) {
     snprintf(out->unavailable_reason, sizeof(out->unavailable_reason), "accessibility-permission");
-  } else if (!g_hotkey_registered) {
+  } else if (listen != 1) {
+    snprintf(out->unavailable_reason, sizeof(out->unavailable_reason), "input-monitoring-permission");
+  } else if (!g_hotkey_registered || g_emergency_dead) {
     snprintf(out->unavailable_reason, sizeof(out->unavailable_reason), "hotkey-registration-failed");
   } else {
     out->unavailable_reason[0] = 0;
@@ -126,48 +152,100 @@ void native_input_query_caps(NativeCaps *out) {
 }
 
 void native_input_pump(void) {
-  if (g_tap) CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, true);
+  if (g_tap || g_emergency_tap) CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, true);
 }
 
 int native_hotkey_poll(void) {
+  if (g_emergency_dead) {
+    g_emergency_dead = 0;
+    g_hotkey_registered = 0;
+    return 2;
+  }
   int fired = g_hotkey_fired;
   g_hotkey_fired = 0;
   if (fired) capture_lock();
   return fired;
 }
 
+static void emergency_tap_stop(void) {
+  if (g_emergency_tap) CGEventTapEnable(g_emergency_tap, false);
+  if (g_emergency_src) {
+    CFRunLoopRemoveSource(CFRunLoopGetCurrent(), g_emergency_src, kCFRunLoopCommonModes);
+    CFRelease(g_emergency_src);
+    g_emergency_src = NULL;
+  }
+  if (g_emergency_tap) {
+    CFRelease(g_emergency_tap);
+    g_emergency_tap = NULL;
+  }
+  g_hotkey_registered = 0;
+}
+
+static CGEventRef emergency_tap_callback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *ref) {
+  (void)proxy;
+  (void)ref;
+  if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+    g_emergency_dead = 1;
+    if (g_emergency_tap) CGEventTapEnable(g_emergency_tap, false);
+    return event;
+  }
+  if (type != kCGEventKeyDown) return event;
+  CGKeyCode kc = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+  int repeat = (int)CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat);
+  if (repeat || kc != kVK_Escape) return event;
+  unsigned int mods = mods_from_flags(CGEventGetFlags(event));
+  if (mac_hotkey_match(mods)) g_hotkey_fired = 1;
+  return event;
+}
+
 int native_hotkey_register(int ctrl, int alt, int shift, int meta, int key_escape) {
   (void)key_escape;
+  native_macos_ensure_app();
   native_hotkey_unregister();
   g_hotkey_want_ctrl = ctrl;
   g_hotkey_want_alt = alt;
   g_hotkey_want_shift = shift;
   g_hotkey_want_meta = meta;
-  EventTypeSpec spec = {kEventClassKeyboard, kEventHotKeyPressed};
-  if (!g_hotkey_handler) {
-    InstallApplicationEventHandler(NewEventHandlerUPP(hotkey_callback), 1, &spec, NULL, &g_hotkey_handler);
+  g_emergency_dead = 0;
+  if (!CGPreflightListenEventAccess()) {
+    g_hotkey_registered = 0;
+    return 0;
   }
-  UInt32 mods = 0;
-  if (ctrl) mods |= controlKey;
-  if (alt) mods |= optionKey;
-  if (shift) mods |= shiftKey;
-  if (meta) mods |= cmdKey;
-  EventHotKeyID hid = { 'p2pk', 1 };
-  OSStatus st = RegisterEventHotKey(kVK_Escape, mods, hid, GetApplicationEventTarget(), 0, &g_hotkey_ref);
-  g_hotkey_registered = st == noErr;
-  return g_hotkey_registered;
+  CGEventMask mask = CGEventMaskBit(kCGEventKeyDown);
+  g_emergency_tap = CGEventTapCreate(
+      kCGSessionEventTap,
+      kCGHeadInsertEventTap,
+      kCGEventTapOptionListenOnly,
+      mask,
+      emergency_tap_callback,
+      NULL);
+  if (!g_emergency_tap) return 0;
+  g_emergency_src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, g_emergency_tap, 0);
+  CFRunLoopAddSource(CFRunLoopGetCurrent(), g_emergency_src, kCFRunLoopCommonModes);
+  CGEventTapEnable(g_emergency_tap, true);
+  g_hotkey_registered = 1;
+  return 1;
 }
 
 void native_hotkey_unregister(void) {
-  if (g_hotkey_ref) {
-    UnregisterEventHotKey(g_hotkey_ref);
-    g_hotkey_ref = NULL;
-  }
-  g_hotkey_registered = 0;
+  emergency_tap_stop();
 }
 
 int native_pointer_move(double x, double y) {
-  CGEventRef e = CGEventCreateMouseEvent(NULL, kCGEventMouseMoved, CGPointMake(x, y), kCGMouseButtonLeft);
+  if (!injection_allowed()) return -1;
+  CGEventType type = kCGEventMouseMoved;
+  CGMouseButton btn = kCGMouseButtonLeft;
+  if (g_held_buttons & (1 << 1)) {
+    type = kCGEventLeftMouseDragged;
+    btn = kCGMouseButtonLeft;
+  } else if (g_held_buttons & (1 << 3)) {
+    type = kCGEventRightMouseDragged;
+    btn = kCGMouseButtonRight;
+  } else if (g_held_buttons & (1 << 2)) {
+    type = kCGEventOtherMouseDragged;
+    btn = kCGMouseButtonCenter;
+  }
+  CGEventRef e = CGEventCreateMouseEvent(NULL, type, CGPointMake(x, y), btn);
   if (!e) return -1;
   CGEventPost(kCGHIDEventTap, e);
   CFRelease(e);
@@ -175,6 +253,7 @@ int native_pointer_move(double x, double y) {
 }
 
 int native_pointer_button(int button, int down) {
+  if (!injection_allowed()) return -1;
   CGEventType type;
   CGMouseButton btn;
   if (button == 1) {
@@ -196,10 +275,15 @@ int native_pointer_button(int button, int down) {
   if (!e) return -1;
   CGEventPost(kCGHIDEventTap, e);
   CFRelease(e);
+  if (button >= 1 && button <= 31) {
+    if (down) g_held_buttons |= 1 << button;
+    else g_held_buttons &= ~(1 << button);
+  }
   return 0;
 }
 
 int native_pointer_wheel(double dx, double dy) {
+  if (!injection_allowed()) return -1;
   CGEventRef e = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 2, (int32_t)(-dy), (int32_t)dx);
   if (!e) return -1;
   CGEventPost(kCGHIDEventTap, e);
@@ -208,6 +292,7 @@ int native_pointer_wheel(double dx, double dy) {
 }
 
 int native_key_event(unsigned int key_code, int down, unsigned int modifiers) {
+  if (!injection_allowed()) return -1;
   CGKeyCode vk = cg_for_portable(key_code);
   if (vk == (CGKeyCode)0xFFFF) return -1;
   CGEventRef e = CGEventCreateKeyboardEvent(NULL, vk, down ? true : false);
@@ -223,9 +308,17 @@ int native_key_event(unsigned int key_code, int down, unsigned int modifiers) {
   return 0;
 }
 
-int native_input_request_permission(void) {
+int native_input_request_permission(int kind) {
+  native_macos_ensure_app();
+  if (kind == 2) {
+    g_listen_requested = 1;
+    CGRequestListenEventAccess();
+    return 0;
+  }
+  g_post_requested = 1;
   NSDictionary *opts = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt : @YES};
   AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts);
+  CGRequestPostEventAccess();
   return 0;
 }
 
@@ -263,7 +356,8 @@ static CGEventRef tap_callback(CGEventTapProxy proxy, CGEventType type, CGEventR
   (void)proxy;
   (void)ref;
   if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
-    if (g_tap) CGEventTapEnable(g_tap, true);
+    g_emergency_dead = 1;
+    if (g_tap) CGEventTapEnable(g_tap, false);
     return event;
   }
   if (!g_capture_active) return event;

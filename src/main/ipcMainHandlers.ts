@@ -110,19 +110,19 @@ export const ipcMainHandlersInit = (): void => {
   ipcMain.handle('getSidecarCapabilities', async () => sidecarManager.getCapabilities())
   ipcMain.handle('remoteControl:getCapabilities', async (event) => {
     if (!fromMainSession(event)) return sidecarManager.getCapabilities()
+    if (sidecarManager.isStarted()) await sidecarManager.refreshCapabilities()
     return remoteControlBridge.getCapabilities()
   })
   ipcMain.handle('remoteControl:arm', async (event, grant) => {
     if (!fromMainSession(event)) throw new Error('unauthorized')
     const parsed = parseGrant(grant)
     if (!parsed) throw new Error('invalid grant')
-    const generation =
-      grant &&
-      typeof grant === 'object' &&
-      typeof (grant as { generation?: unknown }).generation === 'number'
-        ? Number((grant as { generation: number }).generation)
-        : undefined
-    await remoteControlBridge.arm({ ...parsed, generation })
+    const record =
+      grant && typeof grant === 'object' ? (grant as Record<string, unknown>) : {}
+    const generation = typeof record.generation === 'number' ? record.generation : undefined
+    const sessionId = typeof record.sessionId === 'string' ? record.sessionId : undefined
+    const peerId = typeof record.peerId === 'string' ? record.peerId : undefined
+    await remoteControlBridge.arm({ ...parsed, generation, sessionId, peerId })
   })
   ipcMain.handle('remoteControl:disarm', async (event) => {
     if (!fromMainSession(event)) throw new Error('unauthorized')
@@ -148,9 +148,13 @@ export const ipcMainHandlersInit = (): void => {
     if (!fromMainSession(event)) return
     await remoteControlBridge.releaseAll()
   })
-  ipcMain.handle('remoteControl:requestPermission', async (event) => {
+  ipcMain.handle('remoteControl:recheck', async (event) => {
+    if (!fromMainSession(event)) return sidecarManager.getCapabilities()
+    return remoteControlBridge.recheck()
+  })
+  ipcMain.handle('remoteControl:requestPermission', async (event, capability: unknown) => {
     if (!fromMainSession(event)) return
-    await remoteControlBridge.requestPermission()
+    await remoteControlBridge.requestPermission(capability === 'listen' ? 'listen' : 'post')
   })
   ipcMain.handle('remoteControl:setLocalCapture', async (event, enabled: boolean) => {
     if (!fromMainSession(event)) return

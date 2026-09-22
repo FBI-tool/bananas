@@ -151,7 +151,14 @@ const zh = {
   remote_control_emergency: '主机快捷键已关闭远程控制',
   remote_control_emergency_hotkey: '紧急停止：{hotkey}',
   remote_control_unavailable: '远程控制不可用',
-  remote_control_request_permission: '授予辅助功能权限',
+  remote_control_request_permission: '允许辅助功能',
+  remote_control_request_listen: '允许输入监视',
+  remote_control_permission_helper:
+    '请在系统设置中批准 p2p.kiwi Sidecar（kiwi.p2p.desktop.sidecar）。绘制光标覆盖层不需要这些权限。辅助功能用于键入和移动指针。输入监视只用于紧急停止快捷键。',
+  remote_control_restart_required: '如果已经批准，请退出 p2p.kiwi 后重新打开。',
+  remote_control_open_accessibility: '打开辅助功能设置',
+  remote_control_open_input_monitoring: '打开输入监视设置',
+  remote_control_recheck: '重新检查权限',
   remote_control_request_button: '请求控制',
   search: '搜索',
 } satisfies Translation

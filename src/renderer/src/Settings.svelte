@@ -5,6 +5,7 @@
   import { appState } from './appState.svelte'
   import { debugLog } from './debugLog.svelte'
   import { DEFAULT_EMERGENCY_HOTKEY, type EmergencyHotkey } from './session/emergencyHotkey'
+  import MacSidecarPermissions from './MacSidecarPermissions.svelte'
 
   let colorPreviewIcon: HTMLElement | undefined = $state()
   let usernameValue = $state('Kiwi')
@@ -27,6 +28,7 @@
   let cameras = $state<MediaDeviceInfo[]>([])
   let microphones = $state<MediaDeviceInfo[]>([])
   const isLinux = window.electron.process.platform === 'linux'
+  const isMac = window.electron.process.platform === 'darwin'
 
   const isUsernameValid = $derived(usernameValue.length > 0 && usernameValue.length < 32)
   const isColorValid = $derived(/^#[0-9A-F]{6}$/i.test(colorValue))
@@ -284,6 +286,11 @@
         placeholder={'{ "urls": "stun:stun.l.google.com:19302" }'}
       ></textarea>
     </fieldset>
+
+    {#if isMac}
+      <h2 class="text-xl font-semibold mt-2">{L.remote_control()}</h2>
+      <MacSidecarPermissions />
+    {/if}
 
     <button class="btn btn-primary w-fit">{L.save()}</button>
   </form>

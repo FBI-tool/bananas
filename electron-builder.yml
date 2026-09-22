@@ -71,6 +71,7 @@ flatpak:
 deb:
   artifactName: p2p-kiwi_${arch}.${ext}
 npmRebuild: false
+afterPack: scripts/after-pack-macos.cjs
 afterSign: scripts/after-sign-macos.cjs
 publish:
   provider: generic
