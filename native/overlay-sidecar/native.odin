@@ -18,9 +18,10 @@ NativeCaps :: struct {
 }
 
 NativeCursor :: struct {
-	id:    [128]u8,
-	label: [64]u8,
-	color: [16]u8,
+	id:         [128]u8,
+	label:      [64]u8,
+	foreground: [16]u8,
+	background: [16]u8,
 	x:          f32,
 	y:          f32,
 	ping:       i32,

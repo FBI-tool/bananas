@@ -160,7 +160,8 @@ export class Room {
   private cameraSendStreamId = ''
   private userSettings: SettingsData | null = null
   private username = ''
-  private color = '#ffffff'
+  private foregroundColor = '#1a1a1a'
+  private backgroundColor = '#ffffff'
   private links = new Map<string, PeerLink>()
   private remoteVideoStreams = new Map<string, MediaStream>()
   private remoteVideoByStreamId = new Map<string, { peerId: string; stream: MediaStream }>()
@@ -361,7 +362,8 @@ export class Room {
       v: PROTOCOL_VERSION,
       id: this.localPeerId || cursorData.id,
       name: cursorData.name,
-      color: cursorData.color,
+      foregroundColor: cursorData.foregroundColor,
+      backgroundColor: cursorData.backgroundColor,
       x: cursorData.x,
       y: cursorData.y,
     })
@@ -540,7 +542,8 @@ export class Room {
     await this.teardown(true)
     this.userSettings = await window.KiwiApi.getSettings()
     this.username = this.userSettings.username
-    this.color = this.userSettings.color
+    this.foregroundColor = this.userSettings.foregroundColor
+    this.backgroundColor = this.userSettings.backgroundColor
     this.emergencyHotkeyLabel = formatEmergencyHotkey(
       this.userSettings.emergencyHotkey ?? DEFAULT_EMERGENCY_HOTKEY,
     )
@@ -1534,7 +1537,8 @@ export class Room {
       v: PROTOCOL_VERSION,
       peerId: this.localPeerId,
       username: this.username,
-      color: this.color,
+      foregroundColor: this.foregroundColor,
+      backgroundColor: this.backgroundColor,
       crypto: this.helloCrypto(),
     })
   }
@@ -1792,7 +1796,12 @@ export class Room {
       this.crypto?.rememberMember(msg.peerId, msg.crypto.fingerprint)
     }
     this.rekeyLink(link, msg.peerId)
-    this.upsertPeer({ id: msg.peerId, username: msg.username, color: msg.color })
+    this.upsertPeer({
+      id: msg.peerId,
+      username: msg.username,
+      foregroundColor: msg.foregroundColor,
+      backgroundColor: msg.backgroundColor,
+    })
     if (!this.coordinatorId) this.coordinatorId = msg.peerId
     if (!this.presenterId) this.presenterId = msg.peerId
     appState.isCoordinator = this.isCoordinator
@@ -2104,7 +2113,8 @@ export class Room {
     window.KiwiApi.updateRemoteCursor({
       id: msg.id,
       name: msg.name,
-      color: msg.color,
+      foregroundColor: msg.foregroundColor,
+      backgroundColor: msg.backgroundColor,
       x: msg.x,
       y: msg.y,
       sourceId: msg.sourceId,
@@ -2498,7 +2508,8 @@ export class Room {
     this.upsertPeer({
       id: this.localPeerId,
       username: this.username,
-      color: this.color,
+      foregroundColor: this.foregroundColor,
+      backgroundColor: this.backgroundColor,
     })
     this.syncCallOverlay()
   }
@@ -2524,7 +2535,15 @@ export class Room {
   private broadcastRoster(): void {
     const withLocal = this.peers.some((peer) => peer.id === this.localPeerId)
       ? this.peers
-      : [...this.peers, { id: this.localPeerId, username: this.username, color: this.color }]
+      : [
+          ...this.peers,
+          {
+            id: this.localPeerId,
+            username: this.username,
+            foregroundColor: this.foregroundColor,
+            backgroundColor: this.backgroundColor,
+          },
+        ]
     this.peers = uniquePeersById(withLocal)
     this.broadcast({
       t: 'roster',
@@ -3080,7 +3099,8 @@ export class Room {
     return uniquePeersById(this.peers).map((peer) => ({
       id: peer.id,
       name: peer.username,
-      color: peer.color,
+      foregroundColor: peer.foregroundColor,
+      backgroundColor: peer.backgroundColor,
       cameraEnabled:
         peer.id === this.localPeerId
           ? this.cameraActive

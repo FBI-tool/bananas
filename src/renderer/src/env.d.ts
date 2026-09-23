@@ -27,7 +27,8 @@ type CallChatMessage = {
 type CallPeerInfo = {
   id: string
   name: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
   cameraEnabled: boolean
   isLocal: boolean
 }
@@ -71,7 +72,8 @@ type KiwiApi = {
   updateRemoteCursor: (state: {
     id: string
     name: string
-    color: string
+    foregroundColor: string
+    backgroundColor: string
     x: number
     y: number
     sourceId?: string
@@ -134,7 +136,8 @@ type KiwiApi = {
   updateSettings: (settings: {
     username: string
     language: string
-    color: string
+    foregroundColor: string
+    backgroundColor: string
     isMicrophoneEnabledOnConnect: boolean
     hardwareVideoAcceleration: boolean
     debugLogsEnabled: boolean
@@ -149,7 +152,8 @@ type KiwiApi = {
   }) => Promise<void>
   getSettings: () => Promise<{
     username: string
-    color: string
+    foregroundColor: string
+    backgroundColor: string
     language: string
     isMicrophoneEnabledOnConnect: boolean
     hardwareVideoAcceleration: boolean

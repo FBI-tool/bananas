@@ -16,9 +16,17 @@ body {
 }
 
 .cursor .name {
-  display: block;
-  text-shadow: '-1px 0 black, 0 1px black, 1px 0 black, 0 -1px black';
+  position: absolute;
+  left: 0;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: 2px;
+  white-space: nowrap;
+  line-height: 1.2;
+  border-radius: 999px;
+  padding: 1px 6px;
   color: var(--name-color);
+  background: var(--name-background);
 }
 
 .cursor svg {

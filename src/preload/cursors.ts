@@ -5,7 +5,8 @@ import cursorSvg from './cursor.svg?raw'
 type RemoteCursorData = {
   id: string
   name: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
   x: number
   y: number
 }
@@ -35,8 +36,9 @@ class Cursor {
     this.cursorEl = domParser.parseFromString(cursorSvg, 'image/svg+xml').documentElement
     this.root.classList.add('cursor')
     this.nameEl.classList.add('name')
-    this.cursorEl.style.setProperty('--cursor-color', data.color)
-    this.nameEl.style.setProperty('--name-color', data.color)
+    this.cursorEl.style.setProperty('--cursor-color', data.backgroundColor)
+    this.nameEl.style.setProperty('--name-color', data.foregroundColor)
+    this.nameEl.style.setProperty('--name-background', data.backgroundColor)
     this.nameEl.innerText = data.name
     this.root.id = data.id
     this.root.appendChild(this.cursorEl)
@@ -58,6 +60,10 @@ class Cursor {
   getData = (): RemoteCursorData => this.data
   update = (data: RemoteCursorData): void => {
     this.data = data
+    this.nameEl.innerText = data.name
+    this.cursorEl.style.setProperty('--cursor-color', data.backgroundColor)
+    this.nameEl.style.setProperty('--name-color', data.foregroundColor)
+    this.nameEl.style.setProperty('--name-background', data.backgroundColor)
     this.root.style.left = `${data.x}px`
     this.root.style.top = `${data.y}px`
   }

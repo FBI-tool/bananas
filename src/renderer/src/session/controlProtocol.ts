@@ -33,7 +33,8 @@ export const APP_DOMAINS: AppDomain[] = [
 export type RosterPeer = {
   id: string
   username: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
 }
 
 type Envelope = {
@@ -51,7 +52,8 @@ export type HelloMessage = Envelope & {
   t: 'hello'
   peerId: string
   username: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
   crypto?: HelloCrypto
 }
 
@@ -127,7 +129,8 @@ export type CursorMessage = Envelope & {
   t: 'cursor'
   id: string
   name: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
   x: number
   y: number
   sourceId?: string
@@ -210,7 +213,12 @@ const isSdp = (value: unknown): value is RTCSessionDescriptionInit => {
 
 const isRosterPeer = (value: unknown): value is RosterPeer => {
   if (!isRecord(value)) return false
-  return isString(value.id) && isString(value.username) && isString(value.color)
+  return (
+    isString(value.id) &&
+    isString(value.username) &&
+    isString(value.foregroundColor) &&
+    isString(value.backgroundColor)
+  )
 }
 
 const isVoteKind = (value: unknown): value is VoteKind => value === 'presenter' || value === 'kick'
@@ -242,7 +250,8 @@ export const isControlMessage = (value: unknown): value is ControlMessage => {
       return (
         isString(value.peerId) &&
         isString(value.username) &&
-        isString(value.color) &&
+        isString(value.foregroundColor) &&
+        isString(value.backgroundColor) &&
         (value.crypto === undefined || isHelloCrypto(value.crypto))
       )
     case 'roster':
@@ -285,7 +294,8 @@ export const isControlMessage = (value: unknown): value is ControlMessage => {
       return (
         isString(value.id) &&
         isString(value.name) &&
-        isString(value.color) &&
+        isString(value.foregroundColor) &&
+        isString(value.backgroundColor) &&
         typeof value.x === 'number' &&
         typeof value.y === 'number' &&
         (value.sourceId === undefined || isString(value.sourceId))

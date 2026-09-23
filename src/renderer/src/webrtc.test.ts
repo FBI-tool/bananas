@@ -71,7 +71,8 @@ class MockRTCSessionDescription {
 
 const getSettings = vi.fn(async () => ({
   username: 'Kiwi',
-  color: '#ffffff',
+  foregroundColor: '#1a1a1a',
+  backgroundColor: '#ffffff',
   language: 'en',
   isMicrophoneEnabledOnConnect: true,
   hardwareVideoAcceleration: true,
@@ -252,7 +253,8 @@ describe('WebRTCSession', () => {
   it('acceptBonjourCall fails closed without an mls-invite when e2ee is required', async () => {
     getSettings.mockResolvedValueOnce({
       username: 'Kiwi',
-      color: '#ffffff',
+      foregroundColor: '#1a1a1a',
+      backgroundColor: '#ffffff',
       language: 'en',
       isMicrophoneEnabledOnConnect: true,
       hardwareVideoAcceleration: true,

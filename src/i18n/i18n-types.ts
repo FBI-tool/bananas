@@ -34,17 +34,17 @@ type RootTranslation = {
 	 */
 	cancel: string
 	/**
-	 * C​h​o​o​s​e​ ​a​ ​c​o​l​o​r
-	 */
-	choose_a_color: string
-	/**
 	 * C​o​d​e​ ​o​f​ ​c​o​n​d​u​c​t
 	 */
 	code_of_conduct: string
 	/**
-	 * C​o​l​o​r
+	 * F​o​r​e​g​r​o​u​n​d​ ​c​o​l​o​r
 	 */
-	color: string
+	foreground_color: string
+	/**
+	 * B​a​c​k​g​r​o​u​n​d​ ​c​o​l​o​r
+	 */
+	background_color: string
 	/**
 	 * C​o​n​n​e​c​t
 	 */
@@ -670,17 +670,17 @@ export type TranslationFunctions = {
 	 */
 	cancel: () => LocalizedString
 	/**
-	 * Choose a color
-	 */
-	choose_a_color: () => LocalizedString
-	/**
 	 * Code of conduct
 	 */
 	code_of_conduct: () => LocalizedString
 	/**
-	 * Color
+	 * Foreground color
 	 */
-	color: () => LocalizedString
+	foreground_color: () => LocalizedString
+	/**
+	 * Background color
+	 */
+	background_color: () => LocalizedString
 	/**
 	 * Connect
 	 */

@@ -19,7 +19,8 @@ type CallChatMessage = {
 type CallPeerInfo = {
   id: string
   name: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
   cameraEnabled: boolean
   isLocal: boolean
 }
@@ -44,7 +45,8 @@ type IcePayload = {
 const KiwiApi = {
   getSettings: async (): Promise<{
     username: string
-    color: string
+    foregroundColor: string
+    backgroundColor: string
     language: string
     isMicrophoneEnabledOnConnect: boolean
     hardwareVideoAcceleration: boolean

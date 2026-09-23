@@ -11,7 +11,8 @@ type IceServer = {
 
 export type SettingsData = {
   username: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
   language: string
   isMicrophoneEnabledOnConnect: boolean
   hardwareVideoAcceleration: boolean
@@ -45,7 +46,8 @@ type WindowStateKeeper = WindowState & {
 
 export const defaultSettings: SettingsData = {
   username: 'Kiwi',
-  color: '#ffffff',
+  foregroundColor: '#ffffff',
+  backgroundColor: '#0099ff',
   language: 'en',
   isMicrophoneEnabledOnConnect: true,
   hardwareVideoAcceleration: true,

@@ -14,7 +14,8 @@ describe('controlProtocol', () => {
       v: PROTOCOL_VERSION,
       peerId: 'a',
       username: 'Kiwi',
-      color: '#fff',
+      foregroundColor: '#1a1a1a',
+      backgroundColor: '#fff',
     }
     const parsed = parseControlMessage(serializeControlMessage(msg))
     expect(parsed).toEqual(msg)
@@ -24,7 +25,9 @@ describe('controlProtocol', () => {
     expect(parseControlMessage('{"t":"nope","v":1}')).toBeNull()
     expect(parseControlMessage('not-json')).toBeNull()
     expect(
-      parseControlMessage('{"t":"hello","v":2,"peerId":"a","username":"x","color":"#fff"}'),
+      parseControlMessage(
+        '{"t":"hello","v":2,"peerId":"a","username":"x","foregroundColor":"#1a1a1a","backgroundColor":"#fff"}',
+      ),
     ).toBeNull()
     expect(parseControlMessage('{"t":"peer-left","v":1}')).toBeNull()
   })
@@ -185,7 +188,8 @@ describe('controlProtocol', () => {
         v: 1,
         peerId: 'a',
         username: 'Kiwi',
-        color: '#fff',
+        foregroundColor: '#1a1a1a',
+        backgroundColor: '#fff',
         crypto: {
           e2eeProtocol: 'mls-v1',
           protocolVersion: 1,
@@ -221,7 +225,8 @@ describe('controlProtocol', () => {
           v: 1,
           peerId: 'a',
           username: 'Kiwi',
-          color: '#fff',
+          foregroundColor: '#1a1a1a',
+          backgroundColor: '#fff',
           crypto: { e2eeProtocol: 'none', protocolVersion: 1, mediaE2EE: [], fingerprint: 'x' },
         }),
       ),
@@ -295,7 +300,8 @@ describe('controlProtocol', () => {
         v: 1,
         id: 'a',
         name: 'Kiwi',
-        color: '#fff',
+        foregroundColor: '#1a1a1a',
+        backgroundColor: '#fff',
         x: 0,
         y: 0,
       }),
@@ -306,7 +312,8 @@ describe('controlProtocol', () => {
         v: 1,
         peerId: 'a',
         username: 'Kiwi',
-        color: '#fff',
+        foregroundColor: '#1a1a1a',
+        backgroundColor: '#fff',
       }),
     ).toBe(false)
   })

@@ -7,9 +7,11 @@
   import { DEFAULT_EMERGENCY_HOTKEY, type EmergencyHotkey } from './session/emergencyHotkey'
   import MacSidecarPermissions from './MacSidecarPermissions.svelte'
 
-  let colorPreviewIcon: HTMLElement | undefined = $state()
+  let foregroundPreviewIcon: HTMLElement | undefined = $state()
+  let backgroundPreviewIcon: HTMLElement | undefined = $state()
   let usernameValue = $state('Kiwi')
-  let colorValue = $state('#ffffff')
+  let foregroundValue = $state('#ffffff')
+  let backgroundValue = $state('#0099ff')
   let language = $state('en')
   const languageOptions = ['en', 'de', 'fr', 'pt-br', 'zh']
   let iceServersValue = $state('{ "urls": "stun:stun.l.google.com:19302" }')
@@ -31,7 +33,8 @@
   const isMac = window.electron.process.platform === 'darwin'
 
   const isUsernameValid = $derived(usernameValue.length > 0 && usernameValue.length < 32)
-  const isColorValid = $derived(/^#[0-9A-F]{6}$/i.test(colorValue))
+  const isForegroundValid = $derived(/^#[0-9A-F]{6}$/i.test(foregroundValue))
+  const isBackgroundValid = $derived(/^#[0-9A-F]{6}$/i.test(backgroundValue))
   const isIceServersValid = $derived(
     iceServersValue.split('\n').every((serverObject) => {
       try {
@@ -44,8 +47,11 @@
   )
 
   $effect(() => {
-    if (isColorValid) {
-      colorPreviewIcon?.style.setProperty('--color', colorValue)
+    if (isForegroundValid) {
+      foregroundPreviewIcon?.style.setProperty('--color', foregroundValue)
+    }
+    if (isBackgroundValid) {
+      backgroundPreviewIcon?.style.setProperty('--color', backgroundValue)
     }
   })
 
@@ -55,10 +61,11 @@
 
   async function onSubmit(evt: Event): Promise<void> {
     evt.preventDefault()
-    if (isUsernameValid && isColorValid && isIceServersValid) {
+    if (isUsernameValid && isForegroundValid && isBackgroundValid && isIceServersValid) {
       await window.KiwiApi.updateSettings({
         username: usernameValue,
-        color: colorValue,
+        foregroundColor: foregroundValue,
+        backgroundColor: backgroundValue,
         language,
         isMicrophoneEnabledOnConnect,
         hardwareVideoAcceleration,
@@ -96,7 +103,8 @@
     void (async (): Promise<void> => {
       const settings = await window.KiwiApi.getSettings()
       usernameValue = settings.username
-      colorValue = settings.color
+      foregroundValue = settings.foregroundColor
+      backgroundValue = settings.backgroundColor
       language = settings.language
       isMicrophoneEnabledOnConnect = settings.isMicrophoneEnabledOnConnect
       hardwareVideoAcceleration = settings.hardwareVideoAcceleration
@@ -177,12 +185,21 @@
     </fieldset>
 
     <fieldset class="fieldset">
-      <legend class="fieldset-legend">{L.color()}</legend>
-      <label class="input w-full {isColorValid ? 'input-success' : 'input-error'}">
-        <i bind:this={colorPreviewIcon} class="fas fa-palette color-preview"></i>
-        <input bind:value={colorValue} type="text" id="color" placeholder="#ffffff" />
+      <legend class="fieldset-legend">{L.foreground_color()}</legend>
+      <label class="input w-full {isForegroundValid ? 'input-success' : 'input-error'}">
+        <i bind:this={foregroundPreviewIcon} class="fas fa-palette color-preview"></i>
+        <input bind:value={foregroundValue} type="text" id="foreground_color" placeholder="#1a1a1a" />
       </label>
-      <ColorPicker bind:hex={colorValue} isTextInput={false} isAlpha={false} />
+      <ColorPicker bind:hex={foregroundValue} isTextInput={false} isAlpha={false} />
+    </fieldset>
+
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">{L.background_color()}</legend>
+      <label class="input w-full {isBackgroundValid ? 'input-success' : 'input-error'}">
+        <i bind:this={backgroundPreviewIcon} class="fas fa-palette color-preview"></i>
+        <input bind:value={backgroundValue} type="text" id="background_color" placeholder="#ffffff" />
+      </label>
+      <ColorPicker bind:hex={backgroundValue} isTextInput={false} isAlpha={false} />
     </fieldset>
 
     <fieldset class="fieldset">

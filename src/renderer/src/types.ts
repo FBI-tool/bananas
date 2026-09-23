@@ -1,7 +1,8 @@
 export type RemoteCursorData = {
   id: string
   name: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
   x: number
   y: number
   sourceId?: string
@@ -15,7 +16,8 @@ type IceServer = {
 
 export type SettingsData = {
   username: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
   language?: string
   isMicrophoneEnabledOnConnect: boolean
   hardwareVideoAcceleration: boolean

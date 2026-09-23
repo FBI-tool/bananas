@@ -9,7 +9,8 @@ export type CallChatMessage = {
 export type CallPeerInfo = {
   id: string
   name: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
   cameraEnabled: boolean
   isLocal: boolean
 }

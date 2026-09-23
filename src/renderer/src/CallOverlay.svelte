@@ -184,8 +184,8 @@
           <video class="w-full aspect-video rounded-box object-cover bg-black" autoplay playsinline muted use:attachStream={streams[peer.id]}></video>
         {:else}
           <div
-            class="w-full aspect-video rounded-box flex items-center justify-center text-xl font-bold text-white"
-            style="background: {peer.color}"
+            class="w-full aspect-video rounded-box flex items-center justify-center text-xl font-bold"
+            style="background: {peer.backgroundColor}; color: {peer.foregroundColor}"
           >
             {initial(peer.name)}
           </div>

@@ -11,7 +11,8 @@ const PING_TICK_MS = 16
 export type CursorUpdate = {
   id: string
   name: string
-  color: string
+  foregroundColor: string
+  backgroundColor: string
   x: number
   y: number
   sourceId?: string
@@ -23,7 +24,8 @@ const isCursorUpdate = (value: unknown): value is CursorUpdate => {
   return (
     typeof v.id === 'string' &&
     typeof v.name === 'string' &&
-    typeof v.color === 'string' &&
+    typeof v.foregroundColor === 'string' &&
+    typeof v.backgroundColor === 'string' &&
     typeof v.x === 'number' &&
     typeof v.y === 'number' &&
     Number.isFinite(v.x) &&
@@ -92,7 +94,10 @@ export class OverlayBridge {
       sourceId: raw.sourceId,
       normalizedPosition: { x: raw.x, y: raw.y },
       label: raw.name,
-      appearance: { color: raw.color },
+      appearance: {
+        foregroundColor: raw.foregroundColor,
+        backgroundColor: raw.backgroundColor,
+      },
       ping: this.pings.has(peerId),
       pingScale: this.pingScaleFor(peerId),
     })
@@ -101,7 +106,8 @@ export class OverlayBridge {
       this.electronWindow.webContents.send('updateRemoteCursor', {
         id: peerId,
         name: raw.name,
-        color: raw.color,
+        foregroundColor: raw.foregroundColor,
+        backgroundColor: raw.backgroundColor,
         x: Math.round(raw.x * source.bounds.width),
         y: Math.round(raw.y * source.bounds.height),
       })

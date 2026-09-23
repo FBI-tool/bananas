@@ -80,8 +80,11 @@ parse_cursors :: proc(content: json.Object, cursors: []NativeCursor) -> i32 {
 			copy_cstr(cur.label[:], label)
 		}
 		if appearance, aok := obj["appearance"].(json.Object); aok {
-			if color, cok := object_string(appearance, "color"); cok {
-				copy_cstr(cur.color[:], color)
+			if foreground, fok := object_string(appearance, "foregroundColor"); fok {
+				copy_cstr(cur.foreground[:], foreground)
+			}
+			if background, bok := object_string(appearance, "backgroundColor"); bok {
+				copy_cstr(cur.background[:], background)
 			}
 		}
 		if pos, pok := obj["normalizedPosition"].(json.Object); pok {

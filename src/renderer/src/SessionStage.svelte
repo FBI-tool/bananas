@@ -35,7 +35,8 @@
   let connectionStringIsValid = $state<boolean | null>(null)
   let connectToUserName = $state('')
   let username = $state('')
-  let color = $state('#ffffff')
+  let foregroundColor = $state('#1a1a1a')
+  let backgroundColor = $state('#ffffff')
   let inviteInFlight = false
 
   const showVideo = $derived(!room.isPresenter || Boolean(room.sessionEndedReason))
@@ -321,7 +322,8 @@
   onMount(async () => {
     const settings = await window.KiwiApi.getSettings()
     username = settings.username
-    color = settings.color
+    foregroundColor = settings.foregroundColor
+    backgroundColor = settings.backgroundColor
   })
 
   const onMicrophoneToggle = (): void => {
@@ -415,7 +417,8 @@
       y: offsetY / remoteScreen.clientHeight,
       name: username,
       id: 'cursor-' + UUID,
-      color
+      foregroundColor,
+      backgroundColor
     })
   }
 

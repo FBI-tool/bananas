@@ -238,34 +238,56 @@ static unsigned glyph_index(unsigned char c) {
   return c;
 }
 
-static void draw_label_bitmap(uint32_t *px, int w, int h, int x, int y, const char *label, uint32_t rgb) {
+static void fill_capsule(uint32_t *px, int bw, int bh, int x, int y, int rw, int rh, uint32_t rgb) {
+  if (rw < 1 || rh < 1) return;
+  float radius = (float)rh * 0.5f;
+  if (radius > (float)rw * 0.5f) radius = (float)rw * 0.5f;
+  float limit = radius * radius;
+  uint32_t ink = premul(rgb, 255);
+  for (int row = 0; row < rh; row++) {
+    float cy = (float)row + 0.5f;
+    float dy = 0.f;
+    if (cy < radius) dy = radius - cy;
+    else if (cy > (float)rh - radius) dy = cy - ((float)rh - radius);
+    for (int col = 0; col < rw; col++) {
+      float cx = (float)col + 0.5f;
+      float dx = 0.f;
+      if (cx < radius) dx = radius - cx;
+      else if (cx > (float)rw - radius) dx = cx - ((float)rw - radius);
+      if (dx * dx + dy * dy > limit) continue;
+      put_px(px, bw, bh, x + col, y + row, ink);
+    }
+  }
+}
+
+static void draw_label_bitmap(
+    uint32_t *px,
+    int w,
+    int h,
+    int x,
+    int y,
+    const char *label,
+    uint32_t foreground,
+    uint32_t background) {
   if (!label || !label[0]) return;
   int len = 0;
   while (label[len] && len < 24) len++;
-  uint32_t ink = premul(rgb, 255);
-  uint32_t outline = premul(0x000000, 230);
+  int pad_x = 4;
+  int pad_y = 2;
+  int chip_w = len * 8 + pad_x * 2;
+  int chip_h = 8 + pad_y * 2;
+  int origin_x = x - chip_w / 2;
+  fill_capsule(px, w, h, origin_x, y, chip_w, chip_h, background);
+  uint32_t ink = premul(foreground, 255);
   for (int i = 0; i < len; i++) {
     const char *row = font8x8_basic[glyph_index((unsigned char)label[i])];
-    int gx = x + i * 8;
+    int gx = origin_x + pad_x + i * 8;
+    int gy = y + pad_y;
     for (int row_i = 0; row_i < 8; row_i++) {
       unsigned bits = (unsigned char)row[row_i];
       for (int col = 0; col < 8; col++) {
         if (((bits >> col) & 1u) == 0) continue;
-        int px_x = gx + col;
-        int px_y = y + row_i;
-        for (int dy = -1; dy <= 1; dy++) {
-          for (int dx = -1; dx <= 1; dx++) {
-            if (dx == 0 && dy == 0) continue;
-            put_px(px, w, h, px_x + dx, px_y + dy, outline);
-          }
-        }
-      }
-    }
-    for (int row_i = 0; row_i < 8; row_i++) {
-      unsigned bits = (unsigned char)row[row_i];
-      for (int col = 0; col < 8; col++) {
-        if (((bits >> col) & 1u) == 0) continue;
-        put_px(px, w, h, gx + col, y + row_i, ink);
+        put_px(px, w, h, gx + col, gy + row_i, ink);
       }
     }
   }
@@ -372,10 +394,18 @@ static void blit_glyph(uint32_t *px, int w, int h, int x, int y, const Glyph *g,
   }
 }
 
-static void draw_label(uint32_t *px, int w, int h, int x, int y, const char *label, uint32_t rgb) {
+static void draw_label(
+    uint32_t *px,
+    int w,
+    int h,
+    int x,
+    int y,
+    const char *label,
+    uint32_t foreground,
+    uint32_t background) {
   if (!label || !label[0]) return;
   if (!ensure_font()) {
-    draw_label_bitmap(px, w, h, x, y, label, rgb);
+    draw_label_bitmap(px, w, h, x, y, label, foreground, background);
     return;
   }
   int px_size = font_px_for(w, h);
@@ -387,7 +417,6 @@ static void draw_label(uint32_t *px, int w, int h, int x, int y, const char *lab
   stbtt_GetFontVMetrics(&g_font, &ascent, NULL, NULL);
   float scale = stbtt_ScaleForPixelHeight(&g_font, (float)px_size);
   int baseline = (int)lroundf((float)ascent * scale);
-  int shadow = px_size >= 20 ? 2 : 1;
   Glyph *glyphs[48];
   int n = 0;
   int i = 0;
@@ -397,16 +426,23 @@ static void draw_label(uint32_t *px, int w, int h, int x, int y, const char *lab
     glyphs[n] = glyph_for(cp, px_size);
     n++;
   }
-  int pen = x;
+  if (n == 0) return;
+  int text_w = 0;
+  for (int g = 0; g < n; g++) text_w += glyphs[g]->advance;
+  if (text_w < 1) text_w = 1;
+  int pad_x = (int)lroundf((float)px_size * 0.45f);
+  int pad_y = (int)lroundf((float)px_size * 0.22f);
+  if (pad_x < 2) pad_x = 2;
+  if (pad_y < 1) pad_y = 1;
+  int chip_w = text_w + pad_x * 2;
+  int chip_h = px_size + pad_y * 2;
+  int origin_x = x - chip_w / 2;
+  fill_capsule(px, w, h, origin_x, y, chip_w, chip_h, background);
+  int pen = origin_x + pad_x;
+  int top = y + pad_y;
   for (int g = 0; g < n; g++) {
     Glyph *glyph = glyphs[g];
-    blit_glyph(px, w, h, pen + glyph->xoff + shadow, y + baseline + glyph->yoff + shadow, glyph, 0x000000, 170);
-    pen += glyph->advance;
-  }
-  pen = x;
-  for (int g = 0; g < n; g++) {
-    Glyph *glyph = glyphs[g];
-    blit_glyph(px, w, h, pen + glyph->xoff, y + baseline + glyph->yoff, glyph, rgb, 255);
+    blit_glyph(px, w, h, pen + glyph->xoff, top + baseline + glyph->yoff, glyph, foreground, 255);
     pen += glyph->advance;
   }
 }
@@ -436,7 +472,8 @@ void overlay_draw_cursors(
     if (ny > 1) ny = 1;
     int x = (int)lroundf(nx * (float)(width - 1));
     int y = (int)lroundf(ny * (float)(height - 1));
-    uint32_t rgb = overlay_parse_color(cursors[i].color);
+    uint32_t foreground = overlay_parse_color(cursors[i].foreground);
+    uint32_t background = overlay_parse_color(cursors[i].background);
     float ping_scale = cursors[i].ping_scale;
     if (ping_scale < 1.f) ping_scale = 1.f;
     if (ping_scale > 2.f) ping_scale = 2.f;
@@ -449,12 +486,12 @@ void overlay_draw_cursors(
     if (have_asset && g_alpha) {
       ox = x - g_hot_x;
       oy = y - g_hot_y;
-      draw_cursor_sprite(px, width, height, ox, oy, rgb);
+      draw_cursor_sprite(px, width, height, ox, oy, background);
     } else {
       ox = x;
       oy = y;
-      draw_pointer_fallback(px, width, height, x, y, rgb, draw_size);
+      draw_pointer_fallback(px, width, height, x, y, background, draw_size);
     }
-    draw_label(px, width, height, ox, oy + draw_size + 2, cursors[i].label, rgb);
+    draw_label(px, width, height, x, oy + draw_size + 2, cursors[i].label, foreground, background);
   }
 }

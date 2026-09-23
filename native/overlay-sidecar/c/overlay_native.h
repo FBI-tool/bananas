@@ -27,7 +27,8 @@ typedef struct {
 typedef struct {
   char id[128];
   char label[64];
-  char color[16];
+  char foreground[16];
+  char background[16];
   float x;
   float y;
   int ping;

@@ -126,7 +126,8 @@ export type RemoteCursor = {
   normalizedPosition: NormalizedPoint
   label: string
   appearance: {
-    color: string
+    foregroundColor: string
+    backgroundColor: string
   }
   ping?: boolean
   pingScale?: number
@@ -252,7 +253,13 @@ export const isRemoteCursor = (value: unknown): value is RemoteCursor => {
   if (value.sourceId !== undefined && typeof value.sourceId !== 'string') return false
   if (!isNormalizedPoint(value.normalizedPosition)) return false
   if (typeof value.label !== 'string') return false
-  if (!isRecord(value.appearance) || typeof value.appearance.color !== 'string') return false
+  if (
+    !isRecord(value.appearance) ||
+    typeof value.appearance.foregroundColor !== 'string' ||
+    typeof value.appearance.backgroundColor !== 'string'
+  ) {
+    return false
+  }
   if (value.ping !== undefined && typeof value.ping !== 'boolean') return false
   if (
     value.pingScale !== undefined &&
