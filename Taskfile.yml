@@ -29,18 +29,28 @@ tasks:
     cmds:
       - ./scripts/generate-icons.sh
     silent: true
-  dev:
+  sync:assets:
+    desc: Syncs assets from app to web
+    cmds:
+      - ./scripts/sync-assets.sh
+    silent: true
+  dev:web:
+    desc: Runs the app in development mode
+    dir: ./web
+    cmds:
+      - pnpm run dev
+    silent: true
+  dev:app:
     desc: Runs the app in development mode
     cmds:
       - pnpm run dev
     silent: true
-  dev2:
+  dev:app:new:
     desc: |
       Runs a second app in development mode,
       with a different port and isolated environment
     cmds:
-      - mkdir -p /tmp/p2p-kiwi/xdg-config-home /tmp/p2p-kiwi/xdg-data-home /tmp/p2p-kiwi/xdg-cache-home
-      - env XDG_CONFIG_HOME=/tmp/p2p-kiwi/xdg-config-home XDG_DATA_HOME=/tmp/p2p-kiwi/xdg-data-home XDG_CACHE_HOME=/tmp/p2p-kiwi/xdg-cache-home pnpm run dev
+      - ./scripts/dev.sh
     silent: true
   build:
     desc: Builds the app

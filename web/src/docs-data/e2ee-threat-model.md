@@ -28,6 +28,8 @@ connection metadata.
 
 - Anyone who can read the invite URL path/SDP
 - A compromised or curious TURN/STUN operator, or a future SFU
+  - Selective Forwarding Unit (SFU) is a media server used in WebRTC applications to forward audio,
+    video, and screen-sharing streams between participants
 - A passive network observer
 - A removed peer who still has old epoch material
 - A newly joined peer who should not read earlier traffic
@@ -37,6 +39,8 @@ connection metadata.
 
 - Application payloads and media keys are held by room members, not by
   TURN or a future SFU.
+  - Selective Forwarding Unit (SFU) is a media server used in WebRTC applications to forward audio,
+    video, and screen-sharing streams between participants
 - Membership changes rotate the MLS epoch. A removed member cannot
   decrypt later application or media traffic.
 - A joiner receives current-epoch secrets only.

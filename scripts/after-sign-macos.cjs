@@ -69,11 +69,7 @@ exports.default = async function afterSign(context) {
     [...signArgs, '--entitlements', helperEntitlements, helperApp],
     'codesign helper',
   )
-  requireCmd(
-    'codesign',
-    [...signArgs, '--entitlements', appEntitlements, appPath],
-    'codesign app',
-  )
+  requireCmd('codesign', [...signArgs, '--entitlements', appEntitlements, appPath], 'codesign app')
 
   requireCmd('codesign', ['--verify', '--strict', sidecar], 'codesign --verify sidecar')
   requireCmd(

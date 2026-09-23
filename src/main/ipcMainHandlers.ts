@@ -118,8 +118,7 @@ export const ipcMainHandlersInit = (): void => {
     if (!fromMainSession(event)) throw new Error('unauthorized')
     const parsed = parseGrant(grant)
     if (!parsed) throw new Error('invalid grant')
-    const record =
-      grant && typeof grant === 'object' ? (grant as Record<string, unknown>) : {}
+    const record = grant && typeof grant === 'object' ? (grant as Record<string, unknown>) : {}
     const generation = typeof record.generation === 'number' ? record.generation : undefined
     const sessionId = typeof record.sessionId === 'string' ? record.sessionId : undefined
     const peerId = typeof record.peerId === 'string' ? record.peerId : undefined

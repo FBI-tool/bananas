@@ -27,6 +27,7 @@
     username: string | null
     acceptRequestsUntil: string | null
     acceptCallJoins: boolean
+    image: string | null
   } | BonjourServerError | BonjourRequestProgress>({requestState: BonjourRequestProgressEnum.WAITING})
   let modalAddUserVisible = $state(false)
   let usernameDraft = $state('')
@@ -39,8 +40,10 @@
       devicePublicKey: string | null
       presence: 'available' | 'busy' | 'offline'
       acceptCallJoins: boolean
+      image: string | null
     }>
   >([])
+  let failedImages = $state<string[]>([])
   let incoming = $state<Array<{ id: string; fromUserId: string; username: string }>>([])
   let outgoing = $state<Array<{ id: string; toUserId: string; username: string }>>([])
   let ignored = $state<Array<{ userId: string; username: string }>>([])
@@ -61,6 +64,16 @@
 
   const contactName = (userId: string): string =>
     contacts.find((contact) => contact.userId === userId)?.username ?? userId
+
+  const contactImage = (userId: string): string | null =>
+    contacts.find((contact) => contact.userId === userId)?.image ?? null
+
+  const imageOk = (src: string | null | undefined): src is string =>
+    Boolean(src) && !failedImages.includes(src)
+
+  const markImageFailed = (src: string): void => {
+    if (!failedImages.includes(src)) failedImages = [...failedImages, src]
+  }
 
   const keyFor = (peerId: string | null | undefined): string | null => {
     if (!peerId) return null
@@ -156,6 +169,7 @@
       if (call) void window.KiwiApi.bonjour.rejectCall(call.callId)
       bonjourIncoming.call = null
       bonjourIncoming.callerName = ''
+      bonjourIncoming.callerImage = null
     }
     room.bindBonjour(sendSignal)
     window.KiwiApi.bonjour.onAuth((payload) => {
@@ -191,6 +205,7 @@
           peerPublicKey,
         }
         bonjourIncoming.callerName = contactName(event.fromUserId)
+        bonjourIncoming.callerImage = contactImage(event.fromUserId)
       }
       if (event.type === 'signal' && !event.plain && event.signalType && event.signalType !== 'ice') {
         toast.show('error', L.bonjour_error())
@@ -202,6 +217,7 @@
         if (event.plain.type === 'hangup') {
           bonjourIncoming.call = null
           bonjourIncoming.callerName = ''
+          bonjourIncoming.callerImage = null
           pendingSignals = []
           if (!room.bonjourCallId) {
             reset()
@@ -256,6 +272,7 @@
       clearInterval(poll)
       bonjourIncoming.call = null
       bonjourIncoming.callerName = ''
+      bonjourIncoming.callerImage = null
       bonjourIncoming.accept = (): void => {}
       bonjourIncoming.reject = (): void => {}
       void window.KiwiApi.bonjour.setPresence('offline')
@@ -274,6 +291,7 @@
     const call = bonjourIncoming.call
     if (!call) return
     bonjourIncoming.callerName = contactName(call.fromUserId)
+    bonjourIncoming.callerImage = contactImage(call.fromUserId)
   })
 
   $effect(() => {
@@ -367,6 +385,7 @@
     const call = bonjourIncoming.call
     bonjourIncoming.call = null
     bonjourIncoming.callerName = ''
+    bonjourIncoming.callerImage = null
     try {
       signalingFailed = false
       let key = call.peerPublicKey ?? keyFor(call.fromUserId)
@@ -417,6 +436,7 @@
     signalingFailed = false
     bonjourIncoming.call = null
     bonjourIncoming.callerName = ''
+    bonjourIncoming.callerImage = null
     pendingSignals = []
     outgoingCallId = null
     activePeerId = null
@@ -481,9 +501,14 @@
   </div>
 {:else}
   <div class="grid grid-cols-[auto_1fr] gap-4 mb-4 items-center">
-    <div class="avatar avatar-online avatar-placeholder">
+    <div class="avatar avatar-online {imageOk(me.image) ? '' : 'avatar-placeholder'}">
       <div class="bg-neutral text-neutral-content w-24 rounded-full">
-        <i class="fa-solid fa-user text-3xl"></i>
+        {#if imageOk(me.image)}
+          {@const src = me.image}
+          <img src={src} alt="" onerror={() => markImageFailed(src)} />
+        {:else}
+          <i class="fa-solid fa-user text-3xl"></i>
+        {/if}
       </div>
     </div>
     <div>
@@ -590,18 +615,23 @@
     <ul class="list bg-base-100 rounded-box shadow-md max-w-max">
       {#each contacts as contact (contact.userId)}
       <li class="list-row grid gap-2 items-center {contact.presence === 'offline' ? 'opacity-30' : ''}">
-        <div>
+        <div class="bonjour-menu-entry-noop">
           <span class="tooltip" data-tip={contact.presence}>
             <div class="grid grid-cols-[auto_1fr] gap-4 items-center">
-              <div class="avatar avatar-placeholder {contact.presence === 'available' ? 'avatar-online' : 'avatar-offline'} {contact.presence === 'available' ? 'text-success' : contact.presence === 'busy' ? 'text-warning' : 'text-error'}">
+              <div class="avatar {imageOk(contact.image) ? '' : 'avatar-placeholder'} {contact.presence === 'available' ? 'avatar-online' : 'avatar-offline'} {contact.presence === 'available' ? 'text-success' : contact.presence === 'busy' ? 'text-warning' : 'text-error'}">
                 <div class="w-10 rounded-full">
-                  <i class="fa-solid fa-user"></i>
+                  {#if imageOk(contact.image)}
+                    {@const src = contact.image}
+                    <img src={src} alt="" onerror={() => markImageFailed(src)} />
+                  {:else}
+                    <i class="fa-solid fa-user"></i>
+                  {/if}
                 </div>
               </div>
             </div>
           </span>
         </div>
-        <div>
+        <div class="bonjour-menu-entry-noop">
           <div>{contact.username}</div>
         </div>
         {#if contact.presence === 'available'}
@@ -681,3 +711,11 @@
   {/if}
 {/if}
 {/if}
+
+<style>
+.bonjour-menu-entry-noop:hover {
+  background: none;
+  user-select: none;
+  cursor: default;
+}
+</style>

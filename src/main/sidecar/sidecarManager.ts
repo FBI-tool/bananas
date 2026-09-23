@@ -67,8 +67,7 @@ const PERMISSION_STATES = [
 ] as const
 
 const asPermission = (value: unknown): SidecarCapabilities['permissions']['accessibility'] =>
-  typeof value === 'string' &&
-  (PERMISSION_STATES as readonly string[]).includes(value)
+  typeof value === 'string' && (PERMISSION_STATES as readonly string[]).includes(value)
     ? (value as SidecarCapabilities['permissions']['accessibility'])
     : 'unknown'
 

@@ -151,7 +151,7 @@ XInput raw events that ignore the XTEST keyboard. XTest injects via
 
 - **Windows:** `SendInput` with `MOUSEEVENTF_ABSOLUTE |
 MOUSEEVENTF_VIRTUALDESK`. The emergency chord is a low-level keyboard
-hook that ignores injected keys (`LLKHF_INJECTED`).
+  hook that ignores injected keys (`LLKHF_INJECTED`).
 - **macOS:** CoreGraphics event posts after Accessibility is granted.
   Emergency stop is a listen-only event tap and needs Input Monitoring.
   The helper does not capture the screen.

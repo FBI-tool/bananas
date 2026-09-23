@@ -162,7 +162,8 @@ const fr = {
   remote_control_request_listen: 'Autoriser la surveillance de l’entrée',
   remote_control_permission_helper:
     'Autorisez p2p.kiwi Sidecar (kiwi.p2p.desktop.sidecar) dans Réglages Système. Dessiner le curseur ne demande aucune de ces autorisations. L’accessibilité permet la saisie. La surveillance de l’entrée ne sert qu’au raccourci d’arrêt.',
-  remote_control_restart_required: 'Si vous avez déjà autorisé l’accès, quittez p2p.kiwi puis rouvrez-le.',
+  remote_control_restart_required:
+    'Si vous avez déjà autorisé l’accès, quittez p2p.kiwi puis rouvrez-le.',
   remote_control_open_accessibility: 'Ouvrir Accessibilité',
   remote_control_open_input_monitoring: 'Ouvrir Surveillance de l’entrée',
   remote_control_recheck: 'Revérifier les autorisations',

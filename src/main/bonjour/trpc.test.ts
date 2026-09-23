@@ -16,9 +16,11 @@ describe('isClosedStreamError', () => {
   it('matches a body read closed by the peer', () => {
     expect(isClosedStreamError(new Error('closed'))).toBe(true)
     expect(isClosedStreamError(new Error('closed', { cause: new Error('closed') }))).toBe(true)
-    expect(isClosedStreamError(new Error('terminated', { cause: { message: 'closed', code: 'UND_ERR_SOCKET' } }))).toBe(
-      true,
-    )
+    expect(
+      isClosedStreamError(
+        new Error('terminated', { cause: { message: 'closed', code: 'UND_ERR_SOCKET' } }),
+      ),
+    ).toBe(true)
     expect(isClosedStreamError(new Error('username taken'))).toBe(false)
   })
 })

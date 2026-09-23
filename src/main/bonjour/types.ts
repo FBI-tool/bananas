@@ -13,6 +13,7 @@ export type BonjourMe = {
   acceptRequestsUntil: string | null
   acceptCallJoins: boolean
   devicePublicKey: string | null
+  image: string | null
 }
 
 export type BonjourContact = {
@@ -21,6 +22,7 @@ export type BonjourContact = {
   devicePublicKey: string | null
   presence: PresenceStatus
   acceptCallJoins: boolean
+  image: string | null
 }
 
 export type BonjourRequest = {

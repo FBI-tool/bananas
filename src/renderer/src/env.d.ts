@@ -190,6 +190,7 @@ type KiwiApi = {
       acceptRequestsUntil: string | null
       acceptCallJoins: boolean
       devicePublicKey: string | null
+      image: string | null
     } | null>
     claimUsername: (username: string) => Promise<unknown>
     setAcceptRequests: (enabled: boolean) => Promise<{ acceptRequestsUntil: string | null }>
@@ -201,6 +202,7 @@ type KiwiApi = {
         devicePublicKey: string | null
         presence: 'available' | 'busy' | 'offline'
         acceptCallJoins: boolean
+        image: string | null
       }>
     >
     incoming: () => Promise<Array<{ id: string; fromUserId: string; username: string }>>

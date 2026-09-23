@@ -89,6 +89,22 @@
 				<div class="mb-5 text-left">
 					<CodeBlock lang="sh" code={`brew install --cask p2p-kiwi`} />
 				</div>
+				<div role="alert" class="alert alert-info mb-5">
+					<span class="fa-solid fa-circle-info mr-2"></span>
+					<span
+						>The brew package is not maintained by <a
+							class="link text-info-content link-external"
+							href="https://the-dont-be-evil-company.com">us</a
+						>, but by
+						<a class="link text-info-content link-external" href="https://github.com/krehel"
+							>Justin Krehel</a
+						>(Lead Maintainer @ Homebrew); so
+						<a
+							class="link text-info-content link-external"
+							href="https://formulae.brew.sh/cask/p2p-kiwi">inspect carefully</a
+						>, before installing.</span
+					>
+				</div>
 				<p class="mb-5">.. or download the one of the pre-built binaries here:</p>
 				<ul class="list-inside list-disc text-left">
 					<li>
@@ -144,6 +160,22 @@
 				<div class="mb-5 text-left">
 					<CodeBlock lang="sh" code={`brew install --cask p2p-kiwi`} />
 				</div>
+				<div role="alert" class="alert alert-info mb-5">
+					<span class="fa-solid fa-circle-info mr-2"></span>
+					<span
+						>The brew package is not maintained by <a
+							class="link text-info-content link-external"
+							href="https://the-dont-be-evil-company.com">us</a
+						>, but by
+						<a class="link text-info-content link-external" href="https://github.com/krehel"
+							>Justin Krehel</a
+						>(Lead Maintainer @ Homebrew); so
+						<a
+							class="link text-info-content link-external"
+							href="https://formulae.brew.sh/cask/p2p-kiwi">inspect carefully</a
+						>, before installing.</span
+					>
+				</div>
 				<p>
 					.. or download the <a
 						class="link link-info link-external"
@@ -157,6 +189,9 @@
 						>chocolatey</a
 					>):
 				</p>
+				<div class="mb-5 text-left">
+					<CodeBlock lang="powershell" code={`choco install p2p-kiwi`} />
+				</div>
 				<div role="alert" class="alert alert-warning mb-5">
 					<span class="fa fa-exclamation-triangle mr-2"></span>
 					<span
@@ -169,9 +204,6 @@
 							href="https://community.chocolatey.org/packages/p2p-kiwi">inspect carefully</a
 						>, before installing.</span
 					>
-				</div>
-				<div class="mb-5 text-left">
-					<CodeBlock lang="powershell" code={`choco install p2p-kiwi`} />
 				</div>
 				<p>
 					.. or download the <a
@@ -188,6 +220,22 @@
 				</p>
 			</div>
 			<div class={installSystem === 'aur' ? '' : 'hidden'}>
+				<p class="mb-5">
+					Via AUR, using an AUR helper like <a
+						href="https://github.com/Jguer/yay"
+						class="text-secondary">yay</a
+					>
+				</p>
+				<div class="text-left">
+					<CodeBlock lang="sh" code={`yay -S p2p-kiwi-bin`} />
+				</div>
+				<p class="mt-5 mb-5">
+					.. or via <a href="https://github.com/morganamilo/paru" class="text-secondary">paru</a>
+				</p>
+				<div class="mb-5 text-left">
+					<CodeBlock lang="sh" code={`paru -S p2p-kiwi-bin`} />
+				</div>
+
 				<div role="alert" class="alert alert-warning mb-5">
 					<span class="fa fa-exclamation-triangle mr-2"></span>
 					<span
@@ -201,21 +249,35 @@
 						>, before installing.</span
 					>
 				</div>
-				<p class="mb-5">
-					Via AUR, using an AUR helper like <a
-						href="https://github.com/Jguer/yay"
-						class="text-secondary">yay</a
-					>
-				</p>
-				<div class="text-left">
-					<CodeBlock lang="sh" code={`yay -S p2p-kiwi-bin`} />
+				<div role="alert" class="alert alert-info">
+					<span class="fa-solid fa-circle-info mr-2"></span>
+					<span
+						>As of now (2026-09-23) the AUR package doesn't install the necessary
+						<a
+							class="link text-info-content link-external"
+							href="https://raw.githubusercontent.com/dont-be-evil-company/p2p.kiwi/refs/heads/main/build/udev/70-p2p-kiwi-input.rules"
+							>udev rules</a
+						>
+						for reading keyboard input events, so remote control won't work out of the box.
+					</span>
 				</div>
-				<p class="mt-5 mb-5">
-					.. or via <a href="https://github.com/morganamilo/paru" class="text-secondary">paru</a>
-				</p>
-				<div class="text-left">
-					<CodeBlock lang="sh" code={`paru -S p2p-kiwi-bin`} />
-				</div>
+				<details class="mt-5 mb-5">
+					<summary class="cursor-pointer">Show instructions for installing udev rules</summary>
+					<p class="mt-5 mb-5 text-sm">
+						If you want to use remote control, please install the
+						<a
+							class="link text-info link-external"
+							href="https://raw.githubusercontent.com/dont-be-evil-company/p2p.kiwi/refs/heads/main/build/udev/70-p2p-kiwi-input.rules"
+							>udev rules</a
+						>
+						manually by copying the rules file to <code>/etc/udev/rules.d/</code>
+						and then
+					</p>
+					<CodeBlock
+						lang="sh"
+						code={`sudo chmod 644 /etc/udev/rules.d/70-p2p-kiwi-input.rules && sudo udevadm control --reload-rules || true && sudo udevadm trigger --subsystem-match=input --subsystem-match=misc || true`}
+					/>
+				</details>
 			</div>
 			<p>
 				<a href="/"><button class="btn btn-primary mt-8">Back home</button></a>
