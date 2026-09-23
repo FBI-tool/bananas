@@ -129,6 +129,7 @@ const pt_br = {
   bonjour_contacts: 'Contatos',
   bonjour_call: 'Ligar',
   bonjour_ask_to_join: 'Pedir para entrar',
+  bonjour_add_to_call: 'Adicionar à chamada',
   bonjour_remove: 'Remover',
   bonjour_lists: 'Listas',
   bonjour_create_list: 'Criar lista',
@@ -137,6 +138,7 @@ const pt_br = {
   bonjour_ignore: 'Ignorar',
   bonjour_unignore: 'Deixar de ignorar',
   bonjour_incoming_call: 'Chamada recebida',
+  bonjour_incoming_join: 'Quer entrar',
   bonjour_error: 'Falha na solicitação Bonjour',
   bonjour_enabled: 'Ativar Bonjour (servidor de contatos opcional)',
   bonjour_enabled_description:

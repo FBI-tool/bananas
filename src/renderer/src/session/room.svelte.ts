@@ -96,12 +96,9 @@ import {
   type MlsFrame,
 } from '../crypto/mlsWire'
 import {
-  bonjourTransport,
   cloneBonjourPayload,
-  kiwiTransport,
   type BonjourSignalPayload,
   type BonjourSignalSend,
-  type SignalingTransport,
   type SignalingTransportKind,
 } from './bonjourSignal'
 
@@ -193,10 +190,11 @@ export class Room {
   private mlsAssembler = new MlsAssembler()
   private mlsTail: Promise<void> = Promise.resolve()
   private bonjourSend: BonjourSignalSend | null = null
-  private signaling: SignalingTransport = kiwiTransport()
-  private pendingBonjourIce: RTCIceCandidateInit[] = []
-  private pendingBonjourIceOut: RTCIceCandidateInit[] = []
-  private bonjourLocalSdpSent = false
+  private bonjourCallIds = new Set<string>()
+  private linkCallId = new Map<PeerLink, string>()
+  private pendingBonjourIce = new Map<string, RTCIceCandidateInit[]>()
+  private pendingBonjourIceOut = new Map<string, RTCIceCandidateInit[]>()
+  private bonjourLocalSdpSent = new Set<string>()
   private inboundRemoteSeq: SeqTracker = {}
   private outboundMotionSeq = 0
   private outboundActionSeq = 0
@@ -621,8 +619,6 @@ export class Room {
       debugLog.warn('room', 'CreateHostUrl blocked: room full', { slots: this.occupiedSlots() })
       return null
     }
-    this.signaling = kiwiTransport()
-    this.signalingKind = 'kiwi'
     const link = await this.createLink(true)
     await this.addLocalMediaToLink(link)
     debugLog.info('room', 'CreateHostUrl adding local media', summarizePc(link.pc))
@@ -694,36 +690,67 @@ export class Room {
 
   bindBonjour(send: BonjourSignalSend): void {
     this.bonjourSend = send
-    if (this.bonjourCallId) {
-      this.signaling = bonjourTransport(send, this.bonjourCallId)
-      this.signalingKind = 'bonjour'
-    }
+    if (this.bonjourCallIds.size > 0) this.signalingKind = 'bonjour'
   }
 
-  private useBonjour(callId: string): void {
+  hasBonjourCall(callId: string): boolean {
+    return this.bonjourCallIds.has(callId)
+  }
+
+  async dropBonjourCall(callId: string): Promise<void> {
+    if (!this.bonjourCallIds.has(callId) && !this.linkForBonjourCall(callId)) return
+    await this.closeBonjourCall(callId)
+  }
+
+  private rememberBonjourCall(callId: string): void {
+    this.bonjourCallIds.add(callId)
     this.bonjourCallId = callId
     this.signalingKind = 'bonjour'
-    if (this.bonjourSend) this.signaling = bonjourTransport(this.bonjourSend, callId)
   }
 
-  private emitBonjour(payload: BonjourSignalPayload): void {
-    if (this.signaling.kind !== 'bonjour' && this.bonjourSend && this.bonjourCallId) {
-      this.signaling = bonjourTransport(this.bonjourSend, this.bonjourCallId)
-      this.signalingKind = 'bonjour'
+  private bindLinkCall(link: PeerLink, callId: string): void {
+    this.linkCallId.set(link, callId)
+    this.rememberBonjourCall(callId)
+  }
+
+  private forgetBonjourCall(callId: string): void {
+    this.bonjourCallIds.delete(callId)
+    this.pendingBonjourIce.delete(callId)
+    this.pendingBonjourIceOut.delete(callId)
+    this.bonjourLocalSdpSent.delete(callId)
+    for (const [link, id] of this.linkCallId) {
+      if (id === callId) this.linkCallId.delete(link)
     }
-    if (this.signaling.kind !== 'bonjour') {
+    if (this.bonjourCallId === callId) {
+      this.bonjourCallId = this.bonjourCallIds.values().next().value ?? null
+    }
+    if (this.bonjourCallIds.size === 0) this.signalingKind = 'kiwi'
+  }
+
+  private linkForBonjourCall(callId: string): PeerLink | undefined {
+    const direct = this.links.get(callId)
+    if (direct) return direct
+    for (const link of this.links.values()) {
+      if (link.pendingId === callId) return link
+    }
+    return undefined
+  }
+
+  private emitBonjour(callId: string, payload: BonjourSignalPayload): void {
+    if (!this.bonjourSend) {
       if (payload.type === 'offer' || payload.type === 'answer' || payload.type === 'mls-invite') {
         throw new Error('bonjour signaling is not attached')
       }
       return
     }
-    this.signaling.send(cloneBonjourPayload(payload))
+    this.signalingKind = 'bonjour'
+    this.bonjourSend(callId, cloneBonjourPayload(payload))
     if (payload.type !== 'offer' && payload.type !== 'answer') return
-    this.bonjourLocalSdpSent = true
-    const queued = this.pendingBonjourIceOut
-    this.pendingBonjourIceOut = []
+    this.bonjourLocalSdpSent.add(callId)
+    const queued = this.pendingBonjourIceOut.get(callId) ?? []
+    this.pendingBonjourIceOut.delete(callId)
     for (const candidate of queued) {
-      this.signaling.send(cloneBonjourPayload({ type: 'ice', candidate }))
+      this.bonjourSend(callId, cloneBonjourPayload({ type: 'ice', candidate }))
     }
   }
 
@@ -734,28 +761,29 @@ export class Room {
       await this.initHostCrypto()
       if (!this.invite) throw new Error('e2ee is required but host crypto init failed')
     }
-    this.bonjourLocalSdpSent = false
-    this.pendingBonjourIceOut = []
-    this.useBonjour(opts.callId)
+    this.bonjourLocalSdpSent.delete(opts.callId)
+    this.pendingBonjourIceOut.set(opts.callId, [])
+    this.rememberBonjourCall(opts.callId)
     const link = await this.createLink(true, opts.peerId, opts.callId)
+    this.bindLinkCall(link, opts.callId)
     await this.addLocalMediaToLink(link)
     this.links.set(link.pendingId, link)
     const offer = await link.createLocalOffer()
     if (this.invite) {
-      this.emitBonjour({ type: 'mls-invite', invite: this.invite })
+      this.emitBonjour(opts.callId, { type: 'mls-invite', invite: this.invite })
     }
-    this.emitBonjour({ type: 'offer', sdp: offer, invite: this.invite })
-    await this.flushBonjourIce(link)
+    this.emitBonjour(opts.callId, { type: 'offer', sdp: offer, invite: this.invite })
+    await this.flushBonjourIce(opts.callId, link)
   }
 
   async requestBonjourJoin(opts: { callId: string; peerId: string }): Promise<void> {
-    this.useBonjour(opts.callId)
     const handshake = this.handshakeLink()
     if (!handshake) throw new Error('viewer handshake is not ready')
     this.links.delete(handshake.pendingId)
     handshake.remotePeerId = opts.peerId
     this.links.set(opts.callId, handshake)
     this.handshakeKey = opts.callId
+    this.bindLinkCall(handshake, opts.callId)
   }
 
   async acceptBonjourCall(opts: {
@@ -764,9 +792,9 @@ export class Room {
     offer: RTCSessionDescriptionInit
     invite?: InviteCrypto | null
   }): Promise<void> {
-    this.bonjourLocalSdpSent = false
-    this.pendingBonjourIceOut = []
-    this.useBonjour(opts.callId)
+    this.bonjourLocalSdpSent.delete(opts.callId)
+    this.pendingBonjourIceOut.set(opts.callId, [])
+    this.rememberBonjourCall(opts.callId)
     if (opts.invite) {
       if (
         shouldPrepareJoinerCrypto({
@@ -788,30 +816,35 @@ export class Room {
     handshake.remotePeerId = opts.peerId
     this.links.set(opts.callId, handshake)
     this.handshakeKey = opts.callId
+    this.bindLinkCall(handshake, opts.callId)
     if (!opts.offer?.type || !opts.offer.sdp) {
       throw new Error('bonjour offer is missing SDP')
     }
     await handshake.setRemoteDescription(cloneSessionDescription(opts.offer))
     await this.addLocalMediaToLink(handshake)
     const answer = await handshake.createLocalAnswer()
-    this.emitBonjour({ type: 'answer', sdp: answer })
-    await this.flushBonjourIce(handshake)
+    this.emitBonjour(opts.callId, { type: 'answer', sdp: answer })
+    await this.flushBonjourIce(opts.callId, handshake)
   }
 
-  async applyBonjourSignal(payload: BonjourSignalPayload): Promise<void> {
-    const link =
-      (this.bonjourCallId ? this.links.get(this.bonjourCallId) : undefined) ?? this.handshakeLink()
+  async applyBonjourSignal(callId: string, payload: BonjourSignalPayload): Promise<void> {
+    if (payload.type === 'hangup') {
+      if (!this.bonjourCallIds.has(callId) && !this.linkForBonjourCall(callId)) return
+      await this.closeBonjourCall(callId)
+      return
+    }
+    const link = this.linkForBonjourCall(callId)
     if (payload.type === 'mls-invite' && payload.invite) {
       if (!this.invite) await this.initJoinerCrypto(payload.invite)
       return
     }
     if (payload.type === 'offer' && payload.sdp) {
-      if (!this.bonjourCallId || !link) return
+      if (!link) return
       if (link.pc.remoteDescription) return
       const offer = cloneBonjourPayload(payload).sdp
       if (!offer?.type || !offer.sdp) return
       await this.acceptBonjourCall({
-        callId: this.bonjourCallId,
+        callId,
         peerId: link.remotePeerId ?? '',
         offer,
         invite: payload.invite ?? this.invite,
@@ -824,12 +857,14 @@ export class Room {
       const answer = cloneBonjourPayload(payload).sdp
       if (!answer?.type || !answer.sdp) throw new Error('bonjour answer is missing SDP')
       await link.setRemoteDescription(cloneSessionDescription(answer))
-      await this.flushBonjourIce(link)
+      await this.flushBonjourIce(callId, link)
       return
     }
     if (payload.type === 'ice' && payload.candidate) {
       if (!link || !link.pc.remoteDescription) {
-        this.pendingBonjourIce.push(payload.candidate)
+        const queued = this.pendingBonjourIce.get(callId) ?? []
+        queued.push(payload.candidate)
+        this.pendingBonjourIce.set(callId, queued)
         return
       }
       try {
@@ -837,19 +872,22 @@ export class Room {
       } catch {
         // duplicate or out-of-order trickle ICE
       }
-      return
-    }
-    if (payload.type === 'hangup') {
-      if (!this.bonjourCallId && this.links.size === 0) return
-      this.signaling = kiwiTransport()
-      this.signalingKind = 'kiwi'
-      await this.leave()
     }
   }
 
-  private async flushBonjourIce(link: PeerLink): Promise<void> {
-    const queued = this.pendingBonjourIce
-    this.pendingBonjourIce = []
+  private async closeBonjourCall(callId: string): Promise<void> {
+    const link = this.linkForBonjourCall(callId)
+    this.forgetBonjourCall(callId)
+    if (link) await this.handleRemoteDeparted(link, false)
+    if (this.links.size > 0 || this.bonjourCallIds.size > 0) return
+    const ended = this.sessionEndedReason
+    await this.teardown(true)
+    if (ended) this.sessionEndedReason = ended
+  }
+
+  private async flushBonjourIce(callId: string, link: PeerLink): Promise<void> {
+    const queued = this.pendingBonjourIce.get(callId) ?? []
+    this.pendingBonjourIce.delete(callId)
     for (const candidate of queued) {
       try {
         await link.addIceCandidate(candidate)
@@ -938,12 +976,15 @@ export class Room {
     await this.leave()
   }
 
-  async leave(): Promise<void> {
-    const callId = this.bonjourCallId
-    if (this.signaling.kind === 'bonjour') {
-      this.signaling.send({ type: 'hangup' })
+  private hangupBonjourCalls(): void {
+    for (const callId of [...this.bonjourCallIds]) {
+      this.emitBonjour(callId, { type: 'hangup' })
+      void window.KiwiApi.bonjour?.hangup?.(callId).catch(() => undefined)
     }
-    if (callId) void window.KiwiApi.bonjour?.hangup?.(callId).catch(() => undefined)
+  }
+
+  async leave(): Promise<void> {
+    this.hangupBonjourCalls()
     if (this.isCoordinator) {
       const successor = nextCoordinator({
         remainingPeerIds: this.establishedRemoteIds(),
@@ -965,6 +1006,7 @@ export class Room {
   }
 
   async endSession(): Promise<void> {
+    this.hangupBonjourCalls()
     this.broadcast({
       t: 'session-ended',
       v: PROTOCOL_VERSION,
@@ -1447,15 +1489,16 @@ export class Room {
           )
         },
         onIceCandidate: (candidate) => {
-          if (this.signaling.kind !== 'bonjour' || !this.bonjourCallId) return
-          const bonjourLink = this.links.get(this.bonjourCallId)
-          if (bonjourLink !== link && link.pendingId !== this.bonjourCallId) return
+          const callId = this.linkCallId.get(link)
+          if (!callId) return
           if (!candidate?.candidate) return
-          if (!this.bonjourLocalSdpSent) {
-            this.pendingBonjourIceOut.push(candidate)
+          if (!this.bonjourLocalSdpSent.has(callId)) {
+            const queued = this.pendingBonjourIceOut.get(callId) ?? []
+            queued.push(candidate)
+            this.pendingBonjourIceOut.set(callId, queued)
             return
           }
-          this.emitBonjour({ type: 'ice', candidate })
+          this.emitBonjour(callId, { type: 'ice', candidate })
         },
         onRemoteInputMotion: (raw) => {
           void this.onRemoteInputRaw(link, raw, 'motion')
@@ -2890,11 +2933,12 @@ export class Room {
     this.invite = null
     this.joinAuth = ''
     this.bonjourCallId = null
-    this.signaling = kiwiTransport()
+    this.bonjourCallIds.clear()
+    this.linkCallId.clear()
     this.signalingKind = 'kiwi'
-    this.pendingBonjourIce = []
-    this.pendingBonjourIceOut = []
-    this.bonjourLocalSdpSent = false
+    this.pendingBonjourIce.clear()
+    this.pendingBonjourIceOut.clear()
+    this.bonjourLocalSdpSent.clear()
     this.seenFingerprints.clear()
     this.pendingKeyPackages.clear()
     this.pendingE2ee.clear()

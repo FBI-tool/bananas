@@ -41,7 +41,9 @@
             </div>
           </div>
           <div>
-            <h1 class="text-xl font-bold">{L.bonjour_incoming_call()}</h1>
+            <h1 class="text-xl font-bold">
+              {bonjourIncoming.call?.kind === 'join' ? L.bonjour_incoming_join() : L.bonjour_incoming_call()}
+            </h1>
             <p class="py-6">
               {bonjourIncoming.callerName}
             </p>

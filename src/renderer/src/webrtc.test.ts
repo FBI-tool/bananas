@@ -10,6 +10,8 @@ class MockDataChannel {
   }
 }
 
+const peerConnections: MockRTCPeerConnection[] = []
+
 class MockRTCPeerConnection {
   localDescription: RTCSessionDescriptionInit | null = null
   remoteDescription: RTCSessionDescriptionInit | null = null
@@ -52,6 +54,10 @@ class MockRTCPeerConnection {
   addEventListener = vi.fn()
   removeEventListener = vi.fn()
   close = vi.fn()
+
+  constructor() {
+    peerConnections.push(this)
+  }
 }
 
 class MockRTCSessionDescription {
@@ -78,6 +84,7 @@ const getSettings = vi.fn(async () => ({
 }))
 
 beforeEach(() => {
+  peerConnections.length = 0
   vi.stubGlobal('RTCPeerConnection', MockRTCPeerConnection)
   vi.stubGlobal('RTCSessionDescription', MockRTCSessionDescription)
   vi.stubGlobal('RTCRtpSender', { prototype: {} })
@@ -174,7 +181,7 @@ describe('WebRTCSession', () => {
     const session = new WebRTCSession()
     await session.Setup()
     const sent: Array<{ type: string }> = []
-    session.bindBonjour((payload) => sent.push(payload))
+    session.bindBonjour((_callId, payload) => sent.push(payload))
     const waitIce = vi.spyOn(PeerLink.prototype, 'waitForIceGatheringComplete')
     await session.startBonjourCall({ callId: 'call-1', peerId: 'peer-1' })
     expect(session.bonjourCallId).toBe('call-1')
@@ -196,7 +203,7 @@ describe('WebRTCSession', () => {
     const video = document.createElement('video') as HTMLVideoElement
     await session.Setup(video)
     const sent: Array<{ type: string }> = []
-    session.bindBonjour((payload) => sent.push(payload))
+    session.bindBonjour((_callId, payload) => sent.push(payload))
     await session.requestBonjourJoin({ callId: 'join-1', peerId: 'host-1' })
     expect(session.bonjourCallId).toBe('join-1')
     expect(session.signalingKind).toBe('bonjour')
@@ -210,7 +217,7 @@ describe('WebRTCSession', () => {
     const video = document.createElement('video') as HTMLVideoElement
     await session.Setup(video)
     const sent: Array<{ type: string }> = []
-    session.bindBonjour((payload) => sent.push(payload))
+    session.bindBonjour((_callId, payload) => sent.push(payload))
     await session.acceptBonjourCall({
       callId: 'call-3',
       peerId: 'host-1',
@@ -229,7 +236,7 @@ describe('WebRTCSession', () => {
     const { WebRTCSession } = await import('./webrtc.svelte')
     const session = new WebRTCSession()
     const sent: Array<{ type: string }> = []
-    session.bindBonjour((payload) => sent.push(payload))
+    session.bindBonjour((_callId, payload) => sent.push(payload))
     const video = document.createElement('video') as HTMLVideoElement
     await session.Setup(video)
     await session.acceptBonjourCall({
@@ -269,5 +276,83 @@ describe('WebRTCSession', () => {
         invite: null,
       }),
     ).rejects.toThrow(/invite is missing/)
+  })
+
+  const emitIce = (pc: MockRTCPeerConnection, candidate: string): void => {
+    pc.onicecandidate?.({
+      candidate: {
+        toJSON: () => ({ candidate, sdpMid: '0', sdpMLineIndex: 0 }),
+      },
+    } as unknown as RTCPeerConnectionIceEvent)
+  }
+
+  it('routes a second Bonjour call without stealing the first call ICE', async () => {
+    const { WebRTCSession } = await import('./webrtc.svelte')
+    const session = new WebRTCSession()
+    await session.Setup(null, { captureDisplay: false })
+    const sent: Array<{ callId: string; type: string; candidate?: string }> = []
+    session.bindBonjour((callId, payload) => {
+      sent.push({ callId, type: payload.type, candidate: payload.candidate?.candidate })
+    })
+    await session.startBonjourCall({ callId: 'call-1', peerId: 'peer-1' })
+    await session.startBonjourCall({ callId: 'call-2', peerId: 'peer-2' })
+    expect(sent.filter((item) => item.type === 'offer').map((item) => item.callId)).toEqual([
+      'call-1',
+      'call-2',
+    ])
+    emitIce(peerConnections[0], 'ice-1')
+    emitIce(peerConnections[1], 'ice-2')
+    expect(sent.filter((item) => item.type === 'ice')).toEqual([
+      { callId: 'call-1', type: 'ice', candidate: 'ice-1' },
+      { callId: 'call-2', type: 'ice', candidate: 'ice-2' },
+    ])
+  })
+
+  it('applies a Bonjour answer to the matching call', async () => {
+    const { WebRTCSession } = await import('./webrtc.svelte')
+    const session = new WebRTCSession()
+    await session.Setup(null, { captureDisplay: false })
+    session.bindBonjour(() => undefined)
+    await session.startBonjourCall({ callId: 'call-1', peerId: 'peer-1' })
+    await session.startBonjourCall({ callId: 'call-2', peerId: 'peer-2' })
+    await session.applyBonjourSignal('call-2', {
+      type: 'answer',
+      sdp: { type: 'answer', sdp: 'v=0' },
+    })
+    expect(peerConnections[0].remoteDescription).toBeNull()
+    expect(peerConnections[1].remoteDescription?.type).toBe('answer')
+  })
+
+  it('keeps Bonjour signaling when copying a kiwi invite', async () => {
+    const { WebRTCSession } = await import('./webrtc.svelte')
+    const session = new WebRTCSession()
+    await session.Setup(null, { captureDisplay: false })
+    const sent: Array<{ callId: string; type: string }> = []
+    session.bindBonjour((callId, payload) => sent.push({ callId, type: payload.type }))
+    await session.startBonjourCall({ callId: 'call-1', peerId: 'peer-1' })
+    sent.length = 0
+    const url = await session.CreateHostUrl({ username: 'Kiwi' })
+    expect(url?.startsWith('kiwi://h/')).toBe(true)
+    expect(session.signalingKind).toBe('bonjour')
+    emitIce(peerConnections[0], 'still-1')
+    expect(sent).toEqual([{ callId: 'call-1', type: 'ice' }])
+  })
+
+  it('hangs up one Bonjour call without closing the other link', async () => {
+    const { WebRTCSession } = await import('./webrtc.svelte')
+    const session = new WebRTCSession()
+    await session.Setup(null, { captureDisplay: false })
+    const sent: Array<{ callId: string; type: string }> = []
+    session.bindBonjour((callId, payload) => sent.push({ callId, type: payload.type }))
+    await session.startBonjourCall({ callId: 'call-1', peerId: 'peer-1' })
+    await session.startBonjourCall({ callId: 'call-2', peerId: 'peer-2' })
+    await session.applyBonjourSignal('call-2', { type: 'hangup' })
+    expect(peerConnections[0].close).not.toHaveBeenCalled()
+    expect(peerConnections[1].close).toHaveBeenCalled()
+    expect(session.hasBonjourCall('call-1')).toBe(true)
+    expect(session.hasBonjourCall('call-2')).toBe(false)
+    sent.length = 0
+    emitIce(peerConnections[0], 'after-hangup')
+    expect(sent).toEqual([{ callId: 'call-1', type: 'ice' }])
   })
 })

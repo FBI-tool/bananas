@@ -125,6 +125,7 @@ const zh = {
   bonjour_contacts: '联系人',
   bonjour_call: '呼叫',
   bonjour_ask_to_join: '请求加入',
+  bonjour_add_to_call: '加入通话',
   bonjour_remove: '移除',
   bonjour_lists: '列表',
   bonjour_create_list: '创建列表',
@@ -133,6 +134,7 @@ const zh = {
   bonjour_ignore: '忽略',
   bonjour_unignore: '取消忽略',
   bonjour_incoming_call: '收到 来电',
+  bonjour_incoming_join: '请求加入通话',
   bonjour_error: 'Bonjour 请求失败',
   bonjour_enabled: '启用 Bonjour（可选联系人服务器）',
   bonjour_enabled_description:

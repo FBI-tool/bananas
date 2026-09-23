@@ -4,18 +4,26 @@ import {
   cloneBonjourPayload,
   kiwiTransport,
   mergeIncomingCallSignal,
+  shouldNotifyIncomingCall,
 } from './bonjourSignal'
 
 describe('signaling transport', () => {
   it('keeps clipboard kiwi distinct from Bonjour trickle', () => {
     expect(kiwiTransport().kind).toBe('kiwi')
     const sent: string[] = []
-    const transport = bonjourTransport((payload) => sent.push(payload.type), 'call-1')
+    const transport = bonjourTransport((callId, payload) => sent.push(`${callId}:${payload.type}`))
     expect(transport.kind).toBe('bonjour')
     if (transport.kind !== 'bonjour') throw new Error('expected bonjour transport')
-    expect(transport.callId).toBe('call-1')
-    transport.send({ type: 'ice' })
-    expect(sent).toEqual(['ice'])
+    transport.send('call-1', { type: 'ice' })
+    expect(sent).toEqual(['call-1:ice'])
+  })
+})
+
+describe('incoming call notification', () => {
+  it('shows a join request to a host who is already in a session', () => {
+    expect(shouldNotifyIncomingCall({ inSession: false, kind: 'start' })).toBe(true)
+    expect(shouldNotifyIncomingCall({ inSession: true, kind: 'start' })).toBe(false)
+    expect(shouldNotifyIncomingCall({ inSession: true, kind: 'join' })).toBe(true)
   })
 })
 

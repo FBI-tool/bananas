@@ -7,6 +7,7 @@
   import { bonjourIncoming } from './bonjourIncoming.svelte'
   import {
     mergeIncomingCallSignal,
+    shouldNotifyIncomingCall,
     type BonjourSignalPayload,
   } from './session/bonjourSignal'
   import { applyContactPresence, isPresenceStatus } from './bonjourPresence'
@@ -51,11 +52,11 @@
   let sessionStarted = $state(false)
   let outgoingCallId: string | null = null
   let peerKeys = new Map<string, string>()
-  let activePeerId = $state<string | null>(null)
+  let callPeers = new Map<string, { peerId: string; publicKey: string }>()
+  let closedCalls = new Set<string>()
   let signalingFailed = false
   let lastPresence: 'available' | 'busy' | null = null
   let signalQueue: Promise<void> = Promise.resolve()
-  let acceptSignals = true
   let pendingSignals: Array<{
     callId?: string
     senderId?: string
@@ -106,11 +107,11 @@
     return error.cause instanceof Error && error.cause.message === 'closed'
   }
 
-  const sendSignal = (payload: BonjourSignalPayload): void => {
-    if (payload.type === 'hangup') acceptSignals = false
-    if (!acceptSignals && payload.type !== 'hangup') return
-    const callId = room.bonjourCallId
-    const key = keyFor(activePeerId)
+  const sendSignal = (callId: string, payload: BonjourSignalPayload): void => {
+    if (payload.type === 'hangup') closedCalls.add(callId)
+    if (closedCalls.has(callId) && payload.type !== 'hangup') return
+    const peer = callPeers.get(callId)
+    const key = peer?.publicKey ?? keyFor(peer?.peerId)
     if (!callId || !key) {
       if (payload.type === 'offer' || payload.type === 'answer' || payload.type === 'mls-invite') {
         signalingFailed = true
@@ -119,7 +120,7 @@
       return
     }
     const post = async (): Promise<void> => {
-      if (!acceptSignals && payload.type !== 'hangup') return
+      if (closedCalls.has(callId) && payload.type !== 'hangup') return
       await window.KiwiApi.bonjour.signal(callId, payload.type, key, payload)
     }
     if (payload.type === 'ice') {
@@ -135,21 +136,27 @@
     })
   }
 
-  const bindPeer = (peerId: string, publicKey?: string | null): void => {
-    acceptSignals = true
-    activePeerId = peerId
-    if (publicKey) peerKeys.set(peerId, publicKey)
+  const registerCall = (callId: string, peerId: string, publicKey: string): void => {
+    closedCalls.delete(callId)
+    peerKeys.set(peerId, publicKey)
+    callPeers.set(callId, { peerId, publicKey })
     room.bindBonjour(sendSignal)
   }
+
+  const callIsReady = (callId?: string): boolean =>
+    Boolean(callId && (callPeers.has(callId) || room.hasBonjourCall(callId)))
 
   const applyPlainSignal = (event: {
     callId?: string
     senderId?: string
     plain: BonjourSignalPayload
   }): void => {
-    if (event.callId && room.bonjourCallId && event.callId !== room.bonjourCallId) return
-    if (event.senderId) activePeerId = event.senderId
-    void room.applyBonjourSignal(event.plain).catch((error) => {
+    if (!event.callId) return
+    if (event.senderId && !callPeers.has(event.callId)) {
+      const key = keyFor(event.senderId)
+      if (key) callPeers.set(event.callId, { peerId: event.senderId, publicKey: key })
+    }
+    void room.applyBonjourSignal(event.callId, event.plain).catch((error) => {
       toast.show('error', error instanceof Error ? error.message : L.bonjour_error())
     })
   }
@@ -157,7 +164,24 @@
   const flushPendingSignals = (): void => {
     const queued = pendingSignals
     pendingSignals = []
-    for (const event of queued) applyPlainSignal(event)
+    for (const event of queued) {
+      if (callIsReady(event.callId)) applyPlainSignal(event)
+      else if (event.plain.type !== 'hangup') pendingSignals.push(event)
+    }
+  }
+
+  const maybeResetAfterCallClosed = (): void => {
+    if (appState.sessionSource !== 'bonjour') return
+    if (room.isLive || room.sessionEndedReason) return
+    if (callPeers.size > 0 || room.bonjourCallId) return
+    if (sessionStarted) reset()
+  }
+
+  const closeCall = (callId: string): void => {
+    callPeers.delete(callId)
+    closedCalls.add(callId)
+    pendingSignals = pendingSignals.filter((item) => item.callId !== callId)
+    void room.dropBonjourCall(callId).then(() => maybeResetAfterCallClosed())
   }
 
   onMount(() => {
@@ -191,7 +215,8 @@
         plain?: BonjourSignalPayload | null
       }
       if (event.type === 'incoming-call' && event.callId && event.fromUserId) {
-        if (sessionStarted || room.isLive) return
+        const kind = String(event.kind ?? 'start')
+        if (!shouldNotifyIncomingCall({ inSession: sessionStarted || room.isLive, kind })) return
         if (bonjourIncoming.call?.callId === event.callId) return
         const peerPublicKey =
           (typeof event.devicePublicKey === 'string' && event.devicePublicKey) ||
@@ -201,7 +226,7 @@
         bonjourIncoming.call = {
           callId: event.callId,
           fromUserId: event.fromUserId,
-          kind: String(event.kind ?? 'start'),
+          kind,
           peerPublicKey,
         }
         bonjourIncoming.callerName = contactName(event.fromUserId)
@@ -215,23 +240,24 @@
           bonjourIncoming.call = mergeIncomingCallSignal(bonjourIncoming.call, event)
         }
         if (event.plain.type === 'hangup') {
-          bonjourIncoming.call = null
-          bonjourIncoming.callerName = ''
-          bonjourIncoming.callerImage = null
-          pendingSignals = []
-          if (!room.bonjourCallId) {
-            reset()
-            return
+          if (!event.callId || bonjourIncoming.call?.callId === event.callId) {
+            bonjourIncoming.call = null
+            bonjourIncoming.callerName = ''
+            bonjourIncoming.callerImage = null
           }
+          if (event.callId && (callPeers.has(event.callId) || room.hasBonjourCall(event.callId))) {
+            closeCall(event.callId)
+          } else {
+            maybeResetAfterCallClosed()
+          }
+          return
         }
-        if (!room.bonjourCallId) {
-          if (event.plain.type !== 'hangup') {
-            pendingSignals.push({
-              callId: event.callId,
-              senderId: event.senderId,
-              plain: event.plain,
-            })
-          }
+        if (!callIsReady(event.callId)) {
+          pendingSignals.push({
+            callId: event.callId,
+            senderId: event.senderId,
+            plain: event.plain,
+          })
           return
         }
         applyPlainSignal({
@@ -239,10 +265,13 @@
           senderId: event.senderId,
           plain: event.plain,
         })
-        if (event.plain.type === 'hangup') reset()
       }
-      if (event.type === 'call-accepted' && event.callId && room.bonjourCallId === event.callId) {
+      if (event.type === 'call-accepted' && event.callId && callPeers.has(event.callId)) {
         void refresh()
+      }
+      if (event.type === 'call-rejected' && event.callId) {
+        if (callPeers.has(event.callId) || room.hasBonjourCall(event.callId)) closeCall(event.callId)
+        else maybeResetAfterCallClosed()
       }
       if (event.type === 'contact-request' || event.type === 'contact-accepted') {
         void refresh()
@@ -333,6 +362,7 @@
   }
 
   const onCall = async (contact: (typeof contacts)[0], kind: 'start' | 'join'): Promise<void> => {
+    let startedId: string | null = null
     try {
       if (!contact.devicePublicKey) {
         throw new Error('contact has no encryption key yet; ask them to sign in again')
@@ -362,8 +392,9 @@
         appState.beginSession('bonjour', reset)
       }
       const started = await window.KiwiApi.bonjour.startCall(contact.userId, kind)
+      startedId = started.callId
       outgoingCallId = started.callId
-      bindPeer(contact.userId, contact.devicePublicKey)
+      registerCall(started.callId, contact.userId, contact.devicePublicKey)
       if (kind === 'start') {
         await room.startBonjourCall({ callId: started.callId, peerId: contact.userId })
         flushPendingSignals()
@@ -373,7 +404,11 @@
       flushPendingSignals()
     } catch (error) {
       toast.show('error', error instanceof Error ? error.message : L.bonjour_error())
-      if (sessionStarted && !room.isLive) {
+      if (startedId && (callPeers.has(startedId) || room.hasBonjourCall(startedId))) {
+        void window.KiwiApi.bonjour.hangup(startedId).catch(() => undefined)
+        closeCall(startedId)
+      }
+      if (sessionStarted && !room.isLive && appState.sessionSource === 'bonjour') {
         await room.Disconnect()
         reset()
       }
@@ -397,15 +432,18 @@
         throw new Error('contact has no encryption key yet; ask them to sign in again')
       }
       await window.KiwiApi.bonjour.acceptCall(call.callId)
+      registerCall(call.callId, call.fromUserId, key)
       if (room.isLive || (call.kind === 'join' && appState.isHosting)) {
-        bindPeer(call.fromUserId, key)
         await room.startBonjourCall({ callId: call.callId, peerId: call.fromUserId })
         flushPendingSignals()
         return
       }
       const setup = await room.Setup(document.createElement('video'))
-      if (setup !== 'ok') return
-      bindPeer(call.fromUserId, key)
+      if (setup !== 'ok') {
+        void window.KiwiApi.bonjour.hangup(call.callId).catch(() => undefined)
+        closeCall(call.callId)
+        return
+      }
       appState.isWatching = true
       appState.navigationEnabled = false
       sessionStarted = true
@@ -423,6 +461,11 @@
       flushPendingSignals()
     } catch (error) {
       toast.show('error', error instanceof Error ? error.message : L.bonjour_error())
+      if (room.isLive && (callPeers.has(call.callId) || room.hasBonjourCall(call.callId))) {
+        void window.KiwiApi.bonjour.hangup(call.callId).catch(() => undefined)
+        closeCall(call.callId)
+        return
+      }
       if (sessionStarted && !room.isLive) {
         await room.Disconnect()
         reset()
@@ -431,7 +474,6 @@
   }
 
   const reset = (): void => {
-    acceptSignals = true
     sessionStarted = false
     signalingFailed = false
     bonjourIncoming.call = null
@@ -439,7 +481,8 @@
     bonjourIncoming.callerImage = null
     pendingSignals = []
     outgoingCallId = null
-    activePeerId = null
+    callPeers.clear()
+    closedCalls.clear()
     lastPresence = null
     appState.navigationEnabled = true
     appState.isHosting = false
@@ -450,8 +493,9 @@
   }
 
   const onDisconnectClick = async (): Promise<void> => {
-    const callId = room.bonjourCallId ?? outgoingCallId
-    if (callId) void window.KiwiApi.bonjour.hangup(callId).catch(() => undefined)
+    const ids = new Set<string>(callPeers.keys())
+    if (outgoingCallId) ids.add(outgoingCallId)
+    for (const id of ids) void window.KiwiApi.bonjour.hangup(id).catch(() => undefined)
     await room.Disconnect()
     reset()
   }
@@ -634,7 +678,16 @@
         <div class="bonjour-menu-entry-noop">
           <div>{contact.username}</div>
         </div>
-        {#if contact.presence === 'available'}
+        {#if contact.presence === 'available' && room.isLive && room.isCoordinator}
+          <button
+            class="btn btn-square btn-ghost hover:btn-success"
+            aria-label={L.bonjour_add_to_call()}
+            title={L.bonjour_add_to_call()}
+            onclick={() => onCall(contact, 'start')}
+          >
+            <i class="fas fa-user-plus"></i>
+          </button>
+        {:else if contact.presence === 'available'}
           <button
             class="btn btn-square btn-ghost hover:btn-success"
             aria-label={L.bonjour_call()}

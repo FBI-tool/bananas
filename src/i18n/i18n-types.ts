@@ -504,6 +504,10 @@ type RootTranslation = {
 	 */
 	bonjour_ask_to_join: string
 	/**
+	 * A​d​d​ ​t​o​ ​c​a​l​l
+	 */
+	bonjour_add_to_call: string
+	/**
 	 * R​e​m​o​v​e
 	 */
 	bonjour_remove: string
@@ -535,6 +539,10 @@ type RootTranslation = {
 	 * I​n​c​o​m​i​n​g​ ​c​a​l​l
 	 */
 	bonjour_incoming_call: string
+	/**
+	 * W​a​n​t​s​ ​t​o​ ​j​o​i​n
+	 */
+	bonjour_incoming_join: string
 	/**
 	 * B​o​n​j​o​u​r​ ​r​e​q​u​e​s​t​ ​f​a​i​l​e​d
 	 */
@@ -1130,6 +1138,10 @@ export type TranslationFunctions = {
 	 */
 	bonjour_ask_to_join: () => LocalizedString
 	/**
+	 * Add to call
+	 */
+	bonjour_add_to_call: () => LocalizedString
+	/**
 	 * Remove
 	 */
 	bonjour_remove: () => LocalizedString
@@ -1161,6 +1173,10 @@ export type TranslationFunctions = {
 	 * Incoming call
 	 */
 	bonjour_incoming_call: () => LocalizedString
+	/**
+	 * Wants to join
+	 */
+	bonjour_incoming_join: () => LocalizedString
 	/**
 	 * Bonjour request failed
 	 */

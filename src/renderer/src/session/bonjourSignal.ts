@@ -10,21 +10,21 @@ export type BonjourSignalPayload = {
   invite?: InviteCrypto | null
 }
 
-export type BonjourSignalSend = (payload: BonjourSignalPayload) => void
+export type BonjourSignalSend = (callId: string, payload: BonjourSignalPayload) => void
 
 export type SignalingTransportKind = 'kiwi' | 'bonjour'
 
-export type SignalingTransport =
-  | { kind: 'kiwi' }
-  | { kind: 'bonjour'; send: BonjourSignalSend; callId: string }
+export type SignalingTransport = { kind: 'kiwi' } | { kind: 'bonjour'; send: BonjourSignalSend }
 
 export const kiwiTransport = (): SignalingTransport => ({ kind: 'kiwi' })
 
-export const bonjourTransport = (send: BonjourSignalSend, callId: string): SignalingTransport => ({
+export const bonjourTransport = (send: BonjourSignalSend): SignalingTransport => ({
   kind: 'bonjour',
   send,
-  callId,
 })
+
+export const shouldNotifyIncomingCall = (opts: { inSession: boolean; kind: string }): boolean =>
+  !opts.inSession || opts.kind === 'join'
 
 export const cloneBonjourPayload = (payload: BonjourSignalPayload): BonjourSignalPayload => ({
   type: payload.type,

@@ -130,6 +130,7 @@ const en = {
   bonjour_contacts: 'Kontakte',
   bonjour_call: 'Anrufen',
   bonjour_ask_to_join: 'Um Beitritt bitten',
+  bonjour_add_to_call: 'Zum Anruf hinzufügen',
   bonjour_remove: 'Entfernen',
   bonjour_lists: 'Listen',
   bonjour_create_list: 'Liste erstellen',
@@ -138,6 +139,7 @@ const en = {
   bonjour_ignore: 'Ignorieren',
   bonjour_unignore: 'Nicht mehr ignorieren',
   bonjour_incoming_call: 'Eingehender Anruf',
+  bonjour_incoming_join: 'Möchte beitreten',
   bonjour_error: 'Bonjour-Anfrage fehlgeschlagen',
   bonjour_enabled: 'Bonjour aktivieren (optionaler Kontakt-Server)',
   bonjour_enabled_description:

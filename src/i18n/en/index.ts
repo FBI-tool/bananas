@@ -129,6 +129,7 @@ const en = {
   bonjour_contacts: 'Contacts',
   bonjour_call: 'Call',
   bonjour_ask_to_join: 'Ask to join',
+  bonjour_add_to_call: 'Add to call',
   bonjour_remove: 'Remove',
   bonjour_lists: 'Lists',
   bonjour_create_list: 'Create list',
@@ -137,6 +138,7 @@ const en = {
   bonjour_ignore: 'Ignore',
   bonjour_unignore: 'Un-ignore',
   bonjour_incoming_call: 'Incoming call',
+  bonjour_incoming_join: 'Wants to join',
   bonjour_error: 'Bonjour request failed',
   bonjour_enabled: 'Enable Bonjour (optional contacts server)',
   bonjour_enabled_description:

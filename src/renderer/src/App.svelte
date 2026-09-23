@@ -21,10 +21,7 @@
   let closedDrawerForCall = false
 
   const presenting = $derived(Boolean(room.isLive || room.sessionEndedReason))
-  const showInvite = $derived(
-    appState.sessionSource !== 'bonjour' &&
-      (appState.sessionSource === 'host' || room.isCoordinator),
-  )
+  const showInvite = $derived(room.isCoordinator)
   const stageTitle = $derived(appState.isHosting ? L.hosting_a_session() : L.joined_a_session())
 
   $effect(() => {
