@@ -1,6 +1,6 @@
 {
   "name": "p2p.kiwi",
-  "version": "3.1.0",
+  "version": "3.4.0",
   "description": "p2p.kiwi is a simple and easy-to-use screen sharing tool for Mac, Windows, and Linux.",
   "homepage": "https://p2p.kiwi",
   "license": "MIT",
@@ -49,6 +49,7 @@
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "2.0.0",
+    "@fontsource/noto-sans": "5.3.0",
     "@fortawesome/fontawesome-free": "7.3.1",
     "@sveltejs/vite-plugin-svelte": "6.2.4",
     "@tailwindcss/vite": "4.3.3",

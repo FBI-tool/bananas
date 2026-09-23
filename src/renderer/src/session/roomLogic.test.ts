@@ -4,6 +4,7 @@ import {
   canStartKick,
   canStartVote,
   castVote,
+  displayCaptureReady,
   electCoordinator,
   nextCoordinator,
   pickRemoteCameraAndDisplay,
@@ -315,6 +316,37 @@ describe('uniquePeersById', () => {
       { id: 'host', username: 'Kiwi' },
       { id: 'guest', username: 'Joiner' },
     ])
+  })
+})
+
+describe('displayCaptureReady', () => {
+  it('treats an ended track as not ready', () => {
+    expect(displayCaptureReady({ readyState: 'ended' })).toBe(false)
+  })
+
+  it('waits while the track is muted', () => {
+    expect(displayCaptureReady({ muted: true, readyState: 'live' })).toBe(false)
+  })
+
+  it('requires a positive width when settings report one', () => {
+    expect(
+      displayCaptureReady({
+        readyState: 'live',
+        muted: false,
+        getSettings: () => ({ width: 0 }),
+      }),
+    ).toBe(false)
+    expect(
+      displayCaptureReady({
+        readyState: 'live',
+        muted: false,
+        getSettings: () => ({ width: 1280 }),
+      }),
+    ).toBe(true)
+  })
+
+  it('treats a track without mute or settings as ready', () => {
+    expect(displayCaptureReady({})).toBe(true)
   })
 })
 

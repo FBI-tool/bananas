@@ -4,7 +4,12 @@
     corporate --default,
     business --prefersdark;
 }
+@import '@fontsource/noto-sans';
 
-html {
+html,
+body {
   overflow-y: auto;
+  font-family: 'Noto Sans', sans-serif;
+  height: 100%;
+  width: 100%;
 }

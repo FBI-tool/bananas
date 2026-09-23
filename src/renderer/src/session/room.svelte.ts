@@ -62,6 +62,7 @@ import {
   canStartKick,
   canStartVote,
   castVote,
+  displayCaptureReady,
   nextCoordinator,
   pickRemoteCameraAndDisplay,
   resumeVote,
@@ -119,6 +120,8 @@ export class Room {
   presenterId = $state('')
   peers = $state<RoomPeer[]>([])
   displayStreamActive = $state(false)
+  remoteScreenActive = $state(false)
+  presentCapturePending = $state(false)
   microphoneActive = $state(false)
   cameraActive = $state(false)
   cursorsEnabled = $state(false)
@@ -1019,6 +1022,7 @@ export class Room {
   }
 
   async requestToPresent(): Promise<'ok' | 'blocked' | 'cooldown' | 'cancelled' | 'failed'> {
+    if (this.presentCapturePending) return 'blocked'
     const now = Date.now()
     if (now < this.cooldownUntil) {
       debugLog.warn('room', 'requestToPresent blocked by cooldown', {
@@ -1041,41 +1045,63 @@ export class Room {
       })
       return 'blocked'
     }
+    this.presentCapturePending = true
     try {
       const captured = await this.acquireDisplayStream()
       if (captured === 'cancelled' || captured === 'failed') return captured
+      if (!this.localPeerId) {
+        this.stopStream(captured)
+        return 'cancelled'
+      }
+      const voteNow = Date.now()
+      if (
+        !canStartVote({
+          now: voteNow,
+          cooldownUntil: this.cooldownUntil,
+          activeVote: this.activeVote,
+          requesterId: this.localPeerId,
+          presenterId: this.presenterId,
+        })
+      ) {
+        this.stopStream(captured)
+        debugLog.warn('room', 'requestToPresent blocked after capture', {
+          hasActiveVote: Boolean(this.activeVote),
+        })
+        return 'blocked'
+      }
       this.stopStream(this.pendingDisplayStream)
       this.pendingDisplayStream = captured
+      const vote = startVote({
+        voteId: getUUIDv4(),
+        kind: 'presenter',
+        candidateId: this.localPeerId,
+        requesterId: this.localPeerId,
+        now: voteNow,
+        timeoutMs: VOTE_TIMEOUT_MS,
+        peerIds: this.allPeerIds(),
+      })
+      this.activeVote = vote
+      this.localVoteCast = true
+      this.broadcast({
+        t: 'vote-start',
+        v: PROTOCOL_VERSION,
+        voteId: vote.voteId,
+        kind: vote.kind,
+        candidateId: vote.candidateId,
+        requesterId: vote.requesterId,
+        expiresAt: vote.expiresAt,
+      })
+      this.armVoteTimer(vote)
+      if (voteOutcome(vote, Date.now()) === 'approved') {
+        await this.concludeVote(vote, true)
+      }
+      return 'ok'
     } catch (e) {
       errorHandler(e)
       return 'failed'
+    } finally {
+      this.presentCapturePending = false
     }
-
-    const vote = startVote({
-      voteId: getUUIDv4(),
-      kind: 'presenter',
-      candidateId: this.localPeerId,
-      requesterId: this.localPeerId,
-      now,
-      timeoutMs: VOTE_TIMEOUT_MS,
-      peerIds: this.allPeerIds(),
-    })
-    this.activeVote = vote
-    this.localVoteCast = true
-    this.broadcast({
-      t: 'vote-start',
-      v: PROTOCOL_VERSION,
-      voteId: vote.voteId,
-      kind: vote.kind,
-      candidateId: vote.candidateId,
-      requesterId: vote.requesterId,
-      expiresAt: vote.expiresAt,
-    })
-    this.armVoteTimer(vote)
-    if (voteOutcome(vote, Date.now()) === 'approved') {
-      await this.concludeVote(vote, true)
-    }
-    return 'ok'
   }
 
   canRequestKick(targetId: string): boolean {
@@ -2060,6 +2086,7 @@ export class Room {
     this.bindDisplayEnded(stream)
     this.presenterId = this.localPeerId
     this.presenterGone = false
+    this.refreshRemoteScreenActive()
     await this.pushVideoToAll(track, stream)
     this.broadcast({
       t: 'presenter-changed',
@@ -2078,6 +2105,7 @@ export class Room {
       await this.stopPresenting()
     }
     this.attachPresenterVideo()
+    this.refreshRemoteScreenActive()
     await this.revokeAllRemoteControl('presenter-change')
   }
 
@@ -2194,8 +2222,25 @@ export class Room {
         width: settings?.width,
         height: settings?.height,
       })
-      if (event.track.kind === 'video') this.attachPresenterVideo()
+      if (event.track.kind === 'video') {
+        this.attachPresenterVideo()
+        this.refreshRemoteScreenActive()
+      }
       if (event.track.kind === 'audio') this.attachRemoteAudio(peerId, stream)
+    })
+    event.track.addEventListener('mute', () => {
+      if (event.track.kind === 'video') this.refreshRemoteScreenActive()
+    })
+    event.track.addEventListener('ended', () => {
+      if (event.track.kind !== 'video') return
+      const entry = this.remoteVideoByStreamId.get(stream.id)
+      const live = stream.getVideoTracks().some((item) => item.readyState === 'live')
+      if (entry?.stream === stream && !live) {
+        this.remoteVideoByStreamId.delete(stream.id)
+        this.classifyRemoteVideos(peerId)
+        return
+      }
+      this.refreshRemoteScreenActive()
     })
   }
 
@@ -2217,14 +2262,37 @@ export class Room {
     if (displayEntry) this.remoteVideoStreams.set(peerId, displayEntry[1].stream)
     else this.remoteVideoStreams.delete(peerId)
     this.attachPresenterVideo()
+    this.refreshRemoteScreenActive()
     this.syncCallOverlay()
+  }
+
+  private presenterDisplayStream(): MediaStream | null {
+    return (
+      this.remoteVideoStreams.get(this.presenterId) ??
+      [...this.remoteVideoStreams.values()].at(-1) ??
+      null
+    )
+  }
+
+  private refreshRemoteScreenActive(): void {
+    if (this.isPresenter) {
+      this.remoteScreenActive = false
+      return
+    }
+    const track = this.presenterDisplayStream()
+      ?.getVideoTracks()
+      .find((item) => item.readyState === 'live')
+    this.remoteScreenActive = Boolean(track && track.enabled && !track.muted)
   }
 
   private attachPresenterVideo(): void {
     if (!this.remoteVideo || this.isPresenter) return
-    const stream =
-      this.remoteVideoStreams.get(this.presenterId) ?? [...this.remoteVideoStreams.values()].at(-1)
-    if (stream && this.remoteVideo.srcObject !== stream) {
+    const stream = this.presenterDisplayStream()
+    if (!stream) {
+      if (this.remoteVideo.srcObject) this.remoteVideo.srcObject = null
+      return
+    }
+    if (this.remoteVideo.srcObject !== stream) {
       this.remoteVideo.srcObject = stream
     }
     if (this.remoteVideo.srcObject) {
@@ -2337,11 +2405,13 @@ export class Room {
       this.isLive = false
       this.setConnectionState('closed')
       playSessionEndedSound()
+      this.refreshRemoteScreenActive()
       return
     }
     this.isLive = remaining > 0
     if (!peerId && remaining === 0) {
       this.setConnectionState('failed')
+      this.refreshRemoteScreenActive()
       return
     }
     if (peerId && peerId === this.presenterId) {
@@ -2358,6 +2428,7 @@ export class Room {
       }
     }
     if (this.isCoordinator) this.broadcastRoster()
+    this.refreshRemoteScreenActive()
     this.syncLocalPeer()
     this.syncCallOverlay()
   }
@@ -2873,6 +2944,12 @@ export class Room {
         debugLog.warn('room', 'getDisplayMedia returned no video tracks')
         return 'failed'
       }
+      const live = await this.waitForCapturedDisplay(stream)
+      if (live !== 'ok') {
+        this.stopStream(stream)
+        debugLog.warn('room', 'getDisplayMedia capture not live', { live })
+        return live
+      }
       return stream
     } catch (e) {
       if (e && typeof e === 'object' && 'name' in e && e.name === 'NotAllowedError') {
@@ -2883,6 +2960,52 @@ export class Room {
     } finally {
       await this.setOverlayTemporarilyHidden(false)
     }
+  }
+
+  private waitForCapturedDisplay(stream: MediaStream): Promise<'ok' | 'cancelled'> {
+    const track = stream.getVideoTracks()[0]
+    if (!track || track.readyState === 'ended') return Promise.resolve('cancelled')
+    if (displayCaptureReady(track)) return Promise.resolve('ok')
+
+    return new Promise((resolve) => {
+      let settled = false
+      let video: HTMLVideoElement | null = null
+      const finish = (result: 'ok' | 'cancelled'): void => {
+        if (settled) return
+        settled = true
+        track.removeEventListener('unmute', check)
+        track.removeEventListener('ended', onEnded)
+        if (video) {
+          video.srcObject = null
+          video.remove?.()
+        }
+        resolve(result)
+      }
+      const check = (): void => {
+        if (track.readyState === 'ended') finish('cancelled')
+        else if (displayCaptureReady(track)) finish('ok')
+      }
+      const onEnded = (): void => finish('cancelled')
+      track.addEventListener('unmute', check)
+      track.addEventListener('ended', onEnded)
+
+      if (typeof document === 'undefined' || typeof document.createElement !== 'function') return
+      video = document.createElement('video')
+      video.muted = true
+      video.playsInline = true
+      video.srcObject = stream
+      const onFrame = (): void => {
+        check()
+        if (settled || !video || typeof video.requestVideoFrameCallback !== 'function') return
+        video.requestVideoFrameCallback(() => onFrame())
+      }
+      if (typeof video.requestVideoFrameCallback === 'function') {
+        video.requestVideoFrameCallback(() => onFrame())
+      } else if (typeof video.addEventListener === 'function') {
+        video.addEventListener('loadeddata', () => check(), { once: true })
+      }
+      void video.play?.().catch(() => undefined)
+    })
   }
 
   private stopStream(stream: MediaStream | null): void {
@@ -2928,6 +3051,8 @@ export class Room {
     this.localVoteCast = null
     this.voteRejectedKind = null
     this.displayStreamActive = false
+    this.remoteScreenActive = false
+    this.presentCapturePending = false
     this.cursorsEnabled = false
     this.remoteControl = {}
     this.inboundRemoteSeq = {}

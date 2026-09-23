@@ -33,11 +33,11 @@
   let zoomFactor = $state(1)
   let visualizerIsActive = $state(true)
   let connectionStringIsValid = $state<boolean | null>(null)
-  let connectToUserName = $state('')
   let username = $state('')
   let foregroundColor = $state('#1a1a1a')
   let backgroundColor = $state('#ffffff')
   let inviteInFlight = false
+  let inviteFormIsVisible = $state(false)
 
   const showVideo = $derived(!room.isPresenter || Boolean(room.sessionEndedReason))
   const videoClass = $derived(room.sessionEndedReason ? 'video video-ended' : 'video')
@@ -298,18 +298,11 @@
 
   $effect(() => {
     const value = appState.hostUrl
-    void (async (): Promise<void> => {
-      if (!showInvite || value === '') {
-        connectionStringIsValid = null
-        return
-      }
-      const valid = mayBeConnectionString(ConnectionType.PARTICIPANT, value)
-      connectionStringIsValid = valid
-      if (valid) {
-        const kiwiData = await getDataFromKiwiUrl(value)
-        connectToUserName = kiwiData.data.username
-      }
-    })()
+    if (!showInvite || value === '') {
+      connectionStringIsValid = null
+      return
+    }
+    connectionStringIsValid = mayBeConnectionString(ConnectionType.PARTICIPANT, value)
   })
 
   $effect(() => {
@@ -359,6 +352,7 @@
   }
 
   const onRequestPresent = async (): Promise<void> => {
+    if (room.presentCapturePending) return
     const result = await room.requestToPresent()
     if (result === 'cooldown') toast.show('info', L.vote_cooldown())
     if (result === 'blocked') toast.show('info', L.vote_rejected())
@@ -384,7 +378,9 @@
       if (!offer) {
         toast.show('error', L.room_is_full())
       } else {
+        toast.show('success', 'Invite copied to clipboard')
         void navigator.clipboard.writeText(offer)
+        inviteFormIsVisible = true
       }
     } catch (error) {
       console.error(error)
@@ -471,19 +467,19 @@
       <button
         title={L.streaming_your_display()}
         class="btn {room.displayStreamActive ? 'btn-success' : 'btn-error'}"
-        onclick={onDisplayStreamToggle}
+        onclick={() => room.displayStreamActive ? onDisplayStreamToggle() : onChangeScreen()}
       >
         <span class="icon">
           <i class="fa-solid fa-display"></i>
         </span>
       </button>
-      <button class="btn btn-info" onclick={onChangeScreen}>
-        <span class="icon">
-          <i class="fa-solid fa-display"></i>
-        </span>
-        <span>{L.change_screen()}</span>
-      </button>
       {#if room.displayStreamActive}
+        <button class="btn btn-info" onclick={onChangeScreen}>
+          <span class="icon">
+            <i class="fa-solid fa-display"></i>
+          </span>
+          <span>{L.change_screen()}</span>
+        </button>
         <button
           title={room.cursorsEnabled ? L.remote_cursors_enabled() : L.remote_cursors_disabled()}
           class="btn {room.cursorsEnabled ? 'btn-success' : 'btn-error'}"
@@ -495,16 +491,22 @@
         </button>
       {/if}
     {:else}
-      <button class="btn btn-primary" onclick={onRequestPresent} disabled={Boolean(room.activeVote)}>
+      <button
+        class="btn btn-primary"
+        onclick={onRequestPresent}
+        disabled={Boolean(room.activeVote) || room.presentCapturePending}
+      >
         <span>{L.request_to_present()}</span>
       </button>
-      <button
-        class="btn {controlling ? 'btn-success' : 'btn-ghost'}"
-        onclick={() => room.requestRemoteControl(true, true)}
-        disabled={Boolean(room.localRemoteGrant)}
-      >
-        <span>{L.remote_control_request_button()}</span>
-      </button>
+      {#if room.remoteScreenActive}
+        <button
+          class="btn {controlling ? 'btn-success' : 'btn-warning'}"
+          onclick={() => room.requestRemoteControl(true, true)}
+          disabled={Boolean(room.localRemoteGrant)}
+        >
+          <span>{L.remote_control_request_button()}</span>
+        </button>
+      {/if}
     {/if}
     {#if room.hasAudioInput}
       <button
@@ -543,6 +545,50 @@
       </span>
       <span>{L.chat()}</span>
     </button>
+    {#if showInvite && room.isCoordinator}
+      <div class="flex flex-wrap gap-2 mb-4">
+        <div class="join w-full mb-4">
+          <span class="tooltip tooltip-top {inviteFormIsVisible ? 'hidden' : ''}" data-tip={L.invite_another()}>
+            <button class="btn btn-primary" aria-label={L.invite_another()} onclick={onCopyInvite}>
+              <span class="icon">
+                <i class="fa-solid fa-user-plus"></i>
+              </span>
+            </button>
+          </span>
+          <span class="tooltip tooltip-top" data-tip={L.cancel()}>
+            <button
+              class="btn join-item btn-error not-hover:btn-soft {inviteFormIsVisible ? '' : 'hidden'}"
+              aria-label={L.cancel()}
+              onclick={() => {
+                inviteFormIsVisible = false
+              }}
+            >
+              <span class="fa-solid fa-user"></span>
+              <span class="fa-solid fa-ban"></span>
+            </button>
+          </span>
+          <span class="flex-1 {inviteFormIsVisible ? '' : 'hidden'}">
+            <span class="tooltip tooltip-top" data-tip={L.participant_connection_string()}>
+              <input
+                class="input join-item flex-3 max-w-24 {connectionInputClass}"
+                bind:value={appState.hostUrl}
+                type="text"
+              />
+            </span>
+            <span class="tooltip tooltip-top" data-tip={L.connect()}>
+              <button
+                class="btn join-item {connectButtonClass}"
+                aria-label={L.connect()}
+                onclick={onConnectInvite}
+                disabled={!connectionStringIsValid}
+              >
+                <span class="fa-solid fa-plug"></span>
+              </button>
+            </span>
+          </span>
+        </div>
+      </div>
+    {/if}
   </div>
   <div class="flex gap-2">
     <button class="btn btn-error" onclick={onLeaveClick}>
@@ -636,122 +682,157 @@
 <div class="mb-4">
   <h2 class="font-semibold mb-2">{L.e2ee_status()}</h2>
   {#if room.e2eeActive && room.mediaE2eeActive}
-    <p class="badge badge-success">{L.e2ee_on()}</p>
+    {#if room.verification}
+      <details class="collapse" name="e2ee-verification">
+        <summary class="badge badge-success cursor-pointer pointer-none">
+          {L.e2ee_on()}
+          <span class="ml-1 text-success-content fa-solid fa-lock"></span>
+        </summary>
+        <div class="collapse-content mt-2 text-sm">
+          <p><span class="font-semibold">{L.verification_code()}:</span> {room.verification.securityCode}</p>
+          <p class="opacity-70">{L.verification()}</p>
+          <div class="overflow-x-auto rounded-box border border-base-content/5 bg-base-100 max-w-fit">
+            <table class="table max-w-fit">
+              <thead>
+                <tr>
+                  <th>Peer ID</th>
+                  <th>Fingerprint</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each room.verification.members as member (member.peerId)}
+                  <tr>
+                    <td>
+                      {member.peerId.slice(0, 8)}
+                      {member.peerId === room.localPeerId ? `(${L.you()})` : ''}
+                    </td>
+                    <td class="uppercase">{member.fingerprint}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    {/if}
   {:else if room.e2eeActive}
-    <p class="badge badge-error">{L.e2ee_app_only()}</p>
+    <p class="badge badge-error">
+      {L.e2ee_app_only()}
+      <span class="ml-1 text-error-content fa-solid fa-triangle-exclamation"></span>
+    </p>
   {:else}
-    <p class="badge badge-ghost">{L.e2ee_off()}</p>
+    <p class="badge badge-warning">
+      {L.e2ee_off()}
+      <span class="ml-1 text-warning-content fa-solid fa-lock-open"></span>
+    </p>
   {/if}
   {#if room.e2eeError}
-    <p class="text-error text-sm mt-1">{room.e2eeError}</p>
-  {/if}
-  {#if room.verification}
-    <div class="mt-2 text-sm">
-      <p><span class="font-semibold">{L.verification_code()}:</span> {room.verification.securityCode}</p>
-      <p class="opacity-70">{L.verification()}</p>
-      <ul class="mt-1">
-        {#each room.verification.members as member (member.peerId)}
-          <li class="font-mono text-xs">
-            {member.peerId === room.localPeerId ? L.you() : member.peerId.slice(0, 8)}
-            · {member.fingerprint}
-          </li>
-        {/each}
-      </ul>
-    </div>
+    <p class="badge badge-warning">
+      {L.e2ee_off()}
+      <span class="ml-1 text-warning-content fa-solid fa-lock-open"></span>
+    </p>
+    <p class="text-error text-sm mt-1">
+      {room.e2eeError}
+    </p>
   {/if}
 </div>
 
 <div class="mb-4">
   <h2 class="font-semibold mb-2">{L.peer_list()}</h2>
-  <ul class="flex flex-wrap gap-2">
-    {#each room.peers as peer (peer.id)}
-      <li class="badge badge-lg gap-1">
-        {peer.username}{peer.id === room.localPeerId ? ` (${L.you()})` : ''}
-        {#if peer.id === room.coordinatorId}
-          · {L.coordinator()}
-        {/if}
-        {#if peer.id === room.presenterId}
-          · {L.presenter()}
-        {/if}
-        {#if room.remoteControl[peer.id]?.mouse || room.remoteControl[peer.id]?.keyboard}
-          · {L.remote_control()}
-        {/if}
-        {#if room.isPresenter && peer.id !== room.localPeerId}
-          <label class="flex items-center gap-1 text-xs">
-            <input
-              type="checkbox"
-              class="checkbox checkbox-xs"
-              checked={Boolean(room.remoteControl[peer.id]?.mouse)}
-              onchange={(e) => {
-                const mouse = e.currentTarget.checked
-                const keyboard = Boolean(room.remoteControl[peer.id]?.keyboard)
-                if (mouse || keyboard) void room.grantRemoteControl(peer.id, { mouse, keyboard })
-                else void room.revokeRemoteControl(peer.id, 'host')
-              }}
-            />
-            {L.remote_control_mouse()}
-          </label>
-          <label class="flex items-center gap-1 text-xs">
-            <input
-              type="checkbox"
-              class="checkbox checkbox-xs"
-              checked={Boolean(room.remoteControl[peer.id]?.keyboard)}
-              onchange={(e) => {
-                const keyboard = e.currentTarget.checked
-                const mouse = Boolean(room.remoteControl[peer.id]?.mouse)
-                if (mouse || keyboard) void room.grantRemoteControl(peer.id, { mouse, keyboard })
-                else void room.revokeRemoteControl(peer.id, 'host')
-              }}
-            />
-            {L.remote_control_keyboard()}
-          </label>
-        {/if}
-        {#if peer.id !== room.localPeerId}
-          <button
-            type="button"
-            class="btn btn-ghost btn-xs btn-circle"
-            aria-label={L.remove_from_session()}
-            title={L.remove_from_session()}
-            disabled={Boolean(room.activeVote) || !room.canRequestKick(peer.id)}
-            onclick={() => onRequestKick(peer.id)}
-          >
-            <span class="icon">
-              <i class="fa-solid fa-user-minus"></i>
-            </span>
-          </button>
-        {/if}
-      </li>
-    {/each}
-  </ul>
+  <div class="rounded-box border border-base-content/5 bg-base-100 max-w-fit">
+    <table class="table">
+      <thead>
+        <tr class="bg-base-300">
+          <th><span class="fa-solid fa-user"></span> {L.username()}</th>
+          <th><span class="fa-solid fa-computer-mouse"></span> {L.remote_control_mouse()}</th>
+          <th><span class="fa-solid fa-keyboard"></span> {L.remote_control_keyboard()}</th>
+          <th><span class="fa-solid fa-people-group"></span> Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {#each room.peers as peer (peer.id)}
+        <tr class="hover:bg-base-200">
+          <td>
+            {peer.username}{peer.id === room.localPeerId ? ` (${L.you()})` : ''}
+            {#if peer.id === room.coordinatorId}
+              <span class="tooltip tooltip-top" data-tip={L.coordinator()}>
+                <span class="text-info fa-solid fa-satellite-dish"></span>
+              </span>
+            {/if}
+            {#if peer.id === room.presenterId}
+              <span class="tooltip tooltip-top" data-tip={L.presenter()}>
+                <span class="text-info fa-solid fa-desktop"></span>
+              </span>
+            {/if}
+          </td>
+          {#if room.isPresenter && peer.id !== room.localPeerId}
+            <td>
+              <label class="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  class="checkbox"
+                  disabled={room.displayStreamActive ? false : true}
+                  checked={Boolean(room.remoteControl[peer.id]?.mouse)}
+                  onchange={(e) => {
+                    const mouse = e.currentTarget.checked
+                    const keyboard = Boolean(room.remoteControl[peer.id]?.keyboard)
+                    if (mouse || keyboard) void room.grantRemoteControl(peer.id, { mouse, keyboard })
+                    else void room.revokeRemoteControl(peer.id, 'host')
+                  }}
+                />
+                </label>
+            </td>
+            <td>
+              <label class="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  class="checkbox"
+                  disabled={room.displayStreamActive ? false : true}
+                  checked={Boolean(room.remoteControl[peer.id]?.keyboard)}
+                  onchange={(e) => {
+                    const keyboard = e.currentTarget.checked
+                    const mouse = Boolean(room.remoteControl[peer.id]?.mouse)
+                    if (mouse || keyboard) void room.grantRemoteControl(peer.id, { mouse, keyboard })
+                    else void room.revokeRemoteControl(peer.id, 'host')
+                  }}
+                />
+              </label>
+            </td>
+            {:else}
+              <td>
+                {#if room.remoteControl[peer.id]?.mouse}
+                  <span class="text-success fa-solid fa-check"></span>
+                {/if}
+              </td>
+              <td>
+                {#if room.remoteControl[peer.id]?.keyboard}
+                  <span class="text-success fa-solid fa-check"></span>
+                {/if}
+              </td>
+            {/if}
+            <td>
+            {#if peer.id !== room.localPeerId}
+              <span class="tooltip tooltip-top" data-tip={L.remove_from_session()}>
+                <button
+                  type="button"
+                  class="btn btn-ghost hover:btn-warning"
+                  aria-label={L.remove_from_session()}
+                  disabled={Boolean(room.activeVote) || !room.canRequestKick(peer.id)}
+                  onclick={() => onRequestKick(peer.id)}
+                >
+                  <span class="icon">
+                    <i class="fa-solid fa-user-minus"></i>
+                  </span>
+                </button>
+              </span>
+            {/if}
+          </td>
+        </tr>
+      {/each}
+      </tbody>
+    </table>
+  </div>
 </div>
-
-{#if showInvite && room.isCoordinator}
-  <div class="flex flex-wrap gap-2 mb-4">
-    <button class="btn btn-primary" onclick={onCopyInvite}>
-      <span class="icon">
-        <i class="fas fa-copy"></i>
-      </span>
-      <span>{L.invite_another()}</span>
-    </button>
-  </div>
-  <div class="join w-full mb-4">
-    <label class="input join-item flex-1 {connectionInputClass}">
-      <i class="fas fa-user"></i>
-      <input
-        bind:value={appState.hostUrl}
-        placeholder={L.participant_connection_string()}
-        type="text"
-      />
-    </label>
-    <button
-      class="btn join-item {connectButtonClass}"
-      onclick={onConnectInvite}
-      disabled={!connectionStringIsValid}
-    >
-      <span>{L.connect()} {connectionStringIsValid ? connectToUserName : ''}</span>
-    </button>
-  </div>
-{/if}
 
 <div class={showVideo ? 'relative' : 'hidden'}>
   <fieldset class="fieldset px-0">
@@ -788,13 +869,6 @@
           <i class="fa-solid fa-compress"></i>
         </span>
       </button>
-      <SessionEndedOverlay
-        reason={room.sessionEndedReason}
-        onDismiss={() => {
-          room.dismissSessionEnded()
-          onReset()
-        }}
-      />
     </div>
   </fieldset>
   <div class="flex gap-2 pb-5">
@@ -818,6 +892,14 @@
     </button>
   </div>
 </div>
+
+<SessionEndedOverlay
+  reason={room.sessionEndedReason}
+  onDismiss={() => {
+    room.dismissSessionEnded()
+    onReset()
+  }}
+/>
 
 <PresenterVoteModal {room} />
 

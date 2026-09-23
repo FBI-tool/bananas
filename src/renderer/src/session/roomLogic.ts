@@ -179,6 +179,20 @@ export const pickRemoteCameraAndDisplay = (params: {
   return { cameraStreamId, displayStreamId }
 }
 
+export type DisplayCaptureTrack = {
+  muted?: boolean
+  readyState?: string
+  getSettings?: () => { width?: number }
+}
+
+export const displayCaptureReady = (track: DisplayCaptureTrack): boolean => {
+  if (track.readyState === 'ended') return false
+  if (track.muted) return false
+  const width = track.getSettings?.().width
+  if (typeof width === 'number') return width > 0
+  return true
+}
+
 export const routeMeshSignal = (params: {
   localPeerId: string
   coordinatorId: string

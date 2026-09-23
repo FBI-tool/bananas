@@ -40,6 +40,6 @@
     align-items: center;
     justify-content: center;
     z-index: 20;
-    background: rgb(0 0 0 / 20%);
+    background: rgb(0 0 0 / 40%);
   }
 </style>
