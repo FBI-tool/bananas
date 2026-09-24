@@ -1,6 +1,6 @@
 [tools]
 odin = "dev-2026-09"
-pnpm = "12.3.4"
+pnpm = "12.6.0"
 task = "3.53.1"
 python = "3.14.0"
 node = "24.16.0"
