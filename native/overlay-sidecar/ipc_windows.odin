@@ -64,12 +64,29 @@ ipc_write_all :: proc(conn: Ipc_Conn, data: []u8) -> bool {
 }
 
 ipc_read_some :: proc(conn: Ipc_Conn, buf: []u8) -> (int, bool) {
-	n: win.DWORD
+	if len(buf) == 0 {
+		return 0, true
+	}
 
+	avail: u32
+	peek_ok := win.PeekNamedPipe(conn.handle, nil, 0, nil, &avail, nil)
+	if !peek_ok {
+		return 0, false
+	}
+	if avail == 0 {
+		return 0, true
+	}
+
+	to_read := u32(len(buf))
+	if avail < to_read {
+		to_read = avail
+	}
+
+	n: win.DWORD
 	ok := win.ReadFile(
 		conn.handle,
 		raw_data(buf),
-		win.DWORD(len(buf)),
+		win.DWORD(to_read),
 		&n,
 		nil,
 	)

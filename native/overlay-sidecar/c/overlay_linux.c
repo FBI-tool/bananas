@@ -276,6 +276,31 @@ static void x11_window_rect(Overlay *o, int *x, int *y, int *w, int *h) {
   o->x11_win_h = *h;
 }
 
+int native_display_rect(const NativeSource *source, int *x, int *y, int *w, int *h) {
+  Display *dpy = NULL;
+  int own = 0;
+  int ok = 0;
+  int i;
+  if (!x || !y || !w || !h) return 0;
+  *x = source ? source->x : 0;
+  *y = source ? source->y : 0;
+  *w = source && source->width > 0 ? source->width : 1;
+  *h = source && source->height > 0 ? source->height : 1;
+  for (i = 0; i < MAX_OVERLAYS; i++) {
+    if (g_overlays[i].in_use && g_overlays[i].dpy) {
+      dpy = g_overlays[i].dpy;
+      break;
+    }
+  }
+  if (!dpy) {
+    dpy = XOpenDisplay(NULL);
+    own = dpy != NULL;
+  }
+  if (dpy && source && x11_match_crtc(dpy, source, x, y, w, h)) ok = 1;
+  if (own) XCloseDisplay(dpy);
+  return ok;
+}
+
 static int x11_probe(void) {
   Display *dpy = XOpenDisplay(NULL);
   if (!dpy) return 0;

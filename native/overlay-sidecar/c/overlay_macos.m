@@ -190,6 +190,32 @@ static MacPlacement macos_placement(const NativeSource *source) {
   return place;
 }
 
+/* CGEvent positions are top-left points. The overlay window is the same screen in Cocoa points. */
+int native_display_rect(const NativeSource *source, int *x, int *y, int *w, int *h) {
+  MacPlacement place;
+  NSArray<NSScreen *> *screens;
+  int primary = 0;
+  int left;
+  int width;
+  int height;
+  int bottom;
+  if (!x || !y || !w || !h) return 0;
+  place = macos_placement(source);
+  screens = [NSScreen screens];
+  if (screens.count > 0) primary = (int)llround(NSMaxY(screens[0].frame));
+  left = (int)llround(place.frame.origin.x);
+  width = (int)llround(place.frame.size.width);
+  height = (int)llround(place.frame.size.height);
+  bottom = (int)llround(place.frame.origin.y);
+  if (width < 1) width = 1;
+  if (height < 1) height = 1;
+  *x = left;
+  *y = primary - (bottom + height);
+  *w = width;
+  *h = height;
+  return place.matched;
+}
+
 static void log_macos_placement(Overlay *o, const MacPlacement *place) {
   int fx = (int)llround(place->frame.origin.x);
   int fy = (int)llround(place->frame.origin.y);

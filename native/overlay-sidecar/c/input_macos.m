@@ -289,6 +289,18 @@ void native_hotkey_unregister(void) {
   emergency_tap_stop();
 }
 
+int native_pointer_move_for_source(const NativeSource *source, double nx, double ny) {
+  int x = source ? source->x : 0;
+  int y = source ? source->y : 0;
+  int w = source && source->width > 0 ? source->width : 1;
+  int h = source && source->height > 0 ? source->height : 1;
+  double px = 0;
+  double py = 0;
+  if (source) native_display_rect(source, &x, &y, &w, &h);
+  normalized_to_rect(nx, ny, x, y, w, h, &px, &py);
+  return native_pointer_move(px, py);
+}
+
 int native_pointer_move(double x, double y) {
   if (!injection_allowed()) return -1;
   CGEventType type = kCGEventMouseMoved;
@@ -453,7 +465,7 @@ static CGEventRef tap_callback(CGEventTapProxy proxy, CGEventType type, CGEventR
 }
 
 int native_keyboard_capture_start(void) {
-  if (g_capture_locked) return 0;
+  if (capture_is_locked()) return 0;
   if (g_capture_active) return 1;
   if (!AXIsProcessTrusted()) return 0;
   g_cap_head = g_cap_tail = 0;

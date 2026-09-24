@@ -129,7 +129,8 @@ describe('RemoteControlBridge', () => {
     await second
     const moves = sidecar.send.mock.calls.filter((call) => call[0] === 'pointer-move')
     expect(moves.length).toBeGreaterThanOrEqual(1)
-    expect(moves.some((call) => call[1].x === 200 && call[1].y === 100)).toBe(true)
+    expect(moves.some((call) => call[1].x === 1 && call[1].y === 1)).toBe(true)
+    expect(moves.some((call) => call[1].source?.bounds?.width === 200)).toBe(true)
   })
 
   it('rejects pointer events without a mouse grant and stale generations', async () => {

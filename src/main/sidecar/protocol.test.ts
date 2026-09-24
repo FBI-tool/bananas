@@ -7,7 +7,12 @@ import {
   SIDECAR_MAX_FRAME_BYTES,
   SIDECAR_PROTOCOL_VERSION,
 } from './protocol'
-import { mapNormalizedToSource, pickSourceForCursor } from './coordinates'
+import {
+  mapNormalizedToPhysical,
+  mapNormalizedToSource,
+  physicalBoundsForSource,
+  pickSourceForCursor,
+} from './coordinates'
 
 describe('sidecar protocol', () => {
   it('round-trips a handshake envelope', () => {
@@ -88,5 +93,24 @@ describe('coordinate mapping', () => {
     expect(mapped).toEqual({ x: 1920, y: 1720 })
     const bottomRight = mapNormalizedToSource({ x: 1, y: 1 }, portrait)
     expect(bottomRight).toEqual({ x: 3120, y: -200 })
+  })
+
+  it('maps normalized points onto physical pixels when scale is not 1', () => {
+    const scaled = {
+      displayId: '4',
+      bounds: { x: 1280, y: -40, width: 1280, height: 720 },
+      scaleFactor: 1.5,
+      rotation: 0,
+    }
+    expect(physicalBoundsForSource(scaled)).toEqual({
+      x: 1920,
+      y: -60,
+      width: 1920,
+      height: 1080,
+    })
+    expect(mapNormalizedToPhysical({ x: 0, y: 0 }, scaled)).toEqual({ x: 1920, y: -60 })
+    expect(mapNormalizedToPhysical({ x: 1, y: 1 }, scaled)).toEqual({ x: 3840, y: 1020 })
+    expect(mapNormalizedToPhysical({ x: 0.5, y: 0.5 }, scaled)).toEqual({ x: 2880, y: 480 })
+    expect(mapNormalizedToSource({ x: 0.5, y: 0.5 }, scaled)).toEqual({ x: 1920, y: 320 })
   })
 })

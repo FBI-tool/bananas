@@ -17,6 +17,7 @@
   import { debugLog } from './debugLog.svelte'
   import MacSidecarPermissions from './MacSidecarPermissions.svelte'
   import { connectThrownText } from './session/connectionFailureText'
+  import { pointInVideoContent } from './session/videoContentPoint'
 
   let {
     room,
@@ -60,24 +61,14 @@
     opts?: { clamp?: boolean },
   ): { x: number; y: number } | null => {
     if (!remoteScreen) return null
-    const rect = remoteScreen.getBoundingClientRect()
-    const videoW = remoteScreen.videoWidth || rect.width
-    const videoH = remoteScreen.videoHeight || rect.height
-    if (!videoW || !videoH) return null
-    const scale = Math.min(rect.width / videoW, rect.height / videoH)
-    const contentW = videoW * scale
-    const contentH = videoH * scale
-    const offsetX = (rect.width - contentW) / 2
-    const offsetY = (rect.height - contentH) / 2
-    let x = (e.clientX - rect.left - offsetX) / contentW
-    let y = (e.clientY - rect.top - offsetY) / contentH
-    if (opts?.clamp) {
-      x = Math.min(1, Math.max(0, x))
-      y = Math.min(1, Math.max(0, y))
-      return { x, y }
-    }
-    if (x < 0 || x > 1 || y < 0 || y > 1) return null
-    return { x, y }
+    return pointInVideoContent(
+      e.clientX,
+      e.clientY,
+      remoteScreen.getBoundingClientRect(),
+      remoteScreen.videoWidth,
+      remoteScreen.videoHeight,
+      opts,
+    )
   }
 
   const flushMove = (): void => {
@@ -408,10 +399,11 @@
 
   const onRemoteScreenMouseMove = (e: MouseEvent): void => {
     if (!remoteScreen || room.isPresenter) return
-    const { offsetX, offsetY } = e
+    const point = contentPoint(e)
+    if (!point) return
     room.UpdateRemoteCursor({
-      x: offsetX / remoteScreen.clientWidth,
-      y: offsetY / remoteScreen.clientHeight,
+      x: point.x,
+      y: point.y,
       name: username,
       id: 'cursor-' + UUID,
       foregroundColor,

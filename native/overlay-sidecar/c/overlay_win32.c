@@ -127,6 +127,11 @@ static int win_rect(const NativeSource *source, int *x, int *y, int *w, int *h) 
   return 0;
 }
 
+int native_display_rect(const NativeSource *source, int *x, int *y, int *w, int *h) {
+  if (!x || !y || !w || !h) return 0;
+  return win_rect(source, x, y, w, h);
+}
+
 static void log_win_placement(Overlay *o, int matched, int x, int y, int w, int h) {
   if (o->place_logged && o->place_x == x && o->place_y == y && o->place_w == w && o->place_h == h) return;
   o->place_logged = 1;

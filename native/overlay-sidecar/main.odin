@@ -233,7 +233,13 @@ handle_remote_control :: proc(session: ^Session, env: Envelope) {
 		if reject_stale_grant(session, env, payload_obj) do return
 		x, _ := object_f64(payload_obj, "x")
 		y, _ := object_f64(payload_obj, "y")
-		err := input_pointer_move(&session.input, x, y)
+		err: Input_Error
+		if src_obj, ok := payload_obj["source"].(json.Object); ok {
+			src := parse_source(src_obj)
+			err = input_pointer_move_for_source(&session.input, &src, x, y)
+		} else {
+			err = input_pointer_move(&session.input, x, y)
+		}
 		if err != .None {
 			_ = send_env(session, "error", env.request_id, make_error_payload("not-armed", "pointer move rejected"))
 			return

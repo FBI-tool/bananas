@@ -81,6 +81,13 @@ input_pointer_move :: proc(state: ^Input_State, x: f64, y: f64) -> Input_Error {
 	return .None
 }
 
+input_pointer_move_for_source :: proc(state: ^Input_State, source: ^NativeSource, nx, ny: f64) -> Input_Error {
+	if !state.armed do return .Not_Armed
+	if !state.allow_pointer do return .Pointer_Denied
+	if native_pointer_move_for_source(source, nx, ny) != 0 do return .Native_Failed
+	return .None
+}
+
 input_pointer_button :: proc(state: ^Input_State, button: i32, down: bool) -> Input_Error {
 	if !state.armed do return .Not_Armed
 	if !state.allow_pointer do return .Pointer_Denied

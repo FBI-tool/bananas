@@ -46,6 +46,8 @@ typedef struct {
 } NativeSource;
 
 void native_query_caps(NativeCaps *out);
+/* Same rectangle the overlay window uses. Points on macOS, physical pixels elsewhere. */
+int native_display_rect(const NativeSource *source, int *x, int *y, int *w, int *h);
 int native_overlay_create(const NativeSource *source);
 int native_overlay_update(int overlay_id, const NativeSource *source, const NativeCursor *cursors, int n);
 void native_overlay_destroy(int overlay_id);

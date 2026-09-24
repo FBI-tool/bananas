@@ -827,7 +827,7 @@ void native_hotkey_unregister(void) {
 }
 
 int native_keyboard_capture_start(void) {
-  if (g_capture_locked) return 0;
+  if (capture_is_locked()) return 0;
   if (g_capture_active) return 1;
   g_cap_head = g_cap_tail = 0;
   g_ctrl_down = g_alt_down = g_shift_down = g_meta_down = g_esc_down = 0;
@@ -874,6 +874,28 @@ void native_keyboard_capture_stop(void) {
   }
   g_capture_active = 0;
   g_cap_head = g_cap_tail = 0;
+}
+
+int native_pointer_move_for_source(const NativeSource *source, double nx, double ny) {
+  int x = source ? source->x : 0;
+  int y = source ? source->y : 0;
+  int w = source && source->width > 0 ? source->width : 1;
+  int h = source && source->height > 0 ? source->height : 1;
+  double px = 0;
+  double py = 0;
+  if (nx < 0) nx = 0;
+  if (nx > 1) nx = 1;
+  if (ny < 0) ny = 0;
+  if (ny > 1) ny = 1;
+  if (g_wayland) {
+    /* uinput absolute axes are -32768..32767, not pixels. */
+    int ax = -32768 + (int)(nx * (32767 - (-32768)));
+    int ay = -32768 + (int)(ny * (32767 - (-32768)));
+    return native_pointer_move((double)ax, (double)ay);
+  }
+  if (source) native_display_rect(source, &x, &y, &w, &h);
+  normalized_to_rect(nx, ny, x, y, w, h, &px, &py);
+  return native_pointer_move(px, py);
 }
 
 int native_pointer_move(double x, double y) {

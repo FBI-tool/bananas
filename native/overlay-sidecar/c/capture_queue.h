@@ -5,18 +5,43 @@
 
 #define P2P_CAP_Q 256
 
+#ifndef p2p_cap_lock
+#define p2p_cap_lock() ((void)0)
+#define p2p_cap_unlock() ((void)0)
+#endif
+
 static NativeCapturedKey g_cap_q[P2P_CAP_Q];
 static int g_cap_head;
 static int g_cap_tail;
 static int g_capture_active;
+#ifdef _WIN32
+static volatile LONG g_capture_locked;
+#else
 static int g_capture_locked;
+#endif
 
 static void capture_lock(void) {
+#ifdef _WIN32
+  InterlockedExchange(&g_capture_locked, 1);
+#else
   g_capture_locked = 1;
+#endif
+}
+
+static int capture_is_locked(void) {
+#ifdef _WIN32
+  return InterlockedCompareExchange(&g_capture_locked, 0, 0) != 0;
+#else
+  return g_capture_locked;
+#endif
 }
 
 void native_keyboard_capture_unlock(void) {
+#ifdef _WIN32
+  InterlockedExchange(&g_capture_locked, 0);
+#else
   g_capture_locked = 0;
+#endif
 }
 
 static void cap_push(
@@ -26,7 +51,11 @@ static void cap_push(
     int location,
     int repeat
 ) {
-  if (!g_capture_active || key_code == 0) return;
+  p2p_cap_lock();
+  if (!g_capture_active || key_code == 0) {
+    p2p_cap_unlock();
+    return;
+  }
   int next = (g_cap_head + 1) % P2P_CAP_Q;
   if (next == g_cap_tail) g_cap_tail = (g_cap_tail + 1) % P2P_CAP_Q;
   g_cap_q[g_cap_head].key_code = key_code;
@@ -35,12 +64,19 @@ static void cap_push(
   g_cap_q[g_cap_head].location = location;
   g_cap_q[g_cap_head].repeat = repeat ? 1 : 0;
   g_cap_head = next;
+  p2p_cap_unlock();
 }
 
 int native_keyboard_capture_poll(NativeCapturedKey *out) {
-  if (!out || g_cap_tail == g_cap_head) return 0;
+  if (!out) return 0;
+  p2p_cap_lock();
+  if (g_cap_tail == g_cap_head) {
+    p2p_cap_unlock();
+    return 0;
+  }
   *out = g_cap_q[g_cap_tail];
   g_cap_tail = (g_cap_tail + 1) % P2P_CAP_Q;
+  p2p_cap_unlock();
   return 1;
 }
 

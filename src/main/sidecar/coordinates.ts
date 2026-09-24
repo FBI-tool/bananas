@@ -31,6 +31,32 @@ export const mapNormalizedToSource = (
   }
 }
 
+export const orientNormalized = (point: NormalizedPoint, rotation: number): NormalizedPoint =>
+  rotateNormalized(clampNormalized(point), rotation)
+
+/** Electron DIP bounds times scaleFactor, including a non-zero origin. */
+export const physicalBoundsForSource = (source: OverlaySource): Rect => {
+  const scale = source.scaleFactor > 0 ? source.scaleFactor : 1
+  return {
+    x: source.bounds.x * scale,
+    y: source.bounds.y * scale,
+    width: source.bounds.width * scale,
+    height: source.bounds.height * scale,
+  }
+}
+
+export const mapNormalizedToPhysical = (
+  point: NormalizedPoint,
+  source: OverlaySource,
+): MappedPoint => {
+  const normalized = rotateNormalized(clampNormalized(point), source.rotation)
+  const rect = physicalBoundsForSource(source)
+  return {
+    x: rect.x + normalized.x * rect.width,
+    y: rect.y + normalized.y * rect.height,
+  }
+}
+
 export const displayMatchesSource = (displayId: string, source: OverlaySource): boolean =>
   displayId === source.displayId || displayId === source.sourceId
 

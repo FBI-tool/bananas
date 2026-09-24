@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { mapNormalizedToSource } from './coordinates'
+import { orientNormalized } from './coordinates'
 import { portableKeyId, isPortableKeyCode, type PortableKeyCode } from '../../shared/portableKeys'
 import {
   DEFAULT_EMERGENCY_HOTKEY,
@@ -251,12 +251,12 @@ export class RemoteControlBridge {
     if (!this.pointerRate.allow()) return
     const source = this.getSource()
     if (!source) return
-    const mapped = mapNormalizedToSource({ x: parsed.x, y: parsed.y }, source)
+    const oriented = orientNormalized({ x: parsed.x, y: parsed.y }, source.rotation)
     if (this.moveInFlight) {
-      this.pendingMove = mapped
+      this.pendingMove = oriented
       return
     }
-    await this.flushMove(mapped)
+    await this.flushMove(oriented)
   }
 
   async pointerButton(input: unknown): Promise<void> {
@@ -340,9 +340,24 @@ export class RemoteControlBridge {
           this.pendingMove = null
           return
         }
+        const source = this.getSource()
+        if (!source) {
+          this.pendingMove = null
+          return
+        }
         await this.sidecar.send(
           'pointer-move',
-          { ...current, ...this.grantStamp() },
+          {
+            x: current.x,
+            y: current.y,
+            source: {
+              displayId: source.displayId,
+              bounds: source.bounds,
+              scaleFactor: source.scaleFactor,
+              rotation: 0,
+            },
+            ...this.grantStamp(),
+          },
           MOVE_TIMEOUT_MS,
         )
         current = this.pendingMove
