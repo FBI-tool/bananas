@@ -89,6 +89,60 @@ export const dropTcpIceCandidates = (
   }
 }
 
+export const iceCandidateAddress = (line: string): string | null => {
+  const trimmed = line.trim()
+  const body = trimmed.startsWith('a=') ? trimmed.slice(2) : trimmed
+  if (!body.startsWith('candidate:')) return null
+  const parts = body.slice('candidate:'.length).split(/\s+/)
+  return parts[4] || null
+}
+
+const isLinkLocalIpv6 = (address: string): boolean => address.toLowerCase().startsWith('fe80:')
+
+export const isUnusableIpv6Address = (address: string, keepRoutableIpv6: boolean): boolean => {
+  if (!address.includes(':')) return false
+  if (isLinkLocalIpv6(address)) return true
+  return !keepRoutableIpv6
+}
+
+const rewriteIp6ConnectionLine = (line: string, keepRoutableIpv6: boolean): string => {
+  const connection = /^c=IN IP6 (\S+)/i.exec(line)
+  if (connection) {
+    if (isUnusableIpv6Address(connection[1], keepRoutableIpv6)) return 'c=IN IP4 0.0.0.0'
+    return line
+  }
+  const rtcp = /^a=rtcp:(\d+) IN IP6 (\S+)/i.exec(line)
+  if (rtcp && isUnusableIpv6Address(rtcp[2], keepRoutableIpv6)) {
+    return `a=rtcp:${rtcp[1]} IN IP4 0.0.0.0`
+  }
+  return line
+}
+
+export const dropUnusableIpv6IceCandidates = (
+  desc: RTCSessionDescriptionInit,
+  keepRoutableIpv6: boolean,
+): RTCSessionDescriptionInit => {
+  const cloned = cloneSessionDescription(desc)
+  if (!cloned.sdp) return cloned
+  const newline = cloned.sdp.includes('\r\n') ? '\r\n' : '\n'
+  const lines = cloned.sdp.split(/\r?\n/).flatMap((line) => {
+    const address = iceCandidateAddress(line)
+    if (address && isUnusableIpv6Address(address, keepRoutableIpv6)) return []
+    return [rewriteIp6ConnectionLine(line, keepRoutableIpv6)]
+  })
+  return { type: cloned.type, sdp: lines.join(newline) }
+}
+
+export const isUnusableIpv6IceCandidate = (
+  candidate: RTCIceCandidateInit | null | undefined,
+  keepRoutableIpv6: boolean,
+): boolean => {
+  const line = candidate?.candidate
+  if (!line) return false
+  const address = iceCandidateAddress(line)
+  return address !== null && isUnusableIpv6Address(address, keepRoutableIpv6)
+}
+
 export const externalLinkClickHandler = (root: HTMLButtonElement, url: string): void => {
   root.classList.add('btn-disabled')
   root.setAttribute('aria-busy', 'true')

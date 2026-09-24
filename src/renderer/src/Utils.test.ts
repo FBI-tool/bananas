@@ -3,6 +3,8 @@ import {
   compressJson,
   decompressJson,
   dropTcpIceCandidates,
+  dropUnusableIpv6IceCandidates,
+  isUnusableIpv6IceCandidate,
   getConnectionString,
   getDataFromKiwiUrl,
   mayBeConnectionString,
@@ -126,6 +128,83 @@ describe('dropTcpIceCandidates', () => {
     const pruned = dropTcpIceCandidates(nativeLike)
     expect(pruned.type).toBe('offer')
     expect(pruned.sdp).toMatch(/a=candidate:\S+\s+\d+\s+udp\s/i)
+  })
+})
+
+describe('dropUnusableIpv6IceCandidates', () => {
+  const mixed: RTCSessionDescriptionInit = {
+    type: 'offer',
+    sdp: [
+      'v=0',
+      'o=- 1 1 IN IP4 127.0.0.1',
+      's=-',
+      't=0 0',
+      'm=audio 9 UDP/TLS/RTP/SAVPF 111',
+      'c=IN IP6 2001:db8::10',
+      'a=rtcp:9 IN IP6 2001:db8::10',
+      'a=candidate:1 1 udp 2122260223 192.168.1.20 54321 typ host',
+      'a=candidate:2 1 udp 2122194687 fe80::1 54322 typ host',
+      'a=candidate:3 1 udp 1686052607 2001:db8::20 54323 typ srflx',
+      'a=candidate:4 1 udp 2122194687 2600-abc.local 54324 typ host',
+      '',
+    ].join('\r\n'),
+  }
+
+  it('keeps global IPv6 and drops link-local addresses on a dual-stack host', () => {
+    const pruned = dropUnusableIpv6IceCandidates(mixed, true)
+    expect(pruned.sdp).toContain('192.168.1.20')
+    expect(pruned.sdp).toContain('2001:db8::20')
+    expect(pruned.sdp).toContain('2600-abc.local')
+    expect(pruned.sdp).not.toContain('fe80::1')
+    expect(pruned.sdp).toContain('c=IN IP6 2001:db8::10')
+    expect(pruned.sdp).toContain('a=rtcp:9 IN IP6 2001:db8::10')
+  })
+
+  it('drops every IPv6 literal when this host has no routable IPv6', () => {
+    const pruned = dropUnusableIpv6IceCandidates(mixed, false)
+    expect(pruned.sdp).toContain('192.168.1.20')
+    expect(pruned.sdp).toContain('2600-abc.local')
+    expect(pruned.sdp).not.toContain('fe80::1')
+    expect(pruned.sdp).not.toContain('2001:db8::20')
+    expect(pruned.sdp).toContain('c=IN IP4 0.0.0.0')
+    expect(pruned.sdp).toContain('a=rtcp:9 IN IP4 0.0.0.0')
+    expect(pruned.sdp).not.toContain('IN IP6')
+  })
+
+  it('rewrites a link-local connection line even when global IPv6 is kept', () => {
+    const linkLocal = dropUnusableIpv6IceCandidates(
+      { type: 'offer', sdp: 'c=IN IP6 fe80::abcd\r\na=rtcp:9 IN IP6 fe80::abcd\r\n' },
+      true,
+    )
+    expect(linkLocal.sdp).toContain('c=IN IP4 0.0.0.0')
+    expect(linkLocal.sdp).toContain('a=rtcp:9 IN IP4 0.0.0.0')
+  })
+
+  it('recognizes a trickle candidate that this host cannot use', () => {
+    expect(
+      isUnusableIpv6IceCandidate(
+        { candidate: 'candidate:2 1 udp 1 fe80::1 9 typ host', sdpMid: '0' },
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      isUnusableIpv6IceCandidate(
+        { candidate: 'candidate:3 1 udp 1 2001:db8::20 9 typ srflx', sdpMid: '0' },
+        true,
+      ),
+    ).toBe(false)
+    expect(
+      isUnusableIpv6IceCandidate(
+        { candidate: 'candidate:3 1 udp 1 2001:db8::20 9 typ srflx', sdpMid: '0' },
+        false,
+      ),
+    ).toBe(true)
+    expect(
+      isUnusableIpv6IceCandidate(
+        { candidate: 'candidate:1 1 udp 1 192.168.1.20 9 typ host', sdpMid: '0' },
+        false,
+      ),
+    ).toBe(false)
   })
 })
 

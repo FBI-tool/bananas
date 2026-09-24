@@ -1,4 +1,8 @@
-import { cloneSessionDescription } from '../Utils'
+import {
+  cloneSessionDescription,
+  dropUnusableIpv6IceCandidates,
+  isUnusableIpv6IceCandidate,
+} from '../Utils'
 import type { ControlMessage } from './controlProtocol'
 import { parseControlMessage, serializeControlMessage } from './controlProtocol'
 import { ICE_GATHERING_TIMEOUT_MS } from './constants'
@@ -42,6 +46,7 @@ type PeerLinkOptions = {
   events: PeerLinkEvents
   mediaE2ee?: MediaE2EE | null
   requireMediaE2ee?: boolean
+  keepRoutableIpv6?: boolean
 }
 
 export class PeerLink {
@@ -77,6 +82,7 @@ export class PeerLink {
   private readonly candidateTypes = new Set<IceCandidateKind>()
   private readonly serverErrors: IceServerError[] = []
   private gatheringTimedOut = false
+  private readonly keepRoutableIpv6: boolean
 
   constructor(opts: PeerLinkOptions) {
     this.pendingId = opts.pendingId
@@ -85,6 +91,7 @@ export class PeerLink {
     this.events = opts.events
     this.mediaE2ee = opts.mediaE2ee ?? null
     this.requireMediaE2ee = Boolean(opts.requireMediaE2ee)
+    this.keepRoutableIpv6 = opts.keepRoutableIpv6 ?? true
     this.pc = new RTCPeerConnection(opts.rtcConfig)
     this.pc.ontrack = (event): void => {
       this.events.onTrack(event)
@@ -405,10 +412,13 @@ export class PeerLink {
   }
 
   async setRemoteDescription(desc: RTCSessionDescriptionInit): Promise<void> {
-    await this.pc.setRemoteDescription(desc)
+    await this.pc.setRemoteDescription(
+      dropUnusableIpv6IceCandidates(desc, this.keepRoutableIpv6),
+    )
   }
 
   async addIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
+    if (isUnusableIpv6IceCandidate(candidate, this.keepRoutableIpv6)) return
     await this.pc.addIceCandidate(candidate)
   }
 
@@ -419,7 +429,7 @@ export class PeerLink {
       desc.type === 'offer' && (this.makingOffer || this.pc.signalingState !== 'stable')
     this.ignoreOffer = !this.polite && offerCollision
     if (this.ignoreOffer) return null
-    await this.pc.setRemoteDescription(desc)
+    await this.setRemoteDescription(desc)
     if (desc.type === 'offer') {
       await this.pc.setLocalDescription()
       return this.pc.localDescription

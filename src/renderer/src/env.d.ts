@@ -168,6 +168,7 @@ type KiwiApi = {
     emergencyHotkey?: EmergencyHotkey
   }>
   getAppVersion: () => Promise<string>
+  hasRoutableIpv6: () => Promise<boolean>
   getDeviceIdentity: () => Promise<{ publicKey: string; fingerprint: string; privateKey: string }>
   onSelectScreenShareSource: (
     handler: (sources: ScreenShareSource[]) => Promise<string | null>,

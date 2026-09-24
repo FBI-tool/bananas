@@ -25,16 +25,28 @@ const switchValue = (arg: string): string => {
   return eq === -1 ? '' : arg.slice(eq + 1)
 }
 
-export const applyChromiumFlags = (): void => {
-  if (!isLinux) return
+const MDNS_HIDE_FEATURE = 'WebRtcHideLocalIpsWithMdns'
 
+export const applyChromiumFlags = (): void => {
+  if (!isLinux) {
+    app.commandLine.appendSwitch('disable-features', MDNS_HIDE_FEATURE)
+    return
+  }
+
+  let disabledMdns = false
   for (const arg of linuxGpuCliArgs({
     wayland: isWaylandSession(),
     vaapi: readHardwareVideoAcceleration(),
   })) {
     const name = switchName(arg)
     const value = switchValue(arg)
+    if (name === 'disable-features') {
+      app.commandLine.appendSwitch(name, [MDNS_HIDE_FEATURE, value].filter(Boolean).join(','))
+      disabledMdns = true
+      continue
+    }
     if (value) app.commandLine.appendSwitch(name, value)
     else app.commandLine.appendSwitch(name)
   }
+  if (!disabledMdns) app.commandLine.appendSwitch('disable-features', MDNS_HIDE_FEATURE)
 }

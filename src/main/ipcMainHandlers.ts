@@ -10,6 +10,7 @@ import { RemoteControlBridge, parseGrant } from './sidecar/remoteControlBridge'
 import { capturedSidecarKeyToLocal, setLocalKeyCapture } from './sidecar/localKeyCapture'
 import { DEFAULT_EMERGENCY_HOTKEY, isEmergencyHotkey } from '../shared/emergencyHotkey'
 import { loadOrCreateIdentity } from './identityStore'
+import { hasRoutableIpv6 } from './networkFamily'
 import { bonjourClient } from './bonjour/client'
 import { isClosedStreamError } from './bonjour/trpc'
 import type { CallKind, PresenceStatus, SignalType } from './bonjour/types'
@@ -213,6 +214,7 @@ export const ipcMainHandlersInit = (): void => {
   ipcMain.handle('getAppVersion', (): string => {
     return app.getVersion()
   })
+  ipcMain.handle('hasRoutableIpv6', (): boolean => hasRoutableIpv6())
   ipcMain.handle('getDeviceIdentity', () => {
     const identity = loadOrCreateIdentity()
     return {

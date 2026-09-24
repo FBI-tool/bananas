@@ -90,6 +90,9 @@ const KiwiApi = {
   getAppVersion: async (): Promise<string> => {
     return await ipcRenderer.invoke('getAppVersion')
   },
+  hasRoutableIpv6: async (): Promise<boolean> => {
+    return await ipcRenderer.invoke('hasRoutableIpv6')
+  },
   handleUrlClicks: (state: boolean | undefined): boolean => {
     if (state) HANDLE_URL_CLICKS = state
     return HANDLE_URL_CLICKS

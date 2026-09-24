@@ -372,4 +372,33 @@ describe('PeerLink ICE diagnostics', () => {
       vi.useRealTimers()
     }
   })
+
+  it('skips IPv6 trickle candidates when this host has no routable IPv6', async () => {
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: true,
+      keepRoutableIpv6: false,
+      events,
+    })
+    const pc = link.pc as unknown as MockRTCPeerConnection
+    await link.addIceCandidate({
+      candidate: 'candidate:1 1 udp 1 2001:db8::20 9 typ srflx',
+      sdpMid: '0',
+    })
+    await link.addIceCandidate({
+      candidate: 'candidate:2 1 udp 1 192.168.1.20 9 typ host',
+      sdpMid: '0',
+    })
+    expect(pc.addIceCandidate).toHaveBeenCalledTimes(1)
+    await link.setRemoteDescription({
+      type: 'offer',
+      sdp: 'c=IN IP6 2001:db8::10\r\na=candidate:1 1 udp 1 2001:db8::20 9 typ srflx\r\n',
+    })
+    expect(pc.setRemoteDescription).toHaveBeenCalledWith({
+      type: 'offer',
+      sdp: 'c=IN IP4 0.0.0.0\r\n',
+    })
+  })
 })

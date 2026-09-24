@@ -1453,6 +1453,13 @@ export class Room {
     }
   }
 
+  private routableIpv6Promise: Promise<boolean> | null = null
+
+  private routableIpv6(): Promise<boolean> {
+    this.routableIpv6Promise ??= window.KiwiApi.hasRoutableIpv6().catch(() => true)
+    return this.routableIpv6Promise
+  }
+
   private async createLink(
     isOfferer: boolean,
     remotePeerId?: string,
@@ -1461,6 +1468,7 @@ export class Room {
     const rtcConfig = await getRTCPeerConnectionConfig({
       encodedInsertableStreams: this.e2eeFailClosed() && supportsEncodedTransform(),
     })
+    const keepRoutableIpv6 = await this.routableIpv6()
     const link = new PeerLink({
       rtcConfig,
       localPeerId: this.localPeerId,
@@ -1469,6 +1477,7 @@ export class Room {
       remotePeerId: remotePeerId ?? null,
       mediaE2ee: this.mediaE2ee,
       requireMediaE2ee: this.e2eeFailClosed(),
+      keepRoutableIpv6,
       events: {
         onControl: (msg) => {
           void this.onControl(link, msg)
