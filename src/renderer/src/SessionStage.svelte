@@ -362,7 +362,12 @@
     if (result === 'failed') toast.show('error', L.screen_share_failed())
   }
 
+  let inviteAnotherButton: HTMLButtonElement | undefined = $state()
+  let inviteAnotherTextLoading = $state('')
+
   const onCopyInvite = async (): Promise<void> => {
+    inviteAnotherButton.disabled = true
+    inviteAnotherTextLoading = 'generating...'
     if (inviteInFlight) return
     inviteInFlight = true
     try {
@@ -379,6 +384,8 @@
       toast.show('error', L.connection_failed())
     } finally {
       inviteInFlight = false
+      inviteAnotherButton.disabled = false
+      inviteAnotherTextLoading = ''
     }
   }
 
@@ -541,11 +548,12 @@
     {#if showInvite && room.isCoordinator}
       <div class="flex flex-wrap gap-2 mb-4">
         <div class="join w-full mb-4">
-          <span class="tooltip tooltip-top {inviteFormIsVisible ? 'hidden' : ''}" data-tip={L.invite_another()}>
-            <button class="btn btn-primary" aria-label={L.invite_another()} onclick={onCopyInvite}>
+          <span class="tooltip tooltip-top {inviteFormIsVisible ? 'hidden' : ''}" data-tip={inviteAnotherTextLoading === '' ? L.invite_another() : inviteAnotherTextLoading}>
+            <button class="btn btn-primary" bind:this={inviteAnotherButton} aria-label={inviteAnotherTextLoading === '' ? L.invite_another() : inviteAnotherTextLoading} onclick={onCopyInvite}>
               <span class="icon">
                 <i class="fa-solid fa-user-plus"></i>
               </span>
+              {inviteAnotherTextLoading}
             </button>
           </span>
           <span class="tooltip tooltip-top" data-tip={L.cancel()}>
