@@ -75,6 +75,11 @@ import {
   type VoteKind,
   type VoteState,
 } from './roomLogic'
+import {
+  connectionFailureForState,
+  summarizeIceFailure,
+  type IceFailureReason,
+} from './iceFailure'
 import { playSessionEndedSound } from './sessionEndedSound'
 import { playCursorPingSound } from './cursorPingSound'
 import {
@@ -112,6 +117,7 @@ export type RoomPeer = RosterPeer
 
 export class Room {
   connectionState = $state('disconnected')
+  connectionFailure = $state<IceFailureReason | null>(null)
   sessionEndedReason = $state<SessionEndedReason | null>(null)
   presenterGone = $state(false)
   isLive = $state(false)
@@ -2369,6 +2375,7 @@ export class Room {
     const key = link.remotePeerId ?? link.pendingId
     if (this.quietClose || this.closing.has(key)) return
     this.closing.add(key)
+    const iceEvidence = link.iceEvidence()
     const peerId = link.remotePeerId
     this.clearIceGrace(key)
     this.stopAdaptive(link)
@@ -2410,7 +2417,7 @@ export class Room {
     }
     this.isLive = remaining > 0
     if (!peerId && remaining === 0) {
-      this.setConnectionState('failed')
+      this.setConnectionState('failed', summarizeIceFailure(iceEvidence))
       this.refreshRemoteScreenActive()
       return
     }
@@ -3241,8 +3248,10 @@ export class Room {
     void this.loopback.setVideoSources(this.cameraSources())
   }
 
-  private setConnectionState(state: string): void {
-    if (this.connectionState === state) return
+  private setConnectionState(state: string, failure: IceFailureReason | null = null): void {
+    const nextFailure = connectionFailureForState(state, failure)
+    if (this.connectionState === state && this.connectionFailure === nextFailure) return
+    this.connectionFailure = nextFailure
     this.connectionState = state
   }
 }

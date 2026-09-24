@@ -1,11 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { L } from './translations'
-  import { mayBeConnectionString, getDataFromKiwiUrl, ConnectionType } from './Utils'
+  import {
+    mayBeConnectionString,
+    getDataFromKiwiUrl,
+    ConnectionType,
+  } from './Utils'
   import { appState } from './appState.svelte'
   import { toast } from './toastState.svelte'
   import { debugLog } from './debugLog.svelte'
   import { sessionRoom as room } from './session/sessionStore.svelte'
+  import { connectThrownText, iceFailureText } from './session/connectionFailureText'
 
   let isConnected = $state(false)
   let connectionStringIsValid = $state<boolean | null>(null)
@@ -38,7 +43,7 @@
         break
       case 'failed':
         debugLog.error('join', 'connectionState failed')
-        toast.show('error', L.connection_failed())
+        toast.show('error', iceFailureText(room.connectionFailure))
         break
       case 'closed':
         if (!room.sessionEndedReason) toast.show('info', L.connection_closed())
@@ -71,7 +76,7 @@
     } catch (error) {
       console.error(error)
       debugLog.error('join', 'Connect click failed', error)
-      toast.show('error', L.connection_failed())
+      toast.show('error', connectThrownText(error))
     }
   }
 

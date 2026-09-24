@@ -58,6 +58,23 @@ const fr = {
   change_screen: 'Changer d’écran',
   connection_closed: 'Connexion fermée',
   connection_failed: 'Échec de la connexion',
+  connection_invite_missing:
+    'Cette chaîne de connexion n’a pas son invitation de chiffrement. Collez le texte complet, y compris tout ce qui suit #.',
+  connection_ice_auth:
+    'Le serveur STUN ou TURN a refusé la connexion pour {url} (code {code}). Vérifiez le nom d’utilisateur et le mot de passe dans les réglages.',
+  connection_ice_unreachable: 'Le serveur STUN ou TURN {url} est injoignable (code {code}).',
+  connection_ice_gathering_timeout:
+    'La recherche d’adresses a expiré avant qu’une adresse publique ou de relais n’apparaisse. Vérifiez le serveur STUN dans les réglages, ou ajoutez un serveur TURN.',
+  connection_ice_host_only:
+    'Seule une adresse locale a été trouvée. STUN n’a pas fourni d’adresse publique, donc ces pairs ne peuvent pas se joindre entre réseaux. Vérifiez le serveur STUN dans les réglages, ou ajoutez un serveur TURN.',
+  connection_ice_need_turn:
+    'Une adresse publique a été trouvée, mais les vérifications de connexion ont échoué. Un NAT symétrique a généralement besoin d’un serveur TURN dans les réglages.',
+  connection_ice_relay_failed:
+    'Une adresse de relais TURN a été trouvée, mais les vérifications de connexion ont échoué.',
+  connection_ice_no_candidates:
+    'Aucune adresse réseau n’a été recueillie. Vérifiez les serveurs STUN et TURN dans les réglages.',
+  connection_ice_unknown:
+    'Les vérifications WebRTC ont échoué avant qu’un pair ne soit atteint.',
   coordinator: 'Coordinateur',
   deny: 'Refuser',
   dismiss: 'Fermer',

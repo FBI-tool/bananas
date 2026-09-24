@@ -58,6 +58,23 @@ const pt_br = {
   change_screen: 'Trocar tela',
   connection_closed: 'Conexão encerrada',
   connection_failed: 'Falha na conexão',
+  connection_invite_missing:
+    'Esta chave de conexão não tem o convite de criptografia. Cole o texto completo, incluindo tudo depois de #.',
+  connection_ice_auth:
+    'O servidor STUN ou TURN recusou o login de {url} (código {code}). Confira o usuário e a senha em Configurações.',
+  connection_ice_unreachable:
+    'Não foi possível alcançar o servidor STUN ou TURN {url} (código {code}).',
+  connection_ice_gathering_timeout:
+    'A busca de endereços expirou antes de aparecer um endereço público ou de relay. Confira o servidor STUN em Configurações ou adicione um servidor TURN.',
+  connection_ice_host_only:
+    'Só foi encontrado um endereço local. O STUN não forneceu um endereço público, então estes pares não se alcançam entre redes. Confira o servidor STUN em Configurações ou adicione um servidor TURN.',
+  connection_ice_need_turn:
+    'Um endereço público foi encontrado, mas as verificações de conexão falharam. Um NAT simétrico geralmente precisa de um servidor TURN em Configurações.',
+  connection_ice_relay_failed:
+    'Um endereço de relay TURN foi encontrado, mas as verificações de conexão falharam.',
+  connection_ice_no_candidates:
+    'Nenhum endereço de rede foi obtido. Confira os servidores STUN e TURN em Configurações.',
+  connection_ice_unknown: 'As verificações WebRTC falharam antes de um par ser alcançado.',
   coordinator: 'Coordenador',
   deny: 'Recusar',
   dismiss: 'Fechar',

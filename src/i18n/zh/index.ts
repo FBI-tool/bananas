@@ -57,6 +57,19 @@ const zh = {
   change_screen: '更换屏幕',
   connection_closed: '连接已关闭',
   connection_failed: '连接失败',
+  connection_invite_missing: '此连接码缺少加密邀请。请粘贴完整文本，包括 # 之后的部分。',
+  connection_ice_auth:
+    'STUN 或 TURN 服务器拒绝了 {url} 的登录（代码 {code}）。请在设置中检查用户名和密码。',
+  connection_ice_unreachable: '无法连接 STUN 或 TURN 服务器 {url}（代码 {code}）。',
+  connection_ice_gathering_timeout:
+    '地址收集在出现公网或中继地址之前超时。请在设置中检查 STUN 服务器，或添加 TURN 服务器。',
+  connection_ice_host_only:
+    '只找到了本地地址。STUN 没有提供公网地址，因此双方无法跨网络连通。请在设置中检查 STUN 服务器，或添加 TURN 服务器。',
+  connection_ice_need_turn:
+    '已找到公网地址，但连接检查仍然失败。对称 NAT 通常需要在设置中添加 TURN 服务器。',
+  connection_ice_relay_failed: '已找到 TURN 中继地址，但连接检查仍然失败。',
+  connection_ice_no_candidates: '没有收集到任何网络地址。请在设置中检查 STUN 和 TURN 服务器。',
+  connection_ice_unknown: '在连上对端之前，WebRTC 连接检查失败了。',
   coordinator: '协调人',
   deny: '拒绝',
   dismiss: '关闭',

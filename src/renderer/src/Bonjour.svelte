@@ -13,7 +13,8 @@
   import { applyContactPresence, isPresenceStatus } from './bonjourPresence'
   import { debugLog } from './debugLog.svelte'
   import type { BonjourServerError } from './../../main/bonjour/types'
-  import { BonjourServerErrorEnum } from '../../main/bonjour/enums';
+  import { BonjourServerErrorEnum } from '../../main/bonjour/enums'
+  import { iceFailureText } from './session/connectionFailureText'
 
   const CONTACTS_POLL_MS = 30_000
 
@@ -330,7 +331,7 @@
         toast.show('success', L.connection_established())
         break
       case 'failed':
-        toast.show('error', L.connection_failed())
+        toast.show('error', iceFailureText(room.connectionFailure))
         break
       default:
         break

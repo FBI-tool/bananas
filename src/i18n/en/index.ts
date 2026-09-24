@@ -59,6 +59,22 @@ const en = {
   change_screen: 'Change screen',
   connection_closed: 'Connection closed',
   connection_failed: 'Connection failed',
+  connection_invite_missing:
+    'This connection string is missing its encryption invite. Paste the full text, including everything after #.',
+  connection_ice_auth:
+    'The STUN or TURN server rejected the login for {url} (code {code}). Check the username and password in Settings.',
+  connection_ice_unreachable: 'Could not reach the STUN or TURN server {url} (code {code}).',
+  connection_ice_gathering_timeout:
+    'Address gathering timed out before a public or relay address appeared. Check the STUN server in Settings, or add a TURN server.',
+  connection_ice_host_only:
+    'Only a local address was found. STUN did not provide a public address, so these peers cannot reach each other across networks. Check the STUN server in Settings, or add a TURN server.',
+  connection_ice_need_turn:
+    'A public address was found, but the connection checks still failed. A symmetric NAT usually needs a TURN server in Settings.',
+  connection_ice_relay_failed:
+    'A TURN relay address was found, but the connection checks still failed.',
+  connection_ice_no_candidates:
+    'No network addresses were gathered. Check the STUN and TURN servers in Settings.',
+  connection_ice_unknown: 'The WebRTC connection checks failed before a peer was reached.',
   coordinator: 'Coordinator',
   deny: 'Deny',
   dismiss: 'Dismiss',

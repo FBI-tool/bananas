@@ -242,6 +242,46 @@ type RootTranslation = {
 	 */
 	connection_failed: string
 	/**
+	 * T​h​i​s​ ​c​o​n​n​e​c​t​i​o​n​ ​s​t​r​i​n​g​ ​i​s​ ​m​i​s​s​i​n​g​ ​i​t​s​ ​e​n​c​r​y​p​t​i​o​n​ ​i​n​v​i​t​e​.​ ​P​a​s​t​e​ ​t​h​e​ ​f​u​l​l​ ​t​e​x​t​,​ ​i​n​c​l​u​d​i​n​g​ ​e​v​e​r​y​t​h​i​n​g​ ​a​f​t​e​r​ ​#​.
+	 */
+	connection_invite_missing: string
+	/**
+	 * The STUN or TURN server rejected the login for {url} (code {code}). Check the username and password in Settings.
+	 * @param {unknown} url
+	 * @param {unknown} code
+	 */
+	connection_ice_auth: RequiredParams<'url' | 'code'>
+	/**
+	 * Could not reach the STUN or TURN server {url} (code {code}).
+	 * @param {unknown} url
+	 * @param {unknown} code
+	 */
+	connection_ice_unreachable: RequiredParams<'url' | 'code'>
+	/**
+	 * Address gathering timed out before a public or relay address appeared. Check the STUN server in Settings, or add a TURN server.
+	 */
+	connection_ice_gathering_timeout: string
+	/**
+	 * Only a local address was found. STUN did not provide a public address, so these peers cannot reach each other across networks. Check the STUN server in Settings, or add a TURN server.
+	 */
+	connection_ice_host_only: string
+	/**
+	 * A public address was found, but the connection checks still failed. A symmetric NAT usually needs a TURN server in Settings.
+	 */
+	connection_ice_need_turn: string
+	/**
+	 * A TURN relay address was found, but the connection checks still failed.
+	 */
+	connection_ice_relay_failed: string
+	/**
+	 * No network addresses were gathered. Check the STUN and TURN servers in Settings.
+	 */
+	connection_ice_no_candidates: string
+	/**
+	 * The WebRTC connection checks failed before a peer was reached.
+	 */
+	connection_ice_unknown: string
+	/**
 	 * C​o​o​r​d​i​n​a​t​o​r
 	 */
 	coordinator: string
@@ -877,6 +917,42 @@ export type TranslationFunctions = {
 	 * Connection failed
 	 */
 	connection_failed: () => LocalizedString
+	/**
+	 * This connection string is missing its encryption invite. Paste the full text, including everything after #.
+	 */
+	connection_invite_missing: () => LocalizedString
+	/**
+	 * The STUN or TURN server rejected the login for {url} (code {code}). Check the username and password in Settings.
+	 */
+	connection_ice_auth: (arg: { url: unknown; code: unknown }) => LocalizedString
+	/**
+	 * Could not reach the STUN or TURN server {url} (code {code}).
+	 */
+	connection_ice_unreachable: (arg: { url: unknown; code: unknown }) => LocalizedString
+	/**
+	 * Address gathering timed out before a public or relay address appeared. Check the STUN server in Settings, or add a TURN server.
+	 */
+	connection_ice_gathering_timeout: () => LocalizedString
+	/**
+	 * Only a local address was found. STUN did not provide a public address, so these peers cannot reach each other across networks. Check the STUN server in Settings, or add a TURN server.
+	 */
+	connection_ice_host_only: () => LocalizedString
+	/**
+	 * A public address was found, but the connection checks still failed. A symmetric NAT usually needs a TURN server in Settings.
+	 */
+	connection_ice_need_turn: () => LocalizedString
+	/**
+	 * A TURN relay address was found, but the connection checks still failed.
+	 */
+	connection_ice_relay_failed: () => LocalizedString
+	/**
+	 * No network addresses were gathered. Check the STUN and TURN servers in Settings.
+	 */
+	connection_ice_no_candidates: () => LocalizedString
+	/**
+	 * The WebRTC connection checks failed before a peer was reached.
+	 */
+	connection_ice_unknown: () => LocalizedString
 	/**
 	 * Coordinator
 	 */

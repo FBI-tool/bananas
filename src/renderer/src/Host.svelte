@@ -4,8 +4,13 @@
   import { appState } from './appState.svelte'
   import { toast } from './toastState.svelte'
   import { debugLog } from './debugLog.svelte'
-  import { mayBeConnectionString, getDataFromKiwiUrl, ConnectionType } from './Utils'
+  import {
+    mayBeConnectionString,
+    getDataFromKiwiUrl,
+    ConnectionType,
+  } from './Utils'
   import { sessionRoom as room } from './session/sessionStore.svelte'
+  import { connectThrownText, iceFailureText } from './session/connectionFailureText'
 
   let sessionStarted = $state(false)
   let connectionStringIsValid = $state<boolean | null>(null)
@@ -39,7 +44,7 @@
         break
       case 'failed':
         debugLog.error('host', 'connectionState failed')
-        toast.show('error', L.connection_failed())
+        toast.show('error', iceFailureText(room.connectionFailure))
         break
       case 'closed':
         if (!room.sessionEndedReason) toast.show('info', L.connection_closed())
@@ -57,7 +62,7 @@
     } catch (error) {
       console.error(error)
       debugLog.error('host', 'Connect participant string failed', error)
-      toast.show('error', L.connection_failed())
+      toast.show('error', connectThrownText(error))
     }
   }
 
@@ -99,7 +104,7 @@
       const setupResult = await room.Setup()
       if (setupResult === 'cancelled') return
       if (setupResult !== 'ok') {
-        toast.show('error', L.screen_share_failed(), 2500)
+        toast.show('error', L.screen_share_failed())
         return
       }
       sessionStarted = true

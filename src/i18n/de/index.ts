@@ -58,6 +58,24 @@ const en = {
   change_screen: 'Bildschirm wechseln',
   connection_closed: 'Verbindung geschlossen',
   connection_failed: 'Verbindung fehlgeschlagen',
+  connection_invite_missing:
+    'Dieser Verbindungszeichenfolge fehlt die Verschlüsselungseinladung. Füge den vollständigen Text ein, einschließlich allem nach #.',
+  connection_ice_auth:
+    'Der STUN- oder TURN-Server hat die Anmeldung für {url} abgelehnt (Code {code}). Prüfe Benutzername und Passwort in den Einstellungen.',
+  connection_ice_unreachable:
+    'Der STUN- oder TURN-Server {url} war nicht erreichbar (Code {code}).',
+  connection_ice_gathering_timeout:
+    'Die Adresssuche endete, bevor eine öffentliche oder Relay-Adresse vorlag. Prüfe den STUN-Server in den Einstellungen oder füge einen TURN-Server hinzu.',
+  connection_ice_host_only:
+    'Es wurde nur eine lokale Adresse gefunden. STUN hat keine öffentliche Adresse geliefert, daher erreichen sich die Gegenstellen über Netzwerke hinweg nicht. Prüfe den STUN-Server in den Einstellungen oder füge einen TURN-Server hinzu.',
+  connection_ice_need_turn:
+    'Eine öffentliche Adresse wurde gefunden, die Verbindungsprüfung ist aber fehlgeschlagen. Ein symmetrisches NAT braucht meist einen TURN-Server in den Einstellungen.',
+  connection_ice_relay_failed:
+    'Eine TURN-Relay-Adresse wurde gefunden, die Verbindungsprüfung ist aber fehlgeschlagen.',
+  connection_ice_no_candidates:
+    'Es wurden keine Netzwerkadressen ermittelt. Prüfe die STUN- und TURN-Server in den Einstellungen.',
+  connection_ice_unknown:
+    'Die WebRTC-Verbindungsprüfung ist fehlgeschlagen, bevor eine Gegenstelle erreicht wurde.',
   coordinator: 'Koordinator',
   deny: 'Ablehnen',
   dismiss: 'Schließen',

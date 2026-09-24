@@ -151,6 +151,11 @@ const decodeCompactPayload = (payload: string, type: RTCSdpType): RTCSessionDesc
   return decompact(compacted, COMPACT_OPTIONS)
 }
 
+const normalizeConnectionText = (str: string): string => str.replace(/\s+/g, '')
+
+export const isMissingInviteError = (error: unknown): boolean =>
+  error instanceof Error && error.message === 'e2ee is required but the invite is missing'
+
 const parseConnectionUrl = (
   str: string,
 ): {
@@ -160,7 +165,7 @@ const parseConnectionUrl = (
   token: string | null
   fragment: string | null
 } => {
-  const url = new URL(str)
+  const url = new URL(normalizeConnectionText(str))
   if (!CONNECTION_PROTOCOLS.has(url.protocol)) {
     throw new Error('unsupported protocol')
   }

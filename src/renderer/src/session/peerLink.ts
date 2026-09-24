@@ -2,6 +2,12 @@ import { cloneSessionDescription } from '../Utils'
 import type { ControlMessage } from './controlProtocol'
 import { parseControlMessage, serializeControlMessage } from './controlProtocol'
 import { ICE_GATHERING_TIMEOUT_MS } from './constants'
+import {
+  iceCandidateKind,
+  type IceCandidateKind,
+  type IceFailureEvidence,
+  type IceServerError,
+} from './iceFailure'
 import { decodeMlsFrame, encodeMlsFrame, type MlsFrame } from '../crypto/mlsWire'
 import { asBufferSource } from '../crypto/constants'
 import type { MediaE2EE } from '../crypto/mediaE2ee'
@@ -68,6 +74,9 @@ export class PeerLink {
   }> = []
   private pendingMotion: string | null = null
   private motionFlushTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly candidateTypes = new Set<IceCandidateKind>()
+  private readonly serverErrors: IceServerError[] = []
+  private gatheringTimedOut = false
 
   constructor(opts: PeerLinkOptions) {
     this.pendingId = opts.pendingId
@@ -87,7 +96,16 @@ export class PeerLink {
       this.events.onIceConnectionStateChange(this.pc.iceConnectionState)
     }
     this.pc.onicecandidate = (event: RTCPeerConnectionIceEvent): void => {
+      const kind = iceCandidateKind(event.candidate)
+      if (kind) this.candidateTypes.add(kind)
       this.events.onIceCandidate?.(event.candidate ? event.candidate.toJSON() : null)
+    }
+    this.pc.onicecandidateerror = (event: RTCPeerConnectionIceErrorEvent): void => {
+      this.serverErrors.push({
+        url: event.url ?? '',
+        code: event.errorCode,
+        text: event.errorText ?? '',
+      })
     }
     this.pc.onnegotiationneeded = (): void => {
       void this.onNegotiationNeeded()
@@ -142,6 +160,14 @@ export class PeerLink {
 
   get connectionState(): RTCPeerConnectionState {
     return this.pc.connectionState
+  }
+
+  iceEvidence(): IceFailureEvidence {
+    return {
+      candidateTypes: [...this.candidateTypes],
+      serverErrors: this.serverErrors.map((error) => ({ ...error })),
+      gatheringTimedOut: this.gatheringTimedOut,
+    }
   }
 
   get localDescription(): RTCSessionDescriptionInit | null {
@@ -416,6 +442,7 @@ export class PeerLink {
         if (this.pc.iceGatheringState === 'complete') finish()
       }
       const timeoutId = setTimeout(() => {
+        this.gatheringTimedOut = true
         console.warn('ICE gathering timed out; continuing with current candidates')
         finish()
       }, ICE_GATHERING_TIMEOUT_MS)

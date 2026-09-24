@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PeerLink, MOTION_BACKPRESSURE_BYTES } from './peerLink'
 import { CAMERA_PROFILES, SCREEN_PROFILES, AUDIO_PROFILE } from './adaptive/qualityProfiles'
+import { ICE_GATHERING_TIMEOUT_MS } from './constants'
 
 class MockDataChannel {
   label: string
@@ -323,5 +324,52 @@ describe('PeerLink adaptive profiles', () => {
     motion.onbufferedamountlow?.()
     expect(motion.send).toHaveBeenCalledTimes(1)
     expect(motion.send).toHaveBeenCalledWith('move-2')
+  })
+})
+
+describe('PeerLink ICE diagnostics', () => {
+  it('records candidate types, server errors, and a gathering timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      const link = new PeerLink({
+        rtcConfig: { iceServers: [] },
+        localPeerId: 'local',
+        pendingId: 'pending',
+        isOfferer: true,
+        events,
+      })
+      const pc = link.pc as unknown as MockRTCPeerConnection & {
+        onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null
+        onicecandidateerror: ((event: RTCPeerConnectionIceErrorEvent) => void) | null
+      }
+      pc.iceGatheringState = 'gathering'
+      pc.onicecandidate?.({
+        candidate: {
+          candidate: 'candidate:1 1 UDP 1 10.0.0.1 9 typ host',
+          toJSON: () => ({ candidate: 'candidate:1 1 UDP 1 10.0.0.1 9 typ host', sdpMid: '0' }),
+        },
+      } as RTCPeerConnectionIceEvent)
+      pc.onicecandidateerror?.({
+        url: 'stun:stun.l.google.com:19302',
+        errorCode: 701,
+        errorText: 'STUN server timed out',
+      } as RTCPeerConnectionIceErrorEvent)
+      const pending = link.waitForIceGatheringComplete()
+      await vi.advanceTimersByTimeAsync(ICE_GATHERING_TIMEOUT_MS)
+      await pending
+      expect(link.iceEvidence()).toEqual({
+        candidateTypes: ['host'],
+        serverErrors: [
+          {
+            url: 'stun:stun.l.google.com:19302',
+            code: 701,
+            text: 'STUN server timed out',
+          },
+        ],
+        gatheringTimedOut: true,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

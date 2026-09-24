@@ -16,6 +16,7 @@
   import type { Room } from './session/room.svelte'
   import { debugLog } from './debugLog.svelte'
   import MacSidecarPermissions from './MacSidecarPermissions.svelte'
+  import { connectThrownText } from './session/connectionFailureText'
 
   let {
     room,
@@ -356,7 +357,7 @@
     const result = await room.requestToPresent()
     if (result === 'cooldown') toast.show('info', L.vote_cooldown())
     if (result === 'blocked') toast.show('info', L.vote_rejected())
-    if (result === 'failed') toast.show('error', L.screen_share_failed(), 2500)
+    if (result === 'failed') toast.show('error', L.screen_share_failed())
   }
 
   const onRequestKick = async (peerId: string): Promise<void> => {
@@ -367,7 +368,7 @@
 
   const onChangeScreen = async (): Promise<void> => {
     const result = await room.changeScreen()
-    if (result === 'failed') toast.show('error', L.screen_share_failed(), 2500)
+    if (result === 'failed') toast.show('error', L.screen_share_failed())
   }
 
   const onCopyInvite = async (): Promise<void> => {
@@ -397,7 +398,7 @@
       appState.hostUrl = ''
     } catch (error) {
       console.error(error)
-      toast.show('error', L.connection_failed())
+      toast.show('error', connectThrownText(error))
     }
   }
 

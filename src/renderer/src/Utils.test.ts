@@ -277,6 +277,23 @@ describe('e2ee invite fragments', () => {
     expect(parsed.rtcSessionDescription.type).toBe('offer')
   })
 
+  it('accepts a connection string wrapped across lines in a text file', async () => {
+    const { randomInviteCrypto } = await import('./crypto/invite')
+    const invite = randomInviteCrypto()
+    const url = await getConnectionString(ConnectionType.HOST, MINIMAL_OFFER, {
+      username: 'Kiwi',
+      invite,
+    })
+    const hash = url.indexOf('#')
+    const wrapped = `${url.slice(0, 24)}\n${url.slice(24, hash)}\r\n${url.slice(hash)}`
+    expect(mayBeConnectionString(ConnectionType.HOST, wrapped)).toBe(true)
+    const intact = await getDataFromKiwiUrl(url)
+    const parsed = await getDataFromKiwiUrl(wrapped)
+    expect(parsed.invite).toEqual(intact.invite)
+    expect(parsed.rtcSessionDescription).toEqual(intact.rtcSessionDescription)
+    expect(parsed.e2ee).toBe(true)
+  })
+
   it('treats legacy URLs without a fragment as visibly non-E2EE', async () => {
     const url = await getConnectionString(ConnectionType.HOST, MINIMAL_OFFER, { username: 'Kiwi' })
     const parsed = await getDataFromKiwiUrl(url)
