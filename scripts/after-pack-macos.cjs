@@ -29,6 +29,8 @@ const infoPlist = (version) => `<?xml version="1.0" encoding="UTF-8"?>
   <string>11.0</string>
   <key>LSUIElement</key>
   <true/>
+  <key>NSInputMonitoringUsageDescription</key>
+  <string>p2p.kiwi Sidecar uses Input Monitoring only to detect the emergency-stop shortcut.</string>
 </dict>
 </plist>
 `

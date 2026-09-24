@@ -224,6 +224,17 @@ export class SidecarManager {
     ) {
       await this.refreshCapabilities()
     }
+    if (type === 'set-emergency-hotkey') {
+      const detail = {
+        emergencyHotkey: this.capabilities.emergencyHotkey,
+        unavailableReason: this.capabilities.unavailableReason,
+      }
+      if (res.type === 'error' || !this.capabilities.emergencyHotkey) {
+        this.logger.warn('emergency hotkey registration failed', detail)
+      } else {
+        this.logger.info('emergency hotkey registered', detail)
+      }
+    }
     return res
   }
 

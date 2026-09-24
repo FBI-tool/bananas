@@ -130,7 +130,7 @@ export class RemoteControlBridge {
     )
     this.unsubscribers.push(
       this.sidecar.onStarted(() => {
-        void this.configureHotkey()
+        this.scheduleHotkey()
       }),
     )
   }
@@ -141,7 +141,7 @@ export class RemoteControlBridge {
 
   setHotkey(hotkey: EmergencyHotkey): void {
     this.hotkey = hotkey
-    if (this.sidecar.isStarted()) void this.configureHotkey()
+    if (this.sidecar.isStarted()) this.scheduleHotkey()
   }
 
   getStatus(): RemoteControlStatus {
@@ -366,9 +366,15 @@ export class RemoteControlBridge {
     if (notifyStatus) this.notifyRenderer('remote-control-status', this.getStatus())
   }
 
+  private scheduleHotkey(): void {
+    void this.configureHotkey().catch((error: unknown) => {
+      console.warn('[sidecar] emergency hotkey registration failed', error)
+    })
+  }
+
   private async configureHotkey(): Promise<void> {
     if (!this.sidecar.isStarted()) return
-    await this.sidecar.send('set-emergency-hotkey', this.hotkey).catch(() => undefined)
+    await this.sidecar.send('set-emergency-hotkey', this.hotkey)
   }
 
   private notifyRenderer(channel: string, payload: unknown): void {

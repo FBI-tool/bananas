@@ -10,6 +10,8 @@
 
 static int g_hotkey_fired;
 static int g_hotkey_registered;
+static int g_hotkey_attempted;
+static int g_hotkey_listen_blocked;
 static int g_hotkey_want_ctrl = 1;
 static int g_hotkey_want_alt;
 static int g_hotkey_want_shift;
@@ -27,6 +29,8 @@ static CGEventFlags g_mac_last_flags;
 
 static unsigned int mods_from_flags(CGEventFlags flags);
 static int mac_hotkey_match(unsigned int mods);
+static void add_tap_source(CFRunLoopSourceRef src);
+static void remove_tap_source(CFRunLoopSourceRef src);
 
 static CGKeyCode cg_for_portable(unsigned int code) {
   if (code == PK_ESCAPE) return kVK_Escape;
@@ -139,13 +143,14 @@ void native_input_query_caps(NativeCaps *out) {
   out->pointer_injection = post_granted();
   out->keyboard_injection = post_granted();
   out->keyboard_capture = post_granted();
-  out->emergency_hotkey = listen == 1 && g_hotkey_registered && !g_emergency_dead;
+  out->emergency_hotkey =
+      listen == 1 && g_hotkey_registered && !g_emergency_dead && !g_hotkey_listen_blocked;
   out->global_keyboard_observation = out->emergency_hotkey;
   if (!post_granted()) {
     snprintf(out->unavailable_reason, sizeof(out->unavailable_reason), "accessibility-permission");
-  } else if (listen != 1) {
+  } else if (listen != 1 || g_hotkey_listen_blocked) {
     snprintf(out->unavailable_reason, sizeof(out->unavailable_reason), "input-monitoring-permission");
-  } else if (!g_hotkey_registered || g_emergency_dead) {
+  } else if (g_hotkey_attempted && (!g_hotkey_registered || g_emergency_dead)) {
     snprintf(out->unavailable_reason, sizeof(out->unavailable_reason), "hotkey-registration-failed");
   } else {
     out->unavailable_reason[0] = 0;
@@ -168,10 +173,24 @@ int native_hotkey_poll(void) {
   return fired;
 }
 
+static void add_tap_source(CFRunLoopSourceRef src) {
+  if (!src) return;
+  CFRunLoopRef loop = CFRunLoopGetCurrent();
+  CFRunLoopAddSource(loop, src, kCFRunLoopDefaultMode);
+  CFRunLoopAddSource(loop, src, kCFRunLoopCommonModes);
+}
+
+static void remove_tap_source(CFRunLoopSourceRef src) {
+  if (!src) return;
+  CFRunLoopRef loop = CFRunLoopGetCurrent();
+  CFRunLoopRemoveSource(loop, src, kCFRunLoopDefaultMode);
+  CFRunLoopRemoveSource(loop, src, kCFRunLoopCommonModes);
+}
+
 static void emergency_tap_stop(void) {
   if (g_emergency_tap) CGEventTapEnable(g_emergency_tap, false);
   if (g_emergency_src) {
-    CFRunLoopRemoveSource(CFRunLoopGetCurrent(), g_emergency_src, kCFRunLoopCommonModes);
+    remove_tap_source(g_emergency_src);
     CFRelease(g_emergency_src);
     g_emergency_src = NULL;
   }
@@ -182,12 +201,30 @@ static void emergency_tap_stop(void) {
   g_hotkey_registered = 0;
 }
 
+static int emergency_tap_recover(void) {
+  if (!CGPreflightListenEventAccess()) {
+    g_hotkey_listen_blocked = 1;
+    g_emergency_dead = 1;
+    return 0;
+  }
+  if (!g_emergency_tap) return 0;
+  CGEventTapEnable(g_emergency_tap, true);
+  if (CGEventTapIsEnabled(g_emergency_tap)) {
+    g_hotkey_listen_blocked = 0;
+    return 1;
+  }
+  if (!g_hotkey_listen_blocked) {
+    fprintf(stderr, "p2p.kiwi sidecar: emergency hotkey tap stayed disabled; grant Input Monitoring\n");
+  }
+  g_hotkey_listen_blocked = 1;
+  return 0;
+}
+
 static CGEventRef emergency_tap_callback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *ref) {
   (void)proxy;
   (void)ref;
   if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
-    g_emergency_dead = 1;
-    if (g_emergency_tap) CGEventTapEnable(g_emergency_tap, false);
+    emergency_tap_recover();
     return event;
   }
   if (type != kCGEventKeyDown) return event;
@@ -210,8 +247,11 @@ int native_hotkey_register(int ctrl, int alt, int shift, int meta, int key_escap
   g_hotkey_want_shift = shift;
   g_hotkey_want_meta = meta;
   g_emergency_dead = 0;
+  g_hotkey_listen_blocked = 0;
+  g_hotkey_attempted = 1;
   if (!CGPreflightListenEventAccess()) {
     g_hotkey_registered = 0;
+    fprintf(stderr, "p2p.kiwi sidecar: emergency hotkey requires Input Monitoring\n");
     return 0;
   }
   CGEventMask mask = CGEventMaskBit(kCGEventKeyDown);
@@ -222,10 +262,25 @@ int native_hotkey_register(int ctrl, int alt, int shift, int meta, int key_escap
       mask,
       emergency_tap_callback,
       NULL);
-  if (!g_emergency_tap) return 0;
+  if (!g_emergency_tap) {
+    fprintf(stderr, "p2p.kiwi sidecar: CGEventTapCreate failed for emergency hotkey\n");
+    return 0;
+  }
   g_emergency_src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, g_emergency_tap, 0);
-  CFRunLoopAddSource(CFRunLoopGetCurrent(), g_emergency_src, kCFRunLoopCommonModes);
+  if (!g_emergency_src) {
+    fprintf(stderr, "p2p.kiwi sidecar: emergency hotkey run loop source failed\n");
+    CFRelease(g_emergency_tap);
+    g_emergency_tap = NULL;
+    return 0;
+  }
+  add_tap_source(g_emergency_src);
   CGEventTapEnable(g_emergency_tap, true);
+  if (!CGEventTapIsEnabled(g_emergency_tap)) {
+    fprintf(stderr, "p2p.kiwi sidecar: emergency hotkey tap is disabled; grant Input Monitoring\n");
+    emergency_tap_stop();
+    g_hotkey_listen_blocked = 1;
+    return 0;
+  }
   g_hotkey_registered = 1;
   return 1;
 }
@@ -361,8 +416,7 @@ static CGEventRef tap_callback(CGEventTapProxy proxy, CGEventType type, CGEventR
   (void)proxy;
   (void)ref;
   if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
-    g_emergency_dead = 1;
-    if (g_tap) CGEventTapEnable(g_tap, false);
+    if (g_tap) CGEventTapEnable(g_tap, true);
     return event;
   }
   if (!g_capture_active) return event;
@@ -414,7 +468,12 @@ int native_keyboard_capture_start(void) {
       NULL);
   if (!g_tap) return 0;
   g_tap_src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, g_tap, 0);
-  CFRunLoopAddSource(CFRunLoopGetCurrent(), g_tap_src, kCFRunLoopCommonModes);
+  if (!g_tap_src) {
+    CFRelease(g_tap);
+    g_tap = NULL;
+    return 0;
+  }
+  add_tap_source(g_tap_src);
   CGEventTapEnable(g_tap, true);
   g_mac_last_flags = CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState);
   g_capture_active = 1;
@@ -424,7 +483,7 @@ int native_keyboard_capture_start(void) {
 void native_keyboard_capture_stop(void) {
   if (g_tap) CGEventTapEnable(g_tap, false);
   if (g_tap_src) {
-    CFRunLoopRemoveSource(CFRunLoopGetCurrent(), g_tap_src, kCFRunLoopCommonModes);
+    remove_tap_source(g_tap_src);
     CFRelease(g_tap_src);
     g_tap_src = NULL;
   }

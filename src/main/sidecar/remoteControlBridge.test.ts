@@ -96,6 +96,19 @@ describe('RemoteControlBridge', () => {
     expect(bridge.getStatus().armed).toBe(false)
   })
 
+  it('surfaces a failed emergency hotkey registration', async () => {
+    const sidecar = mockSidecar()
+    sidecar.send.mockImplementation(async (type: string) => {
+      if (type === 'set-emergency-hotkey') throw new Error('hotkey-registration-failed')
+      return { protocolVersion: 2, type: 'ok', payload: {} }
+    })
+    const bridge = new RemoteControlBridge(sidecar, () => source)
+    await expect(bridge.arm({ mouse: true, keyboard: false })).rejects.toThrow(
+      /hotkey-registration-failed/,
+    )
+    expect(bridge.getStatus().armed).toBe(false)
+  })
+
   it('maps pointer moves through the host source and coalesces pending moves', async () => {
     const sidecar = mockSidecar()
     const bridge = new RemoteControlBridge(sidecar, () => source)
