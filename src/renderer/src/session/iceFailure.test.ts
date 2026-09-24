@@ -36,12 +36,14 @@ describe('summarizeIceFailure', () => {
       ),
     ).toEqual({ kind: 'auth', url: 'turn:turn.example:3478', code: 401 })
 
-    expect(
-      summarizeIceFailure(evidence({ serverErrors: [server({ code: 403 })] })),
-    ).toMatchObject({ kind: 'auth', code: 403 })
-    expect(
-      summarizeIceFailure(evidence({ serverErrors: [server({ code: 438 })] })),
-    ).toMatchObject({ kind: 'auth', code: 438 })
+    expect(summarizeIceFailure(evidence({ serverErrors: [server({ code: 403 })] }))).toMatchObject({
+      kind: 'auth',
+      code: 403,
+    })
+    expect(summarizeIceFailure(evidence({ serverErrors: [server({ code: 438 })] }))).toMatchObject({
+      kind: 'auth',
+      code: 438,
+    })
   })
 
   it('names an unreachable server, including codes other than 701', () => {
@@ -86,13 +88,11 @@ describe('summarizeIceFailure', () => {
       kind: 'need-turn',
     })
     expect(
-      summarizeIceFailure(
-        evidence({ gatheringTimedOut: true, candidateTypes: ['host', 'srflx'] }),
-      ),
+      summarizeIceFailure(evidence({ gatheringTimedOut: true, candidateTypes: ['host', 'srflx'] })),
     ).toEqual({ kind: 'need-turn' })
-    expect(
-      summarizeIceFailure(evidence({ candidateTypes: ['host', 'srflx', 'relay'] })),
-    ).toEqual({ kind: 'relay-failed' })
+    expect(summarizeIceFailure(evidence({ candidateTypes: ['host', 'srflx', 'relay'] }))).toEqual({
+      kind: 'relay-failed',
+    })
   })
 })
 

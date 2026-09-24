@@ -412,9 +412,7 @@ export class PeerLink {
   }
 
   async setRemoteDescription(desc: RTCSessionDescriptionInit): Promise<void> {
-    await this.pc.setRemoteDescription(
-      dropUnusableIpv6IceCandidates(desc, this.keepRoutableIpv6),
-    )
+    await this.pc.setRemoteDescription(dropUnusableIpv6IceCandidates(desc, this.keepRoutableIpv6))
   }
 
   async addIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {

@@ -246,39 +246,39 @@ type RootTranslation = {
 	 */
 	connection_invite_missing: string
 	/**
-	 * The STUN or TURN server rejected the login for {url} (code {code}). Check the username and password in Settings.
-	 * @param {unknown} url
+	 * T​h​e​ ​S​T​U​N​ ​o​r​ ​T​U​R​N​ ​s​e​r​v​e​r​ ​r​e​j​e​c​t​e​d​ ​t​h​e​ ​l​o​g​i​n​ ​f​o​r​ ​{​u​r​l​}​ ​(​c​o​d​e​ ​{​c​o​d​e​}​)​.​ ​C​h​e​c​k​ ​t​h​e​ ​u​s​e​r​n​a​m​e​ ​a​n​d​ ​p​a​s​s​w​o​r​d​ ​i​n​ ​S​e​t​t​i​n​g​s​.
 	 * @param {unknown} code
-	 */
-	connection_ice_auth: RequiredParams<'url' | 'code'>
-	/**
-	 * Could not reach the STUN or TURN server {url} (code {code}).
 	 * @param {unknown} url
-	 * @param {unknown} code
 	 */
-	connection_ice_unreachable: RequiredParams<'url' | 'code'>
+	connection_ice_auth: RequiredParams<'code' | 'url'>
 	/**
-	 * Address gathering timed out before a public or relay address appeared. Check the STUN server in Settings, or add a TURN server.
+	 * C​o​u​l​d​ ​n​o​t​ ​r​e​a​c​h​ ​t​h​e​ ​S​T​U​N​ ​o​r​ ​T​U​R​N​ ​s​e​r​v​e​r​ ​{​u​r​l​}​ ​(​c​o​d​e​ ​{​c​o​d​e​}​)​.
+	 * @param {unknown} code
+	 * @param {unknown} url
+	 */
+	connection_ice_unreachable: RequiredParams<'code' | 'url'>
+	/**
+	 * A​d​d​r​e​s​s​ ​g​a​t​h​e​r​i​n​g​ ​t​i​m​e​d​ ​o​u​t​ ​b​e​f​o​r​e​ ​a​ ​p​u​b​l​i​c​ ​o​r​ ​r​e​l​a​y​ ​a​d​d​r​e​s​s​ ​a​p​p​e​a​r​e​d​.​ ​C​h​e​c​k​ ​t​h​e​ ​S​T​U​N​ ​s​e​r​v​e​r​ ​i​n​ ​S​e​t​t​i​n​g​s​,​ ​o​r​ ​a​d​d​ ​a​ ​T​U​R​N​ ​s​e​r​v​e​r​.
 	 */
 	connection_ice_gathering_timeout: string
 	/**
-	 * Only a local address was found. STUN did not provide a public address, so these peers cannot reach each other across networks. Check the STUN server in Settings, or add a TURN server.
+	 * O​n​l​y​ ​a​ ​l​o​c​a​l​ ​a​d​d​r​e​s​s​ ​w​a​s​ ​f​o​u​n​d​.​ ​S​T​U​N​ ​d​i​d​ ​n​o​t​ ​p​r​o​v​i​d​e​ ​a​ ​p​u​b​l​i​c​ ​a​d​d​r​e​s​s​,​ ​s​o​ ​t​h​e​s​e​ ​p​e​e​r​s​ ​c​a​n​n​o​t​ ​r​e​a​c​h​ ​e​a​c​h​ ​o​t​h​e​r​ ​a​c​r​o​s​s​ ​n​e​t​w​o​r​k​s​.​ ​C​h​e​c​k​ ​t​h​e​ ​S​T​U​N​ ​s​e​r​v​e​r​ ​i​n​ ​S​e​t​t​i​n​g​s​,​ ​o​r​ ​a​d​d​ ​a​ ​T​U​R​N​ ​s​e​r​v​e​r​.
 	 */
 	connection_ice_host_only: string
 	/**
-	 * A public address was found, but the connection checks still failed. A symmetric NAT usually needs a TURN server in Settings.
+	 * A​ ​p​u​b​l​i​c​ ​a​d​d​r​e​s​s​ ​w​a​s​ ​f​o​u​n​d​,​ ​b​u​t​ ​t​h​e​ ​c​o​n​n​e​c​t​i​o​n​ ​c​h​e​c​k​s​ ​s​t​i​l​l​ ​f​a​i​l​e​d​.​ ​A​ ​s​y​m​m​e​t​r​i​c​ ​N​A​T​ ​u​s​u​a​l​l​y​ ​n​e​e​d​s​ ​a​ ​T​U​R​N​ ​s​e​r​v​e​r​ ​i​n​ ​S​e​t​t​i​n​g​s​.
 	 */
 	connection_ice_need_turn: string
 	/**
-	 * A TURN relay address was found, but the connection checks still failed.
+	 * A​ ​T​U​R​N​ ​r​e​l​a​y​ ​a​d​d​r​e​s​s​ ​w​a​s​ ​f​o​u​n​d​,​ ​b​u​t​ ​t​h​e​ ​c​o​n​n​e​c​t​i​o​n​ ​c​h​e​c​k​s​ ​s​t​i​l​l​ ​f​a​i​l​e​d​.
 	 */
 	connection_ice_relay_failed: string
 	/**
-	 * No network addresses were gathered. Check the STUN and TURN servers in Settings.
+	 * N​o​ ​n​e​t​w​o​r​k​ ​a​d​d​r​e​s​s​e​s​ ​w​e​r​e​ ​g​a​t​h​e​r​e​d​.​ ​C​h​e​c​k​ ​t​h​e​ ​S​T​U​N​ ​a​n​d​ ​T​U​R​N​ ​s​e​r​v​e​r​s​ ​i​n​ ​S​e​t​t​i​n​g​s​.
 	 */
 	connection_ice_no_candidates: string
 	/**
-	 * The WebRTC connection checks failed before a peer was reached.
+	 * T​h​e​ ​W​e​b​R​T​C​ ​c​o​n​n​e​c​t​i​o​n​ ​c​h​e​c​k​s​ ​f​a​i​l​e​d​ ​b​e​f​o​r​e​ ​a​ ​p​e​e​r​ ​w​a​s​ ​r​e​a​c​h​e​d​.
 	 */
 	connection_ice_unknown: string
 	/**
@@ -924,11 +924,11 @@ export type TranslationFunctions = {
 	/**
 	 * The STUN or TURN server rejected the login for {url} (code {code}). Check the username and password in Settings.
 	 */
-	connection_ice_auth: (arg: { url: unknown; code: unknown }) => LocalizedString
+	connection_ice_auth: (arg: { code: unknown, url: unknown }) => LocalizedString
 	/**
 	 * Could not reach the STUN or TURN server {url} (code {code}).
 	 */
-	connection_ice_unreachable: (arg: { url: unknown; code: unknown }) => LocalizedString
+	connection_ice_unreachable: (arg: { code: unknown, url: unknown }) => LocalizedString
 	/**
 	 * Address gathering timed out before a public or relay address appeared. Check the STUN server in Settings, or add a TURN server.
 	 */

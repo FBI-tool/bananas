@@ -73,8 +73,7 @@ const fr = {
     'Une adresse de relais TURN a été trouvée, mais les vérifications de connexion ont échoué.',
   connection_ice_no_candidates:
     'Aucune adresse réseau n’a été recueillie. Vérifiez les serveurs STUN et TURN dans les réglages.',
-  connection_ice_unknown:
-    'Les vérifications WebRTC ont échoué avant qu’un pair ne soit atteint.',
+  connection_ice_unknown: 'Les vérifications WebRTC ont échoué avant qu’un pair ne soit atteint.',
   coordinator: 'Coordinateur',
   deny: 'Refuser',
   dismiss: 'Fermer',

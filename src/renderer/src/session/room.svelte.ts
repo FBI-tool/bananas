@@ -75,11 +75,7 @@ import {
   type VoteKind,
   type VoteState,
 } from './roomLogic'
-import {
-  connectionFailureForState,
-  summarizeIceFailure,
-  type IceFailureReason,
-} from './iceFailure'
+import { connectionFailureForState, summarizeIceFailure, type IceFailureReason } from './iceFailure'
 import { playSessionEndedSound } from './sessionEndedSound'
 import { playCursorPingSound } from './cursorPingSound'
 import {
