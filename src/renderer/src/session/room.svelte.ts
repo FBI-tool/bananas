@@ -1026,7 +1026,7 @@ export class Room {
   }
 
   private hangupBonjourCalls(): void {
-    for (const callId of [...this.bonjourCallIds]) {
+    for (const callId of this.bonjourCallIds) {
       this.emitBonjour(callId, { type: 'hangup' })
       void window.KiwiApi.bonjour?.hangup?.(callId).catch(() => undefined)
     }

@@ -7,8 +7,8 @@
   let imageBroken = $state(false)
 
   $effect(() => {
-    bonjourIncoming.callerImage
-    imageBroken = false
+    // Reading the URL subscribes this effect so a new avatar is shown after a load error.
+    imageBroken = bonjourIncoming.callerImage == null ? false : false
   })
 
   $effect(() => {

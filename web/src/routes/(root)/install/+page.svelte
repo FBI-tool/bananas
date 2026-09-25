@@ -32,9 +32,9 @@
 	const isValidInstallSystem = (value: string): value is InstallSystem => {
 		return installSystems.some((system) => system.value === value);
 	};
-	let form: HTMLFormElement;
+	let form: HTMLFormElement | undefined = undefined;
 	const onInstallSystemChange = () => {
-		if (!browser) return;
+		if (!browser || !form) return;
 		const formData = new FormData(form);
 		const typeParam = formData.get('type');
 		if (typeParam && typeof typeParam === 'string' && isValidInstallSystem(typeParam)) {

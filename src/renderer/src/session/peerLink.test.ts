@@ -60,7 +60,7 @@ class MockRTCPeerConnection {
   setLocalDescription = vi.fn(async (desc?: RTCSessionDescriptionInit) => {
     if (desc) this.localDescription = desc
   })
-  setRemoteDescription = vi.fn(async () => undefined)
+  setRemoteDescription = vi.fn(async (_desc?: RTCSessionDescriptionInit) => undefined)
   addTrack = vi.fn((track: MediaStreamTrack, _stream: MediaStream) => {
     const sender = createSender(track)
     this.senders.push(sender)
