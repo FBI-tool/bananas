@@ -123,6 +123,8 @@ export class Room {
   peers = $state<RoomPeer[]>([])
   displayStreamActive = $state(false)
   remoteScreenActive = $state(false)
+  /** Null until the presenter reports it. False means they paused the picture. */
+  remoteDisplayActive = $state<boolean | null>(null)
   presentCapturePending = $state(false)
   microphoneActive = $state(false)
   cameraActive = $state(false)
@@ -317,6 +319,7 @@ export class Room {
       track.enabled = !track.enabled
     }
     this.displayStreamActive = this.displayStream.getVideoTracks().some((track) => track.enabled)
+    this.broadcastDisplayState()
     if (!this.displayStreamActive) {
       this.ToggleRemoteCursors(false)
       void this.revokeAllRemoteControl('sharing-stopped')
@@ -625,6 +628,7 @@ export class Room {
         if (captured === 'cancelled' || captured === 'failed') return captured
         this.displayStream = captured
         this.displayStreamActive = true
+        this.broadcastDisplayState()
         this.bindDisplayEnded(captured)
       }
     } else {
@@ -1226,6 +1230,7 @@ export class Room {
     const captured = await this.acquireDisplayStream({ releasePrevious: true })
     if (captured === 'cancelled') {
       this.displayStreamActive = false
+      this.broadcastDisplayState()
       await this.pushVideoToAll(null, null)
       debugLog.warn('room', 'changeScreen cancelled')
       return 'cancelled'
@@ -1238,6 +1243,7 @@ export class Room {
     }
     this.displayStream = captured
     this.displayStreamActive = true
+    this.broadcastDisplayState()
     this.bindDisplayEnded(captured)
     await this.pushVideoToAll(track, captured)
     await this.revokeAllRemoteControl('sharing-stopped')
@@ -1531,6 +1537,7 @@ export class Room {
             remotePeerId: link.remotePeerId,
           })
           this.sendHello(link)
+          this.sendDisplayState(link)
           this.onMlsOpen(link)
         },
         onMlsOpen: () => {
@@ -1823,6 +1830,9 @@ export class Room {
         break
       case 'camera-state':
         this.onCameraState(inner)
+        break
+      case 'display-state':
+        this.onDisplayState(inner)
         break
       case 'remote-control-request':
         this.onRemoteControlRequest(inner)
@@ -2122,6 +2132,7 @@ export class Room {
     this.bindDisplayEnded(stream)
     this.presenterId = this.localPeerId
     this.presenterGone = false
+    this.broadcastDisplayState()
     this.refreshRemoteScreenActive()
     await this.pushVideoToAll(track, stream)
     this.broadcast({
@@ -2140,6 +2151,7 @@ export class Room {
     if (wasPresenter && !this.isPresenter) {
       await this.stopPresenting()
     }
+    this.remoteDisplayActive = null
     this.attachPresenterVideo()
     this.refreshRemoteScreenActive()
     await this.revokeAllRemoteControl('presenter-change')
@@ -2200,6 +2212,31 @@ export class Room {
       at: msg.at,
     })
     this.syncCallOverlay()
+  }
+
+  private onDisplayState(msg: Extract<ControlMessage, { t: 'display-state' }>): void {
+    if (this.isPresenter || msg.peerId !== this.presenterId) return
+    this.remoteDisplayActive = msg.active
+  }
+
+  private broadcastDisplayState(): void {
+    if (!this.isPresenter) return
+    this.broadcast({
+      t: 'display-state',
+      v: PROTOCOL_VERSION,
+      peerId: this.localPeerId,
+      active: this.displayStreamActive,
+    })
+  }
+
+  private sendDisplayState(link: PeerLink): void {
+    if (!this.isPresenter) return
+    void this.sendEncrypted(link, {
+      t: 'display-state',
+      v: PROTOCOL_VERSION,
+      peerId: this.localPeerId,
+      active: this.displayStreamActive,
+    })
   }
 
   private onCameraState(msg: Extract<ControlMessage, { t: 'camera-state' }>): void {
@@ -3016,6 +3053,7 @@ export class Room {
       track.addEventListener('ended', () => {
         if (this.displayStream !== stream) return
         this.displayStreamActive = false
+        this.broadcastDisplayState()
         void this.revokeAllRemoteControl('sharing-stopped')
       })
     }
@@ -3168,6 +3206,7 @@ export class Room {
     this.voteRejectedKind = null
     this.displayStreamActive = false
     this.remoteScreenActive = false
+    this.remoteDisplayActive = null
     this.presentCapturePending = false
     this.cursorsEnabled = false
     this.remoteControl = {}

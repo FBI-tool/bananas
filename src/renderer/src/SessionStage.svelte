@@ -18,6 +18,7 @@
   import MacSidecarPermissions from './MacSidecarPermissions.svelte'
   import { connectThrownText } from './session/connectionFailureText'
   import { pointInVideoContent } from './session/videoContentPoint'
+  import brokenVideoUrl from '../../assets/broken-video.svg?url'
 
   let {
     room,
@@ -43,6 +44,9 @@
 
   const showVideo = $derived(!room.isPresenter || Boolean(room.sessionEndedReason))
   const videoClass = $derived(room.sessionEndedReason ? 'video video-ended' : 'video')
+  const showBrokenVideo = $derived(
+    !room.isPresenter && (room.remoteDisplayActive === false || !room.remoteScreenActive),
+  )
   const localGrant = $derived(room.localRemoteGrant)
   const controlling = $derived(Boolean(localGrant && (localGrant.mouse || localGrant.keyboard)))
 
@@ -882,10 +886,15 @@
   <fieldset class="fieldset px-0">
     <legend class="fieldset-legend">{L.remote_screen()}</legend>
     <div bind:this={videoStage} class="video-overflow video-stage relative">
+      {#if showBrokenVideo}
+        <div class="broken-video" aria-hidden="true">
+          <img src={brokenVideoUrl} alt="" />
+        </div>
+      {/if}
       <video
         bind:this={remoteScreen}
         id="remote_screen"
-        class={videoClass}
+        class="{videoClass} {showBrokenVideo ? 'video-off' : ''}"
         autoplay
         playsinline
         muted
@@ -960,6 +969,27 @@
     opacity: 0.5;
     filter: grayscale(1) saturate(0.5);
   }
+  .video-off {
+    display: none;
+  }
+  .broken-video {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-base-200);
+  }
+  .broken-video img {
+    width: min(34%, 11rem);
+    height: auto;
+  }
+  @media (prefers-color-scheme: dark) {
+    .broken-video img {
+      filter: invert(1);
+      opacity: 0.8;
+    }
+  }
   .video-overflow {
     width: 100%;
     height: auto;
@@ -988,6 +1018,12 @@
     height: 100%;
     max-height: 100%;
     object-fit: contain;
+  }
+  .video-stage:fullscreen .broken-video,
+  .video-stage:-webkit-full-screen .broken-video {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
   }
   .video-stage:fullscreen .exit-fullscreen-btn,
   .video-stage:-webkit-full-screen .exit-fullscreen-btn {

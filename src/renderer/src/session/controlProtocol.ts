@@ -167,6 +167,12 @@ export type CameraStateMessage = Envelope & {
   streamId: string
 }
 
+export type DisplayStateMessage = Envelope & {
+  t: 'display-state'
+  peerId: string
+  active: boolean
+}
+
 export type MlsControlMessage = Envelope & {
   t: 'mls'
   kind: 'key-package' | 'welcome' | 'commit'
@@ -195,6 +201,7 @@ export type ControlMessage =
   | CursorPingMessage
   | ChatMessage
   | CameraStateMessage
+  | DisplayStateMessage
   | E2eeMessage
   | MlsControlMessage
   | RemoteControlRequestMessage
@@ -314,6 +321,8 @@ export const isControlMessage = (value: unknown): value is ControlMessage => {
       return (
         isString(value.peerId) && typeof value.enabled === 'boolean' && isString(value.streamId)
       )
+    case 'display-state':
+      return isString(value.peerId) && typeof value.active === 'boolean'
     case 'e2ee':
       return (
         typeof value.epoch === 'number' &&

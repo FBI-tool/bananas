@@ -91,6 +91,15 @@ describe('controlProtocol', () => {
     ).toBeNull()
   })
 
+  it('accepts display-state', () => {
+    expect(
+      parseControlMessage(
+        JSON.stringify({ t: 'display-state', v: 1, peerId: 'host', active: false }),
+      ),
+    ).toMatchObject({ t: 'display-state', active: false })
+    expect(parseControlMessage('{"t":"display-state","v":1,"peerId":"host"}')).toBeNull()
+  })
+
   it('accepts camera-state', () => {
     const parsed = parseControlMessage(
       JSON.stringify({
