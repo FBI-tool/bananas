@@ -31,6 +31,7 @@ const zh = {
   privacty_policy: '隐私政策',
   remote_cursors_disabled: '运程光标已关闭',
   remote_cursors_enabled: '远程光标已启用',
+  fullscreen_pointer_only: '仅在共享整个屏幕时可以使用光标和远程鼠标。',
   remote_screen: '远程屏幕',
   report_a_bug: '报告一个错误',
   save: '保存',

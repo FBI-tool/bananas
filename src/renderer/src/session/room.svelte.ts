@@ -127,6 +127,7 @@ export class Room {
   microphoneActive = $state(false)
   cameraActive = $state(false)
   cursorsEnabled = $state(false)
+  shareSurface = $state<'monitor' | 'window' | 'browser' | null>(null)
   hasAudioInput = $state(false)
   activeVote = $state<VoteState | null>(null)
   localVoteCast = $state<boolean | null>(null)
@@ -228,6 +229,10 @@ export class Room {
     return this.localPeerId !== '' && this.localPeerId === this.presenterId
   }
 
+  get windowShare(): boolean {
+    return this.shareSurface === 'window' || this.shareSurface === 'browser'
+  }
+
   get localRemoteGrant(): { mouse: boolean; keyboard: boolean; generation: number } | null {
     const state = this.remoteControl[this.localPeerId]
     if (!state || (!state.mouse && !state.keyboard)) return null
@@ -320,6 +325,22 @@ export class Room {
 
   ToggleRemoteCursors(enabled: boolean): boolean {
     if (!this.isPresenter) return false
+    const blocked = enabled && this.windowShare
+    debugLog.info('share-surface', 'toggle cursors', {
+      requested: enabled,
+      blocked,
+      shareSurface: this.shareSurface,
+      windowShare: this.windowShare,
+      cursorsEnabled: this.cursorsEnabled,
+    })
+    console.info('[share-surface] toggle cursors', {
+      requested: enabled,
+      blocked,
+      shareSurface: this.shareSurface,
+      windowShare: this.windowShare,
+      cursorsEnabled: this.cursorsEnabled,
+    })
+    if (blocked) return false
     this.cursorsEnabled = enabled
     if (!enabled) window.KiwiApi.toggleRemoteCursors(false)
     else window.KiwiApi.toggleRemoteCursors(true)
@@ -387,8 +408,12 @@ export class Room {
 
   async grantRemoteControl(peerId: string, grant: RemoteControlGrant): Promise<void> {
     if (!this.isPresenter || peerId === this.localPeerId) return
+    const applied: RemoteControlGrant = this.windowShare
+      ? { mouse: false, keyboard: grant.keyboard }
+      : grant
+    if (!applied.mouse && !applied.keyboard) return
     this.emergencyStopMessage = null
-    this.remoteControl = grantRemoteControlState(this.remoteControl, peerId, grant)
+    this.remoteControl = grantRemoteControlState(this.remoteControl, peerId, applied)
     const state = getPeerRemoteControl(this.remoteControl, peerId)
     this.broadcast({
       t: 'remote-control-grant',
@@ -2835,6 +2860,12 @@ export class Room {
     ) {
       return
     }
+    if (
+      this.windowShare &&
+      (msg.t === 'pointer-move' || msg.t === 'pointer-button' || msg.t === 'pointer-wheel')
+    ) {
+      return
+    }
     const kind = msg.t === 'key' ? 'keyboard' : 'mouse'
     if (!inputMatchesGrant(this.remoteControl, peerId, kind, msg.generation)) {
       debugLog.warn('remote-input', 'dropped; grant mismatch', {
@@ -2920,6 +2951,65 @@ export class Room {
     this.iceGraceTimers.delete(key)
   }
 
+  private async reportShareSurface(
+    stream: MediaStream,
+    frame: { width: number; height: number },
+  ): Promise<void> {
+    const track = stream.getVideoTracks()[0]
+    const settings = track?.getSettings?.() as
+      | { displaySurface?: string; width?: number; height?: number }
+      | undefined
+    const detail = {
+      displaySurface: settings?.displaySurface ?? null,
+      settingsWidth: settings?.width ?? 0,
+      settingsHeight: settings?.height ?? 0,
+      frameWidth: frame.width,
+      frameHeight: frame.height,
+      settingsKeys: settings ? Object.keys(settings) : [],
+      screen: { width: window.screen?.width ?? null, height: window.screen?.height ?? null },
+    }
+    debugLog.info('share-surface', 'capture frame', detail)
+    console.info('[share-surface] capture frame', detail)
+    const resolved = await window.KiwiApi.setShareDisplaySurface(
+      settings?.displaySurface,
+      frame.width,
+      frame.height,
+    )
+    if (resolved !== 'monitor' && resolved !== 'window' && resolved !== 'browser') {
+      debugLog.warn('share-surface', 'unresolved surface', { resolved })
+      console.info('[share-surface] unresolved surface', { resolved })
+      return
+    }
+    this.shareSurface = resolved
+    const applied = {
+      resolved,
+      windowShare: this.windowShare,
+      cursorsEnabled: this.cursorsEnabled,
+    }
+    debugLog.info('share-surface', 'applied', applied)
+    console.info('[share-surface] renderer applied', applied)
+    if (this.windowShare) await this.limitPointerToFullscreen()
+  }
+
+  private async limitPointerToFullscreen(): Promise<void> {
+    debugLog.info('share-surface', 'limit pointer to fullscreen', {
+      shareSurface: this.shareSurface,
+      cursorsEnabled: this.cursorsEnabled,
+    })
+    console.info('[share-surface] limit pointer to fullscreen', {
+      shareSurface: this.shareSurface,
+      cursorsEnabled: this.cursorsEnabled,
+    })
+    this.ToggleRemoteCursors(false)
+    const entries = Object.entries(this.remoteControl)
+    for (const [peerId, state] of entries) {
+      if (!this.windowShare) return
+      if (!state.mouse) continue
+      if (state.keyboard) await this.grantRemoteControl(peerId, { mouse: false, keyboard: true })
+      else await this.revokeRemoteControl(peerId, 'host')
+    }
+  }
+
   private bindDisplayEnded(stream: MediaStream): void {
     for (const track of stream.getVideoTracks()) {
       track.addEventListener('ended', () => {
@@ -2956,12 +3046,14 @@ export class Room {
         debugLog.warn('room', 'getDisplayMedia returned no video tracks')
         return 'failed'
       }
-      const live = await this.waitForCapturedDisplay(stream)
-      if (live !== 'ok') {
+      const frame = await this.waitForCapturedDisplay(stream)
+      if (frame === 'cancelled') {
         this.stopStream(stream)
-        debugLog.warn('room', 'getDisplayMedia capture not live', { live })
-        return live
+        debugLog.warn('room', 'getDisplayMedia capture not live', { live: frame })
+        console.info('[share-surface] capture ended before a frame')
+        return frame
       }
+      await this.reportShareSurface(stream, frame)
       return stream
     } catch (e) {
       if (e && typeof e === 'object' && 'name' in e && e.name === 'NotAllowedError') {
@@ -2974,47 +3066,58 @@ export class Room {
     }
   }
 
-  private waitForCapturedDisplay(stream: MediaStream): Promise<'ok' | 'cancelled'> {
+  private waitForCapturedDisplay(
+    stream: MediaStream,
+  ): Promise<{ width: number; height: number } | 'cancelled'> {
     const track = stream.getVideoTracks()[0]
     if (!track || track.readyState === 'ended') return Promise.resolve('cancelled')
-    if (displayCaptureReady(track)) return Promise.resolve('ok')
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+      if (!displayCaptureReady(track)) return Promise.resolve('cancelled')
+      const settings = track.getSettings?.()
+      return Promise.resolve({ width: settings?.width ?? 0, height: 0 })
+    }
+
+    const waiting = {
+      readyState: track.readyState,
+      muted: track.muted,
+    }
+    debugLog.info('share-surface', 'waiting for capture frame', waiting)
+    console.info('[share-surface] waiting for capture frame', waiting)
 
     return new Promise((resolve) => {
       let settled = false
-      let video: HTMLVideoElement | null = null
-      const finish = (result: 'ok' | 'cancelled'): void => {
+      const video = document.createElement('video')
+      const finish = (result: { width: number; height: number } | 'cancelled'): void => {
         if (settled) return
         settled = true
-        track.removeEventListener('unmute', check)
         track.removeEventListener('ended', onEnded)
-        if (video) {
-          video.srcObject = null
-          video.remove?.()
-        }
+        video.srcObject = null
+        video.remove()
         resolve(result)
       }
-      const check = (): void => {
-        if (track.readyState === 'ended') finish('cancelled')
-        else if (displayCaptureReady(track)) finish('ok')
-      }
       const onEnded = (): void => finish('cancelled')
-      track.addEventListener('unmute', check)
       track.addEventListener('ended', onEnded)
-
-      if (typeof document === 'undefined' || typeof document.createElement !== 'function') return
-      video = document.createElement('video')
       video.muted = true
       video.playsInline = true
       video.srcObject = stream
       const onFrame = (): void => {
-        check()
-        if (settled || !video || typeof video.requestVideoFrameCallback !== 'function') return
-        video.requestVideoFrameCallback(() => onFrame())
+        if (track.readyState === 'ended') {
+          finish('cancelled')
+          return
+        }
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          finish({ width: video.videoWidth, height: video.videoHeight })
+          return
+        }
+        if (typeof video.requestVideoFrameCallback === 'function') {
+          video.requestVideoFrameCallback(() => onFrame())
+        }
       }
       if (typeof video.requestVideoFrameCallback === 'function') {
         video.requestVideoFrameCallback(() => onFrame())
-      } else if (typeof video.addEventListener === 'function') {
-        video.addEventListener('loadeddata', () => check(), { once: true })
+      } else {
+        video.addEventListener('resize', () => onFrame())
+        video.addEventListener('loadeddata', () => onFrame(), { once: true })
       }
       void video.play?.().catch(() => undefined)
     })

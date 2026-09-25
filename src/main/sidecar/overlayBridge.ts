@@ -1,8 +1,31 @@
 import { screen, type BrowserWindow } from 'electron'
 import { createCursorsWindow } from '../cursors'
-import type { OverlaySource, OverlaySpec, RemoteCursor } from './protocol'
+import { mapNormalizedIntoRect } from './coordinates'
+import {
+  sidecarSourceFields,
+  type OverlaySource,
+  type OverlaySpec,
+  type RemoteCursor,
+} from './protocol'
 import { isRemoteCursor } from './protocol'
 import { SidecarManager } from './sidecarManager'
+
+const cursorPixel = (source: OverlaySource, x: number, y: number): { x: number; y: number } => {
+  const area =
+    source.capture && source.capture.width > 0 && source.capture.height > 0
+      ? source.capture
+      : source.bounds
+  const point = mapNormalizedIntoRect(
+    { x, y },
+    {
+      x: area.x - source.bounds.x,
+      y: area.y - source.bounds.y,
+      width: area.width,
+      height: area.height,
+    },
+  )
+  return { x: Math.round(point.x), y: Math.round(point.y) }
+}
 
 const COALESCE_MS = 16
 const PING_MS = 500
@@ -43,6 +66,7 @@ export class OverlayBridge {
   private electronActive = false
   private sidecarOverlayCreated = false
   private coalesceTimer: ReturnType<typeof setTimeout> | null = null
+  private loggedCursorGate = ''
 
   constructor(private readonly sidecar: SidecarManager) {}
 
@@ -86,6 +110,19 @@ export class OverlayBridge {
   }
 
   async updateCursor(raw: unknown): Promise<void> {
+    const source = this.currentSource()
+    const gate = `${Boolean(source.windowShare)}:${source.sourceId ?? ''}:${source.bounds.width}x${source.bounds.height}`
+    if (gate !== this.loggedCursorGate) {
+      this.loggedCursorGate = gate
+      console.info('[share-surface] overlay cursor', {
+        windowShare: Boolean(source.windowShare),
+        dropped: Boolean(source.windowShare),
+        sourceId: source.sourceId ?? null,
+        bounds: source.bounds,
+        scaleFactor: source.scaleFactor,
+      })
+    }
+    if (source.windowShare) return
     if (!isCursorUpdate(raw)) return
     if (raw.x < 0 || raw.x > 1 || raw.y < 0 || raw.y > 1) return
     const peerId = raw.id
@@ -103,13 +140,14 @@ export class OverlayBridge {
     })
     if (this.electronActive && this.electronWindow && !this.electronWindow.isDestroyed()) {
       const source = this.currentSource()
+      const point = cursorPixel(source, raw.x, raw.y)
       this.electronWindow.webContents.send('updateRemoteCursor', {
         id: peerId,
         name: raw.name,
         foregroundColor: raw.foregroundColor,
         backgroundColor: raw.backgroundColor,
-        x: Math.round(raw.x * source.bounds.width),
-        y: Math.round(raw.y * source.bounds.height),
+        x: point.x,
+        y: point.y,
       })
     }
     this.scheduleFlush()
@@ -189,10 +227,7 @@ export class OverlayBridge {
   private spec(): OverlaySpec {
     const source = this.currentSource()
     return {
-      displayId: source.displayId,
-      bounds: source.bounds,
-      scaleFactor: source.scaleFactor,
-      rotation: source.rotation,
+      ...sidecarSourceFields(source),
       clickThrough: true,
       alwaysOnTop: true,
       content: { cursors: [...this.cursors.values()].filter(isRemoteCursor) },

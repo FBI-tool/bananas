@@ -8,9 +8,11 @@ import {
   SIDECAR_PROTOCOL_VERSION,
 } from './protocol'
 import {
+  mapNormalizedToCapture,
   mapNormalizedToPhysical,
   mapNormalizedToSource,
   physicalBoundsForSource,
+  physicalCaptureRect,
   pickSourceForCursor,
 } from './coordinates'
 
@@ -112,5 +114,42 @@ describe('coordinate mapping', () => {
     expect(mapNormalizedToPhysical({ x: 1, y: 1 }, scaled)).toEqual({ x: 3840, y: 1020 })
     expect(mapNormalizedToPhysical({ x: 0.5, y: 0.5 }, scaled)).toEqual({ x: 2880, y: 480 })
     expect(mapNormalizedToSource({ x: 0.5, y: 0.5 }, scaled)).toEqual({ x: 1920, y: 320 })
+  })
+
+  it('maps a window nested in a scaled display with a negative origin', () => {
+    const display = {
+      displayId: '5',
+      bounds: { x: -100, y: 50, width: 800, height: 600 },
+      scaleFactor: 2,
+      rotation: 0,
+      windowShare: true,
+      capture: { x: 100, y: 80, width: 400, height: 300 },
+    }
+    expect(physicalCaptureRect(display)).toEqual({
+      x: 200,
+      y: 160,
+      width: 800,
+      height: 600,
+    })
+    expect(mapNormalizedToCapture({ x: 0, y: 0 }, display)).toEqual({ x: 200, y: 160 })
+    expect(mapNormalizedToCapture({ x: 1, y: 1 }, display)).toEqual({ x: 999, y: 759 })
+    expect(mapNormalizedToCapture({ x: 0.5, y: 0.5 }, display)).toEqual({ x: 599.5, y: 459.5 })
+  })
+
+  it('maps a full-screen share across the display when capture is omitted', () => {
+    const display = {
+      displayId: '5',
+      bounds: { x: -100, y: 50, width: 800, height: 600 },
+      scaleFactor: 2,
+      rotation: 0,
+    }
+    expect(physicalCaptureRect(display)).toEqual({
+      x: -200,
+      y: 100,
+      width: 1600,
+      height: 1200,
+    })
+    expect(mapNormalizedToCapture({ x: 0, y: 0 }, display)).toEqual({ x: -200, y: 100 })
+    expect(mapNormalizedToCapture({ x: 1, y: 1 }, display)).toEqual({ x: 1399, y: 1299 })
   })
 })

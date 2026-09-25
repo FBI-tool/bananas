@@ -451,6 +451,89 @@ void overlay_draw_clear(uint8_t *buf, int width, int height) {
   memset(buf, 0, (size_t)width * (size_t)height * 4);
 }
 
+static int capture_active(const NativeSource *source) {
+  return source && source->has_capture && source->cap_w > 0 && source->cap_h > 0;
+}
+
+void overlay_set_capture_from_pointer(
+    NativeSource *source, int mx, int my, int mw, int mh, int gx, int gy, int gw, int gh) {
+  int dip_w;
+  int dip_h;
+  float rx;
+  float ry;
+  if (!source || gw < 1 || gh < 1) return;
+  dip_w = source->width > 0 ? source->width : 1;
+  dip_h = source->height > 0 ? source->height : 1;
+  rx = mw > 0 ? (float)mw / (float)dip_w : 1.f;
+  ry = mh > 0 ? (float)mh / (float)dip_h : 1.f;
+  if (rx < 0.01f) rx = 1.f;
+  if (ry < 0.01f) ry = 1.f;
+  source->cap_x = source->x + (int)llroundf((float)(gx - mx) / rx);
+  source->cap_y = source->y + (int)llroundf((float)(gy - my) / ry);
+  source->cap_w = (int)llroundf((float)gw / rx);
+  source->cap_h = (int)llroundf((float)gh / ry);
+  if (source->cap_w < 1) source->cap_w = 1;
+  if (source->cap_h < 1) source->cap_h = 1;
+  source->has_capture = 1;
+}
+
+int overlay_capture_global(
+    const NativeSource *source, int mx, int my, int mw, int mh, int *x, int *y, int *w, int *h) {
+  int dip_w;
+  int dip_h;
+  float rx;
+  float ry;
+  if (!x || !y || !w || !h) return 0;
+  if (mw < 1) mw = 1;
+  if (mh < 1) mh = 1;
+  if (!capture_active(source)) {
+    *x = mx;
+    *y = my;
+    *w = mw;
+    *h = mh;
+    return 0;
+  }
+  dip_w = source->width > 0 ? source->width : 1;
+  dip_h = source->height > 0 ? source->height : 1;
+  rx = (float)mw / (float)dip_w;
+  ry = (float)mh / (float)dip_h;
+  *x = mx + (int)llroundf((float)(source->cap_x - source->x) * rx);
+  *y = my + (int)llroundf((float)(source->cap_y - source->y) * ry);
+  *w = (int)llroundf((float)source->cap_w * rx);
+  *h = (int)llroundf((float)source->cap_h * ry);
+  if (*w < 1) *w = 1;
+  if (*h < 1) *h = 1;
+  return 1;
+}
+
+void overlay_capture_local(
+    const NativeSource *source, int bitmap_w, int bitmap_h, int *lx, int *ly, int *lw, int *lh) {
+  int dip_w;
+  int dip_h;
+  float rx;
+  float ry;
+  if (!lx || !ly || !lw || !lh) return;
+  if (bitmap_w < 1) bitmap_w = 1;
+  if (bitmap_h < 1) bitmap_h = 1;
+  if (!capture_active(source)) {
+    *lx = 0;
+    *ly = 0;
+    *lw = bitmap_w;
+    *lh = bitmap_h;
+    return;
+  }
+  dip_w = source->width > 0 ? source->width : 1;
+  dip_h = source->height > 0 ? source->height : 1;
+  rx = (float)bitmap_w / (float)dip_w;
+  ry = (float)bitmap_h / (float)dip_h;
+  *lx = (int)llroundf((float)(source->cap_x - source->x) * rx);
+  *ly = (int)llroundf((float)(source->cap_y - source->y) * ry);
+  *lw = (int)llroundf((float)source->cap_w * rx);
+  *lh = (int)llroundf((float)source->cap_h * ry);
+  if (*lw < 1) *lw = 1;
+  if (*lh < 1) *lh = 1;
+}
+
 void overlay_draw_cursors(
     uint8_t *buf,
     int width,
@@ -463,6 +546,11 @@ void overlay_draw_cursors(
   if (!source || !cursors || n <= 0) return;
   int size = cursor_size_for(width, height);
   int have_asset = load_cursor_png();
+  int cap_x = 0;
+  int cap_y = 0;
+  int cap_w = width > 0 ? width : 1;
+  int cap_h = height > 0 ? height : 1;
+  overlay_capture_local(source, width, height, &cap_x, &cap_y, &cap_w, &cap_h);
   for (int i = 0; i < n; i++) {
     float nx = cursors[i].x;
     float ny = cursors[i].y;
@@ -470,8 +558,8 @@ void overlay_draw_cursors(
     if (nx > 1) nx = 1;
     if (ny < 0) ny = 0;
     if (ny > 1) ny = 1;
-    int x = (int)lroundf(nx * (float)(width - 1));
-    int y = (int)lroundf(ny * (float)(height - 1));
+    int x = cap_x + (int)lroundf(nx * (float)(cap_w > 1 ? cap_w - 1 : 0));
+    int y = cap_y + (int)lroundf(ny * (float)(cap_h > 1 ? cap_h - 1 : 0));
     uint32_t foreground = overlay_parse_color(cursors[i].foreground);
     uint32_t background = overlay_parse_color(cursors[i].background);
     float ping_scale = cursors[i].ping_scale;

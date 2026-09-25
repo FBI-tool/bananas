@@ -32,6 +32,8 @@ const fr = {
   privacty_policy: 'Politique de confidentialité',
   remote_cursors_disabled: 'Curseurs distants désactivés',
   remote_cursors_enabled: 'Curseurs distants activés',
+  fullscreen_pointer_only:
+    'Les curseurs et la souris distante ne sont disponibles que lors du partage de tout l’écran.',
   remote_screen: 'Écran distant',
   report_a_bug: 'Signaler un bug',
   save: 'Enregistrer',

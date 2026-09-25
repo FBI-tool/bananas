@@ -4,7 +4,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <dwmapi.h>
+
+#ifndef DWMWA_EXTENDED_FRAME_BOUNDS
+#define DWMWA_EXTENDED_FRAME_BOUNDS 9
+#endif
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -125,6 +130,36 @@ static int win_rect(const NativeSource *source, int *x, int *y, int *w, int *h) 
   }
   win_rect_fallback(source, x, y, w, h);
   return 0;
+}
+
+static int win_foreign_window(const char *id, int *x, int *y, int *w, int *h) {
+  char *end = NULL;
+  unsigned long long raw;
+  HWND hwnd;
+  RECT rect;
+  HRESULT hr;
+  if (!id || !id[0] || !x || !y || !w || !h) return 0;
+  raw = strtoull(id, &end, 10);
+  if (!raw) return 0;
+  hwnd = (HWND)(uintptr_t)raw;
+  if (!IsWindow(hwnd)) return 0;
+  hr = DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &rect, sizeof(rect));
+  if (FAILED(hr) && !GetWindowRect(hwnd, &rect)) return 0;
+  *x = rect.left;
+  *y = rect.top;
+  *w = rect.right - rect.left;
+  *h = rect.bottom - rect.top;
+  return *w > 0 && *h > 0;
+}
+
+void native_refresh_capture(NativeSource *source, int mx, int my, int mw, int mh) {
+  int gx = 0;
+  int gy = 0;
+  int gw = 0;
+  int gh = 0;
+  if (!source || !source->window_id[0]) return;
+  if (!win_foreign_window(source->window_id, &gx, &gy, &gw, &gh)) return;
+  overlay_set_capture_from_pointer(source, mx, my, mw, mh, gx, gy, gw, gh);
 }
 
 int native_display_rect(const NativeSource *source, int *x, int *y, int *w, int *h) {
@@ -268,6 +303,14 @@ int native_overlay_update(int overlay_id, const NativeSource *source, const Nati
     SetWindowPos(o->hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE);
   } else {
     SetWindowPos(o->hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_NOSIZE);
+  }
+  {
+    int mx = 0;
+    int my = 0;
+    int mw = 1;
+    int mh = 1;
+    native_display_rect(&o->source, &mx, &my, &mw, &mh);
+    native_refresh_capture(&o->source, mx, my, mw, mh);
   }
   overlay_draw_cursors(o->pixels, o->pw, o->ph, &o->source, o->cursors, o->cursor_count);
   present(o);

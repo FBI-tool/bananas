@@ -4,7 +4,12 @@ import { createCallOverlayWindow } from './callOverlay'
 import { settingsKeeper } from './stateKeeper'
 import { OverlayBridge } from './sidecar/overlayBridge'
 import { createAppSidecarManager } from './sidecar/sidecarManager'
-import { lastShareSource } from './screenPicker'
+import {
+  displayPixelSize,
+  lastShareSource,
+  noteShareSurface,
+  shareSurfaceFromFrame,
+} from './screenPicker'
 import type { OverlaySource } from './sidecar/protocol'
 import { RemoteControlBridge, parseGrant } from './sidecar/remoteControlBridge'
 import { capturedSidecarKeyToLocal, setLocalKeyCapture } from './sidecar/localKeyCapture'
@@ -94,7 +99,15 @@ export const ipcMainHandlersInit = (): void => {
   })
 
   ipcMain.handle('toggleRemoteCursors', async (_, state) => {
-    overlayBridge.setShareSource(sourceFromDisplay())
+    const source = sourceFromDisplay()
+    overlayBridge.setShareSource(source)
+    console.info('[share-surface] toggle cursors', {
+      enabled: Boolean(state),
+      windowShare: Boolean(source.windowShare),
+      sourceId: source.sourceId ?? null,
+      bounds: source.bounds,
+      scaleFactor: source.scaleFactor,
+    })
     await overlayBridge.toggle(Boolean(state))
   })
   ipcMain.handle('updateRemoteCursor', async (_, state): Promise<void> => {
@@ -109,6 +122,59 @@ export const ipcMainHandlersInit = (): void => {
   ipcMain.handle('setCursorShareSource', async (_, source: OverlaySource | null): Promise<void> => {
     overlayBridge.setShareSource(source)
   })
+  ipcMain.handle(
+    'setShareDisplaySurface',
+    async (
+      _,
+      reported: unknown,
+      width: unknown,
+      height: unknown,
+    ): Promise<'monitor' | 'window' | 'browser' | null> => {
+      const surface = typeof reported === 'string' ? reported : undefined
+      const frame = {
+        width: typeof width === 'number' && Number.isFinite(width) ? width : 0,
+        height: typeof height === 'number' && Number.isFinite(height) ? height : 0,
+      }
+      const displays = screen.getAllDisplays().map((display) => ({
+        id: display.id,
+        bounds: display.bounds,
+        scaleFactor: display.scaleFactor,
+        pixel: displayPixelSize(display.bounds, display.scaleFactor),
+      }))
+      const resolved = shareSurfaceFromFrame(
+        surface,
+        frame,
+        displays.map((display) => display.pixel),
+      )
+      const before = lastShareSource()
+      console.info('[share-surface] classify', {
+        reported: surface ?? null,
+        frame,
+        displays,
+        resolved,
+        rememberedBefore: before
+          ? {
+              sourceId: before.sourceId ?? null,
+              windowShare: Boolean(before.windowShare),
+              bounds: before.bounds,
+              scaleFactor: before.scaleFactor,
+            }
+          : null,
+      })
+      if (!resolved) return null
+      noteShareSurface(resolved)
+      const after = sourceFromDisplay()
+      overlayBridge.setShareSource(after)
+      console.info('[share-surface] applied', {
+        resolved,
+        windowShare: Boolean(after.windowShare),
+        sourceId: after.sourceId ?? null,
+        bounds: after.bounds,
+        scaleFactor: after.scaleFactor,
+      })
+      return resolved
+    },
+  )
   ipcMain.handle('getSidecarCapabilities', async () => sidecarManager.getCapabilities())
   ipcMain.handle('remoteControl:getCapabilities', async (event) => {
     if (!fromMainSession(event)) return sidecarManager.getCapabilities()

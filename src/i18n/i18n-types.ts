@@ -138,6 +138,10 @@ type RootTranslation = {
 	 */
 	remote_cursors_enabled: string
 	/**
+	 * C​u​r​s​o​r​s​ ​a​n​d​ ​r​e​m​o​t​e​ ​m​o​u​s​e​ ​a​r​e​ ​o​n​l​y​ ​a​v​a​i​l​a​b​l​e​ ​w​h​e​n​ ​s​h​a​r​i​n​g​ ​t​h​e​ ​f​u​l​l​ ​s​c​r​e​e​n​.
+	 */
+	fullscreen_pointer_only: string
+	/**
 	 * R​e​m​o​t​e​ ​s​c​r​e​e​n
 	 */
 	remote_screen: string
@@ -813,6 +817,10 @@ export type TranslationFunctions = {
 	 * Remote cursors enabled
 	 */
 	remote_cursors_enabled: () => LocalizedString
+	/**
+	 * Cursors and remote mouse are only available when sharing the full screen.
+	 */
+	fullscreen_pointer_only: () => LocalizedString
 	/**
 	 * Remote screen
 	 */

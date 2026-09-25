@@ -21,11 +21,64 @@ export type ScreenShareSource = {
 const SELECT_CHANNEL = 'selectScreenShareSource'
 const SELECTED_CHANNEL = 'screenShareSourceSelected'
 const PICKER_TIMEOUT_MS = 120000
+const DISPLAY_MATCH_PX = 8
+
+export type ShareSurfaceKind = 'monitor' | 'window' | 'browser'
+
+export type FrameSize = {
+  width: number
+  height: number
+}
+
+export const displayPixelSize = (
+  bounds: { width: number; height: number },
+  scaleFactor: number,
+): FrameSize => {
+  const scale = scaleFactor > 0 ? scaleFactor : 1
+  return {
+    width: Math.round(bounds.width * scale),
+    height: Math.round(bounds.height * scale),
+  }
+}
+
+const frameMatchesDisplay = (frame: FrameSize, displays: FrameSize[]): boolean =>
+  displays.some(
+    (display) =>
+      Math.abs(frame.width - display.width) <= DISPLAY_MATCH_PX &&
+      Math.abs(frame.height - display.height) <= DISPLAY_MATCH_PX,
+  )
+
+/** A portal window share still reports monitor, but its frame is smaller than every display. */
+export const shareSurfaceFromFrame = (
+  reported: string | undefined,
+  frame: FrameSize,
+  displays: FrameSize[],
+): ShareSurfaceKind | null => {
+  if (reported === 'window' || reported === 'browser') return reported
+  const sized = frame.width > 0 && frame.height > 0
+  const matches = sized && frameMatchesDisplay(frame, displays)
+  if (sized && !matches) return 'window'
+  if (reported === 'monitor' || matches) return 'monitor'
+  return null
+}
 
 let pickerRequestId = 0
 let rememberedShareSource: OverlaySource | null = null
 
 export const lastShareSource = (): OverlaySource | null => rememberedShareSource
+
+export const noteShareSurface = (surface: string): void => {
+  if (!rememberedShareSource) {
+    console.info('[share-surface] note skipped; no remembered source', { surface })
+    return
+  }
+  if (surface !== 'monitor' && surface !== 'window' && surface !== 'browser') return
+  rememberedShareSource = {
+    ...rememberedShareSource,
+    windowShare: surface === 'window' || surface === 'browser',
+    capture: surface === 'monitor' ? undefined : rememberedShareSource.capture,
+  }
+}
 
 const overlaySourceFromCapturer = (source: DesktopCapturerSource): OverlaySource => {
   const displays = screen.getAllDisplays()
@@ -36,6 +89,7 @@ const overlaySourceFromCapturer = (source: DesktopCapturerSource): OverlaySource
   return {
     displayId: source.display_id || String(display.id),
     sourceId: source.id,
+    windowShare: source.id.startsWith('window:'),
     bounds: {
       x: display.bounds.x,
       y: display.bounds.y,

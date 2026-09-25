@@ -32,6 +32,8 @@ const pt_br = {
   privacty_policy: 'Política de Privacidade',
   remote_cursors_disabled: 'Cursor remoto desativado',
   remote_cursors_enabled: 'Cursor remoto ativado',
+  fullscreen_pointer_only:
+    'Cursores e o mouse remoto só estão disponíveis ao compartilhar a tela inteira.',
   remote_screen: 'Transmissão de Tela',
   report_a_bug: 'Reportar um bug',
   save: 'Salvar',

@@ -116,6 +116,10 @@ export type OverlaySource = {
   displayId: string
   sourceId?: string
   bounds: Rect
+  /** Window rectangle in the same DIP space as bounds. Omitted for a full display. */
+  capture?: Rect
+  /** The shared picture is a window, even when its rectangle is not known yet. */
+  windowShare?: boolean
   scaleFactor: number
   rotation: number
 }
@@ -139,13 +143,40 @@ export type OverlayScene = {
 
 export type OverlaySpec = {
   displayId: string
+  sourceId?: string
   bounds: Rect
+  capture?: Rect
+  windowShare?: boolean
   scaleFactor: number
   rotation: number
   clickThrough: true
   alwaysOnTop: true
   content: OverlayScene
 }
+
+/** Fields the sidecar reads to place a pointer inside the shared picture. */
+export const sidecarSourceFields = (
+  source: OverlaySource,
+  rotation = source.rotation,
+): {
+  displayId: string
+  sourceId?: string
+  bounds: Rect
+  capture?: Rect
+  windowShare?: true
+  scaleFactor: number
+  rotation: number
+} => ({
+  displayId: source.displayId,
+  ...(source.sourceId ? { sourceId: source.sourceId } : {}),
+  bounds: source.bounds,
+  scaleFactor: source.scaleFactor,
+  rotation,
+  ...(source.windowShare ? { windowShare: true as const } : {}),
+  ...(source.capture && source.capture.width > 0 && source.capture.height > 0
+    ? { capture: source.capture }
+    : {}),
+})
 
 export type Envelope = {
   protocolVersion: number

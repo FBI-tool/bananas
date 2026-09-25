@@ -5,6 +5,7 @@
 #import <ApplicationServices/ApplicationServices.h>
 #import <math.h>
 #import <stdio.h>
+#import <stdlib.h>
 #import <string.h>
 
 #define MAX_OVERLAYS 4
@@ -190,6 +191,42 @@ static MacPlacement macos_placement(const NativeSource *source) {
   return place;
 }
 
+static int macos_foreign_window(const char *id, int *x, int *y, int *w, int *h) {
+  char *end = NULL;
+  unsigned long long raw;
+  CFArrayRef list;
+  int ok = 0;
+  if (!id || !id[0] || !x || !y || !w || !h) return 0;
+  raw = strtoull(id, &end, 10);
+  if (!raw) return 0;
+  list = CGWindowListCopyWindowInfo(kCGWindowListOptionIncludingWindow, (CGWindowID)raw);
+  if (!list) return 0;
+  if (CFArrayGetCount(list) > 0) {
+    CFDictionaryRef info = CFArrayGetValueAtIndex(list, 0);
+    CFDictionaryRef bounds = CFDictionaryGetValue(info, kCGWindowBounds);
+    CGRect rect = CGRectZero;
+    if (bounds && CGRectMakeWithDictionaryRepresentation(bounds, &rect)) {
+      *x = (int)llround(rect.origin.x);
+      *y = (int)llround(rect.origin.y);
+      *w = (int)llround(rect.size.width);
+      *h = (int)llround(rect.size.height);
+      ok = *w > 0 && *h > 0;
+    }
+  }
+  CFRelease(list);
+  return ok;
+}
+
+void native_refresh_capture(NativeSource *source, int mx, int my, int mw, int mh) {
+  int gx = 0;
+  int gy = 0;
+  int gw = 0;
+  int gh = 0;
+  if (!source || !source->window_id[0]) return;
+  if (!macos_foreign_window(source->window_id, &gx, &gy, &gw, &gh)) return;
+  overlay_set_capture_from_pointer(source, mx, my, mw, mh, gx, gy, gw, gh);
+}
+
 /* CGEvent positions are top-left points. The overlay window is the same screen in Cocoa points. */
 int native_display_rect(const NativeSource *source, int *x, int *y, int *w, int *h) {
   MacPlacement place;
@@ -322,6 +359,14 @@ int native_overlay_update(int overlay_id, const NativeSource *source, const Nati
     o->pixels = calloc((size_t)w * (size_t)h, 4);
     o->pw = w;
     o->ph = h;
+  }
+  {
+    int mx = 0;
+    int my = 0;
+    int mw = 1;
+    int mh = 1;
+    native_display_rect(&o->source, &mx, &my, &mw, &mh);
+    native_refresh_capture(&o->source, mx, my, mw, mh);
   }
   overlay_draw_cursors(o->pixels, o->pw, o->ph, &o->source, o->cursors, o->cursor_count);
   NSWindow *win = (__bridge NSWindow *)o->window;

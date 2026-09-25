@@ -29,13 +29,20 @@ NativeCursor :: struct {
 }
 
 NativeSource :: struct {
-	display_id: [128]u8,
-	x:          i32,
-	y:          i32,
-	width:      i32,
-	height:     i32,
-	scale:      f32,
-	rotation:   i32,
+	display_id:   [128]u8,
+	x:            i32,
+	y:            i32,
+	width:        i32,
+	height:       i32,
+	scale:        f32,
+	rotation:     i32,
+	has_capture:  i32,
+	cap_x:        i32,
+	cap_y:        i32,
+	cap_w:        i32,
+	cap_h:        i32,
+	window_share: i32,
+	window_id:    [64]u8,
 }
 
 NativeCapturedKey :: struct {

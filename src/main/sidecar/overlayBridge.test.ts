@@ -150,4 +150,29 @@ describe('OverlayBridge', () => {
     expect(mid?.content?.cursors?.[0]?.ping).toBeFalsy()
     expect(mid?.content?.cursors?.[0]?.pingScale ?? 1).toBe(1)
   })
+
+  it('does not draw cursors for a window share', async () => {
+    const sidecar = fakeSidecar()
+    const bridge = new OverlayBridge(sidecar)
+    await bridge.toggle(true)
+    bridge.setShareSource({
+      displayId: '1',
+      bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+      scaleFactor: 1,
+      rotation: 0,
+      windowShare: true,
+    })
+    await vi.advanceTimersByTimeAsync(20)
+    vi.mocked(sidecar.updateOverlay).mockClear()
+    await bridge.updateCursor({
+      id: 'a',
+      name: 'A',
+      foregroundColor: '#1a1a1a',
+      backgroundColor: '#fff',
+      x: 0.4,
+      y: 0.5,
+    })
+    await vi.advanceTimersByTimeAsync(20)
+    expect(vi.mocked(sidecar.updateOverlay)).not.toHaveBeenCalled()
+  })
 })

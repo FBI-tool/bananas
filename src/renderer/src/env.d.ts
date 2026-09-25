@@ -79,6 +79,11 @@ type KiwiApi = {
     sourceId?: string
   }) => Promise<void>
   removeRemoteCursor: (peerId: string) => Promise<void>
+  setShareDisplaySurface: (
+    surface: string | undefined,
+    width: number,
+    height: number,
+  ) => Promise<'monitor' | 'window' | 'browser' | null>
   remoteControl: {
     getCapabilities: () => Promise<RemoteControlCapabilities>
     arm: (grant: {

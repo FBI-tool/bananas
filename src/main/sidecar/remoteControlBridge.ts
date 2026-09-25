@@ -6,7 +6,7 @@ import {
   isEmergencyHotkey,
   type EmergencyHotkey,
 } from '../../shared/emergencyHotkey'
-import type { OverlaySource, SidecarCapabilities } from './protocol'
+import { sidecarSourceFields, type OverlaySource, type SidecarCapabilities } from './protocol'
 import type { SidecarManager } from './sidecarManager'
 
 const POINTER_RATE_PER_SEC = 240
@@ -246,6 +246,7 @@ export class RemoteControlBridge {
   async pointerMove(input: unknown): Promise<void> {
     const parsed = parsePointerMove(input)
     if (!parsed) return
+    if (this.pointerBlocked()) return
     if (!this.armed || !this.mouse) return
     if (parsed.generation !== this.generation && this.generation !== 0) return
     if (!this.pointerRate.allow()) return
@@ -262,6 +263,7 @@ export class RemoteControlBridge {
   async pointerButton(input: unknown): Promise<void> {
     const parsed = parsePointerButton(input)
     if (!parsed) return
+    if (this.pointerBlocked()) return
     if (!this.armed || !this.mouse) return
     if (parsed.generation !== this.generation && this.generation !== 0) return
     if (parsed.action !== 'up' && !this.buttonRate.allow()) return
@@ -275,6 +277,7 @@ export class RemoteControlBridge {
   async wheel(input: unknown): Promise<void> {
     const parsed = parsePointerWheel(input)
     if (!parsed) return
+    if (this.pointerBlocked()) return
     if (!this.armed || !this.mouse) return
     if (parsed.generation !== this.generation && this.generation !== 0) return
     if (!this.wheelRate.allow()) return
@@ -311,6 +314,10 @@ export class RemoteControlBridge {
     )
   }
 
+  private pointerBlocked(): boolean {
+    return this.getSource()?.windowShare === true
+  }
+
   private grantStamp(): Record<string, unknown> {
     if (this.sessionId === '' || this.peerId === '') return {}
     return {
@@ -341,7 +348,7 @@ export class RemoteControlBridge {
           return
         }
         const source = this.getSource()
-        if (!source) {
+        if (!source || source.windowShare) {
           this.pendingMove = null
           return
         }
@@ -350,12 +357,7 @@ export class RemoteControlBridge {
           {
             x: current.x,
             y: current.y,
-            source: {
-              displayId: source.displayId,
-              bounds: source.bounds,
-              scaleFactor: source.scaleFactor,
-              rotation: 0,
-            },
+            source: sidecarSourceFields(source, 0),
             ...this.grantStamp(),
           },
           MOVE_TIMEOUT_MS,

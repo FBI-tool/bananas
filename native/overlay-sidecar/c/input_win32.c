@@ -1,4 +1,5 @@
 #include "input_native.h"
+#include "overlay_draw.h"
 #include "portable_keys.h"
 
 #include <stdio.h>
@@ -224,13 +225,22 @@ int native_pointer_move(double x, double y) {
 }
 
 int native_pointer_move_for_source(const NativeSource *source, double nx, double ny) {
+  NativeSource local;
+  int mx = 0;
+  int my = 0;
+  int mw = 1;
+  int mh = 1;
   int x = 0;
   int y = 0;
   int w = 1;
   int h = 1;
   double px = 0;
   double py = 0;
-  if (source) native_display_rect(source, &x, &y, &w, &h);
+  memset(&local, 0, sizeof(local));
+  if (source) local = *source;
+  if (source) native_display_rect(&local, &mx, &my, &mw, &mh);
+  native_refresh_capture(&local, mx, my, mw, mh);
+  overlay_capture_global(&local, mx, my, mw, mh, &x, &y, &w, &h);
   normalized_to_rect(nx, ny, x, y, w, h, &px, &py);
   return native_pointer_move(px, py);
 }

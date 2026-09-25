@@ -58,6 +58,31 @@ parse_source :: proc(obj: json.Object) -> NativeSource {
 	if v, ok := object_int(obj, "rotation"); ok {
 		src.rotation = i32(v)
 	}
+	if id, ok := object_string(obj, "sourceId"); ok {
+		prefix := "window:"
+		if len(id) > len(prefix) && id[:len(prefix)] == prefix {
+			rest := id[len(prefix):]
+			cut := len(rest)
+			for ch, i in rest {
+				if ch == ':' {
+					cut = i
+					break
+				}
+			}
+			copy_cstr(src.window_id[:], rest[:cut])
+			src.window_share = 1
+		}
+	}
+	if share, ok := object_bool(obj, "windowShare"); ok && share {
+		src.window_share = 1
+	}
+	if cap, ok := obj["capture"].(json.Object); ok {
+		src.has_capture = 1
+		if v, vok := object_f64(cap, "x"); vok do src.cap_x = i32(v)
+		if v, vok := object_f64(cap, "y"); vok do src.cap_y = i32(v)
+		if v, vok := object_f64(cap, "width"); vok do src.cap_w = i32(v)
+		if v, vok := object_f64(cap, "height"); vok do src.cap_h = i32(v)
+	}
 	return src
 }
 

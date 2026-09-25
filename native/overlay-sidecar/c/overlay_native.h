@@ -43,9 +43,20 @@ typedef struct {
   int height;
   float scale;
   int rotation;
+  /* Optional window rectangle in the same DIP space as x/y/width/height.
+     has_capture is 0 for a full-display share. */
+  int has_capture;
+  int cap_x;
+  int cap_y;
+  int cap_w;
+  int cap_h;
+  int window_share;
+  char window_id[64];
 } NativeSource;
 
 void native_query_caps(NativeCaps *out);
+/* Replace a DIP window hint with a live window rectangle when one can be resolved. */
+void native_refresh_capture(NativeSource *source, int mx, int my, int mw, int mh);
 /* Same rectangle the overlay window uses. Points on macOS, physical pixels elsewhere. */
 int native_display_rect(const NativeSource *source, int *x, int *y, int *w, int *h);
 int native_overlay_create(const NativeSource *source);

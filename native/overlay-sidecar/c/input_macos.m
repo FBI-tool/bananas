@@ -1,5 +1,7 @@
 #include <stdio.h>
+#include <string.h>
 #import "input_native.h"
+#import "overlay_draw.h"
 #import "portable_keys.h"
 #import "capture_queue.h"
 
@@ -290,13 +292,22 @@ void native_hotkey_unregister(void) {
 }
 
 int native_pointer_move_for_source(const NativeSource *source, double nx, double ny) {
-  int x = source ? source->x : 0;
-  int y = source ? source->y : 0;
-  int w = source && source->width > 0 ? source->width : 1;
-  int h = source && source->height > 0 ? source->height : 1;
+  NativeSource local;
+  int mx = 0;
+  int my = 0;
+  int mw = 1;
+  int mh = 1;
+  int x = 0;
+  int y = 0;
+  int w = 1;
+  int h = 1;
   double px = 0;
   double py = 0;
-  if (source) native_display_rect(source, &x, &y, &w, &h);
+  memset(&local, 0, sizeof(local));
+  if (source) local = *source;
+  if (source) native_display_rect(&local, &mx, &my, &mw, &mh);
+  native_refresh_capture(&local, mx, my, mw, mh);
+  overlay_capture_global(&local, mx, my, mw, mh, &x, &y, &w, &h);
   normalized_to_rect(nx, ny, x, y, w, h, &px, &py);
   return native_pointer_move(px, py);
 }

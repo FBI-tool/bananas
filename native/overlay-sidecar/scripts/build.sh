@@ -131,6 +131,14 @@ case "$UNAME" in
       "$CC" -c "$ROOT/c/input_linux.c" -o "$INPUT_OBJ" -fPIC -O2 -I"$ROOT/c" $(pkg-config --cflags x11 xtst xi 2>/dev/null || true)
       LIBS="$DRAW_OBJ $LINUX_OBJ $INPUT_OBJ $(pkg-config --libs x11 xfixes xext xrandr xtst xi 2>/dev/null || echo '-lX11 -lXfixes -lXext -lXrandr -lXtst -lXi') -lm"
     fi
+    PIPEWIRE_OBJ="$OUT_DIR/pipewire_crop.o"
+    if pkg-config --exists libpipewire-0.3; then
+      "$CC" -c "$ROOT/c/pipewire_crop.c" -o "$PIPEWIRE_OBJ" -fPIC -O2 -I"$ROOT/c" -DHAVE_PIPEWIRE $(pkg-config --cflags libpipewire-0.3)
+      LIBS="$PIPEWIRE_OBJ $LIBS $(pkg-config --libs libpipewire-0.3)"
+    else
+      "$CC" -c "$ROOT/c/pipewire_crop.c" -o "$PIPEWIRE_OBJ" -fPIC -O2 -I"$ROOT/c"
+      LIBS="$PIPEWIRE_OBJ $LIBS"
+    fi
     EXTRA_FLAGS+=("-extra-linker-flags:$LIBS")
     ;;
   Darwin)

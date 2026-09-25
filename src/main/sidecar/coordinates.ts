@@ -57,6 +57,48 @@ export const mapNormalizedToPhysical = (
   }
 }
 
+const pixelSpan = (size: number): number => (size > 1 ? size - 1 : 0)
+
+/** 0 and 1 land on the first and last pixel of the rectangle. */
+export const mapNormalizedIntoRect = (point: NormalizedPoint, rect: Rect): MappedPoint => {
+  const normalized = clampNormalized(point)
+  return {
+    x: rect.x + normalized.x * pixelSpan(rect.width),
+    y: rect.y + normalized.y * pixelSpan(rect.height),
+  }
+}
+
+/**
+ * Window rectangle in the pointer-pixel space of the display.
+ * `capture` is DIP in the same space as `bounds`. The scale is the display's
+ * physical size divided by its DIP size, so a window on a display with a
+ * negative origin stays on that display. Without `capture`, the result is the
+ * display itself.
+ */
+export const physicalCaptureRect = (source: OverlaySource): Rect => {
+  const display = physicalBoundsForSource(source)
+  const capture = source.capture ?? source.bounds
+  const dipW = source.bounds.width > 0 ? source.bounds.width : 1
+  const dipH = source.bounds.height > 0 ? source.bounds.height : 1
+  const rx = display.width / dipW
+  const ry = display.height / dipH
+  return {
+    x: display.x + (capture.x - source.bounds.x) * rx,
+    y: display.y + (capture.y - source.bounds.y) * ry,
+    width: capture.width * rx,
+    height: capture.height * ry,
+  }
+}
+
+/** Normalized picture point mapped into the shared window, or the display when there is no window. */
+export const mapNormalizedToCapture = (
+  point: NormalizedPoint,
+  source: OverlaySource,
+): MappedPoint => {
+  const normalized = rotateNormalized(clampNormalized(point), source.rotation)
+  return mapNormalizedIntoRect(normalized, physicalCaptureRect(source))
+}
+
 export const displayMatchesSource = (displayId: string, source: OverlaySource): boolean =>
   displayId === source.displayId || displayId === source.sourceId
 

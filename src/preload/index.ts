@@ -174,6 +174,12 @@ const KiwiApi = {
   removeRemoteCursor: async (peerId: string): Promise<void> => {
     ipcRenderer.invoke('removeRemoteCursor', peerId)
   },
+  setShareDisplaySurface: async (
+    surface: string | undefined,
+    width: number,
+    height: number,
+  ): Promise<'monitor' | 'window' | 'browser' | null> =>
+    ipcRenderer.invoke('setShareDisplaySurface', surface, width, height),
   remoteControl: {
     getCapabilities: async () => ipcRenderer.invoke('remoteControl:getCapabilities'),
     arm: async (grant: {

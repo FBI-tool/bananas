@@ -1,4 +1,5 @@
 #include "input_native.h"
+#include "overlay_draw.h"
 #include "portable_keys.h"
 
 #include <dirent.h>
@@ -877,24 +878,52 @@ void native_keyboard_capture_stop(void) {
 }
 
 int native_pointer_move_for_source(const NativeSource *source, double nx, double ny) {
-  int x = source ? source->x : 0;
-  int y = source ? source->y : 0;
-  int w = source && source->width > 0 ? source->width : 1;
-  int h = source && source->height > 0 ? source->height : 1;
+  NativeSource local;
+  int mx = 0;
+  int my = 0;
+  int mw = 1;
+  int mh = 1;
+  int x = 0;
+  int y = 0;
+  int w = 1;
+  int h = 1;
+  int captured = 0;
   double px = 0;
   double py = 0;
+  memset(&local, 0, sizeof(local));
+  if (source) local = *source;
   if (nx < 0) nx = 0;
   if (nx > 1) nx = 1;
   if (ny < 0) ny = 0;
   if (ny > 1) ny = 1;
-  if (g_wayland) {
-    /* uinput absolute axes are -32768..32767, not pixels. */
+  if (g_wayland && (!source || (!source->window_share && !source->has_capture))) {
     int ax = -32768 + (int)(nx * (32767 - (-32768)));
     int ay = -32768 + (int)(ny * (32767 - (-32768)));
     return native_pointer_move((double)ax, (double)ay);
   }
-  if (source) native_display_rect(source, &x, &y, &w, &h);
+  if (source) native_display_rect(&local, &mx, &my, &mw, &mh);
+  native_refresh_capture(&local, mx, my, mw, mh);
+  captured = overlay_capture_global(&local, mx, my, mw, mh, &x, &y, &w, &h);
   normalized_to_rect(nx, ny, x, y, w, h, &px, &py);
+  if (g_wayland) {
+    /* Full-screen shares still span the uinput desktop. A window share is a
+       fraction of the shared monitor inside that same range. */
+    double fx = nx;
+    double fy = ny;
+    int ax;
+    int ay;
+    if (captured && mw > 1 && mh > 1) {
+      fx = (px - (double)mx) / (double)(mw - 1);
+      fy = (py - (double)my) / (double)(mh - 1);
+      if (fx < 0) fx = 0;
+      if (fx > 1) fx = 1;
+      if (fy < 0) fy = 0;
+      if (fy > 1) fy = 1;
+    }
+    ax = -32768 + (int)(fx * (32767 - (-32768)));
+    ay = -32768 + (int)(fy * (32767 - (-32768)));
+    return native_pointer_move((double)ax, (double)ay);
+  }
   return native_pointer_move(px, py);
 }
 

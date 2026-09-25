@@ -481,8 +481,13 @@
           <span>{L.change_screen()}</span>
         </button>
         <button
-          title={room.cursorsEnabled ? L.remote_cursors_enabled() : L.remote_cursors_disabled()}
+          title={room.windowShare
+            ? L.fullscreen_pointer_only()
+            : room.cursorsEnabled
+              ? L.remote_cursors_enabled()
+              : L.remote_cursors_disabled()}
           class="btn {room.cursorsEnabled ? 'btn-success' : 'btn-error'}"
+          disabled={room.windowShare}
           onclick={toggleRemoteCursors}
         >
           <span class="icon">
@@ -664,13 +669,23 @@
   <div class="alert mb-4">
     <span>{L.remote_control_request({ name: request.username })}</span>
     <div class="flex flex-wrap gap-2">
-      <button class="btn btn-sm" onclick={() => room.grantRemoteControl(request.peerId, { mouse: true, keyboard: false })}>
+      <button
+        class="btn btn-sm"
+        disabled={room.windowShare}
+        title={room.windowShare ? L.fullscreen_pointer_only() : undefined}
+        onclick={() => room.grantRemoteControl(request.peerId, { mouse: true, keyboard: false })}
+      >
         {L.remote_control_allow_mouse()}
       </button>
       <button class="btn btn-sm" onclick={() => room.grantRemoteControl(request.peerId, { mouse: false, keyboard: true })}>
         {L.remote_control_allow_keyboard()}
       </button>
-      <button class="btn btn-sm btn-primary" onclick={() => room.grantRemoteControl(request.peerId, { mouse: true, keyboard: true })}>
+      <button
+        class="btn btn-sm btn-primary"
+        disabled={room.windowShare}
+        title={room.windowShare ? L.fullscreen_pointer_only() : undefined}
+        onclick={() => room.grantRemoteControl(request.peerId, { mouse: true, keyboard: true })}
+      >
         {L.remote_control_allow_both()}
       </button>
       <button class="btn btn-sm btn-ghost" onclick={() => room.denyRemoteControlRequest(request.peerId)}>
@@ -768,11 +783,14 @@
           </td>
           {#if room.isPresenter && peer.id !== room.localPeerId}
             <td>
-              <label class="flex items-center gap-1">
+              <label
+                class="flex items-center gap-1"
+                title={room.windowShare ? L.fullscreen_pointer_only() : undefined}
+              >
                 <input
                   type="checkbox"
                   class="checkbox"
-                  disabled={room.displayStreamActive ? false : true}
+                  disabled={!room.displayStreamActive || room.windowShare}
                   checked={Boolean(room.remoteControl[peer.id]?.mouse)}
                   onchange={(e) => {
                     const mouse = e.currentTarget.checked

@@ -133,6 +133,24 @@ describe('RemoteControlBridge', () => {
     expect(moves.some((call) => call[1].source?.bounds?.width === 200)).toBe(true)
   })
 
+  it('drops pointer injection while the share is a window and still injects keys', async () => {
+    const windowSource: OverlaySource = { ...source, windowShare: true }
+    const sidecar = mockSidecar()
+    const bridge = new RemoteControlBridge(sidecar, () => windowSource)
+    await bridge.arm({ mouse: true, keyboard: true, generation: 1 })
+    sidecar.send.mockClear()
+    await bridge.pointerMove({ generation: 1, seq: 1, x: 0.4, y: 0.5 })
+    await bridge.pointerButton({ generation: 1, seq: 1, button: 'left', action: 'down' })
+    await bridge.wheel({ generation: 1, seq: 2, deltaX: 0, deltaY: 1 })
+    await bridge.key({ generation: 1, seq: 3, action: 'down', code: 'KeyA' })
+    expect(sidecar.send.mock.calls.some((call) => call[0] === 'pointer-move')).toBe(false)
+    expect(sidecar.send.mock.calls.some((call) => call[0] === 'pointer-button')).toBe(false)
+    expect(sidecar.send.mock.calls.some((call) => call[0] === 'pointer-wheel')).toBe(false)
+    await vi.waitFor(() => {
+      expect(sidecar.send.mock.calls.some((call) => call[0] === 'keyboard-event')).toBe(true)
+    })
+  })
+
   it('rejects pointer events without a mouse grant and stale generations', async () => {
     const sidecar = mockSidecar()
     const bridge = new RemoteControlBridge(sidecar, () => source)

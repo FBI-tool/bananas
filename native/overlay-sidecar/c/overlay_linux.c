@@ -2,6 +2,7 @@
 
 #include "overlay_native.h"
 #include "overlay_draw.h"
+#include "pipewire_crop.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -274,6 +275,210 @@ static void x11_window_rect(Overlay *o, int *x, int *y, int *w, int *h) {
   o->x11_win_y = *y;
   o->x11_win_w = *w;
   o->x11_win_h = *h;
+}
+
+static int x11_foreign_window(const char *id, int *x, int *y, int *w, int *h, int *root_w) {
+  char *end = NULL;
+  unsigned long long wid;
+  Display *dpy = NULL;
+  int own = 0;
+  XWindowAttributes attr;
+  Window child = 0;
+  Window root;
+  int rx = 0;
+  int ry = 0;
+  int (*prev)(Display *, XErrorEvent *);
+  int ok;
+  if (!id || !id[0] || !x || !y || !w || !h || !root_w) return 0;
+  wid = strtoull(id, &end, 10);
+  if (!wid) return 0;
+  for (int i = 0; i < MAX_OVERLAYS; i++) {
+    if (g_overlays[i].in_use && g_overlays[i].dpy) {
+      dpy = g_overlays[i].dpy;
+      break;
+    }
+  }
+  if (!dpy) {
+    dpy = XOpenDisplay(NULL);
+    own = dpy != NULL;
+  }
+  if (!dpy) return 0;
+  memset(&attr, 0, sizeof(attr));
+  prev = XSetErrorHandler(x11_error_handler);
+  g_x11_error_code = 0;
+  ok = XGetWindowAttributes(dpy, (Window)wid, &attr);
+  root = RootWindow(dpy, DefaultScreen(dpy));
+  if (ok && !g_x11_error_code) XTranslateCoordinates(dpy, (Window)wid, root, 0, 0, &rx, &ry, &child);
+  XSync(dpy, False);
+  *root_w = DisplayWidth(dpy, DefaultScreen(dpy));
+  XSetErrorHandler(prev);
+  if (own) XCloseDisplay(dpy);
+  if (!ok || g_x11_error_code || attr.width < 1 || attr.height < 1) return 0;
+  *x = rx;
+  *y = ry;
+  *w = attr.width;
+  *h = attr.height;
+  return 1;
+}
+
+static int g_window_origin_ok;
+static int g_window_origin_x;
+static int g_window_origin_y;
+static int g_window_log_cx = -1;
+static int g_window_log_cy;
+static int g_window_log_cw;
+static int g_window_log_ch;
+static int g_window_log_ox;
+static int g_window_log_oy;
+static int g_window_logged_no_cursor;
+
+static int x11_pointer_root(int *x, int *y, int *root_w) {
+  Display *dpy = NULL;
+  int own = 0;
+  Window root_ret = 0;
+  Window child = 0;
+  int rx = 0;
+  int ry = 0;
+  int wx = 0;
+  int wy = 0;
+  unsigned int mask = 0;
+  int i;
+  if (!x || !y || !root_w) return 0;
+  for (i = 0; i < MAX_OVERLAYS; i++) {
+    if (g_overlays[i].in_use && g_overlays[i].dpy) {
+      dpy = g_overlays[i].dpy;
+      break;
+    }
+  }
+  if (!dpy) {
+    dpy = XOpenDisplay(NULL);
+    own = dpy != NULL;
+  }
+  if (!dpy) return 0;
+  if (!XQueryPointer(dpy, RootWindow(dpy, DefaultScreen(dpy)), &root_ret, &child, &rx, &ry, &wx, &wy, &mask)) {
+    if (own) XCloseDisplay(dpy);
+    return 0;
+  }
+  *x = rx;
+  *y = ry;
+  *root_w = DisplayWidth(dpy, DefaultScreen(dpy));
+  if (own) XCloseDisplay(dpy);
+  return 1;
+}
+
+static void log_window_capture(int cx, int cy, int cw, int ch, int ox, int oy, int cursor, int sx, int sy) {
+  if (g_window_log_cx == cx && g_window_log_cy == cy && g_window_log_cw == cw && g_window_log_ch == ch &&
+      abs(g_window_log_ox - ox) < 4 && abs(g_window_log_oy - oy) < 4) {
+    return;
+  }
+  g_window_log_cx = cx;
+  g_window_log_cy = cy;
+  g_window_log_cw = cw;
+  g_window_log_ch = ch;
+  g_window_log_ox = ox;
+  g_window_log_oy = oy;
+  if (cursor) {
+    fprintf(
+        stderr,
+        "p2p.kiwi sidecar: window crop %d,%d %dx%d stream-cursor %d,%d capture %d,%d %dx%d\n",
+        cx,
+        cy,
+        cw,
+        ch,
+        sx,
+        sy,
+        ox,
+        oy,
+        cw,
+        ch);
+  } else {
+    fprintf(
+        stderr,
+        "p2p.kiwi sidecar: window crop %d,%d %dx%d capture %d,%d %dx%d\n",
+        cx,
+        cy,
+        cw,
+        ch,
+        ox,
+        oy,
+        cw,
+        ch);
+  }
+}
+
+void native_refresh_capture(NativeSource *source, int mx, int my, int mw, int mh) {
+  int gx = 0;
+  int gy = 0;
+  int gw = 0;
+  int gh = 0;
+  int root_w = 0;
+  int dip_w;
+  int dip_h;
+  int origin_x;
+  int origin_y;
+  int sx = 0;
+  int sy = 0;
+  int cursor = 0;
+  int px = 0;
+  int py = 0;
+  if (!source) return;
+  if (source->window_id[0] && x11_foreign_window(source->window_id, &gx, &gy, &gw, &gh, &root_w)) {
+    dip_w = source->width > 0 ? source->width : 1;
+    /* Root pixels match DIP on some XWayland sessions and the CRTC on others. */
+    if (abs(root_w - dip_w) < abs(root_w - (mw > 0 ? mw : 1))) {
+      source->cap_x = gx;
+      source->cap_y = gy;
+      source->cap_w = gw;
+      source->cap_h = gh;
+      source->has_capture = 1;
+    } else {
+      overlay_set_capture_from_pointer(source, mx, my, mw, mh, gx, gy, gw, gh);
+    }
+    return;
+  }
+  if (!source->window_share) {
+    g_window_origin_ok = 0;
+    g_window_logged_no_cursor = 0;
+    g_window_log_cx = -1;
+    return;
+  }
+  if (!pipewire_video_crop(&gx, &gy, &gw, &gh)) return;
+  if (mw < 1) mw = 1;
+  if (mh < 1) mh = 1;
+  if (gx != 0 || gy != 0) {
+    origin_x = mx + gx;
+    origin_y = my + gy;
+  } else if (gw < mw || gh < mh) {
+    cursor = pipewire_stream_cursor(&sx, &sy);
+    if (cursor && x11_pointer_root(&px, &py, &root_w)) {
+      dip_w = source->width > 0 ? source->width : 1;
+      dip_h = source->height > 0 ? source->height : 1;
+      if (abs(root_w - dip_w) < abs(root_w - mw)) {
+        float rx = (float)mw / (float)dip_w;
+        float ry = (float)mh / (float)dip_h;
+        px = mx + (int)llroundf((float)(px - source->x) * rx);
+        py = my + (int)llroundf((float)(py - source->y) * ry);
+      }
+      g_window_origin_x = px - sx;
+      g_window_origin_y = py - sy;
+      g_window_origin_ok = 1;
+    }
+    if (!g_window_origin_ok) {
+      if (!g_window_logged_no_cursor && pipewire_cursor_metadata_missing()) {
+        fprintf(
+            stderr,
+            "p2p.kiwi sidecar: pipewire window stream has no cursor metadata; window share stays on the display\n");
+        g_window_logged_no_cursor = 1;
+      }
+      return;
+    }
+    origin_x = g_window_origin_x;
+    origin_y = g_window_origin_y;
+  } else {
+    return;
+  }
+  overlay_set_capture_from_pointer(source, mx, my, mw, mh, origin_x, origin_y, gw, gh);
+  log_window_capture(gx, gy, gw, gh, origin_x, origin_y, cursor, sx, sy);
 }
 
 int native_display_rect(const NativeSource *source, int *x, int *y, int *w, int *h) {
@@ -993,6 +1198,14 @@ int native_overlay_update(int overlay_id, const NativeSource *source, const Nati
   }
 #endif
   ensure_pixels(o, pw, ph);
+  {
+    int mx = 0;
+    int my = 0;
+    int mw = 1;
+    int mh = 1;
+    native_display_rect(&o->source, &mx, &my, &mw, &mh);
+    native_refresh_capture(&o->source, mx, my, mw, mh);
+  }
   overlay_draw_cursors(o->pixels, o->pw, o->ph, &o->source, o->cursors, o->cursor_count);
   if (!o->is_wayland) x11_present(o);
 #ifdef HAVE_WAYLAND
@@ -1034,4 +1247,5 @@ void native_shutdown(void) {
   for (int i = 0; i < MAX_OVERLAYS; i++) {
     if (g_overlays[i].in_use) native_overlay_destroy(g_overlays[i].id);
   }
+  pipewire_crop_shutdown();
 }

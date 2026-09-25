@@ -32,6 +32,8 @@ const en = {
   privacty_policy: 'Privatsphärenrichtlinie',
   remote_cursors_disabled: 'Remote cursors deaktiviert',
   remote_cursors_enabled: 'Remote cursors aktiviert',
+  fullscreen_pointer_only:
+    'Cursor und Remote-Maus sind nur verfügbar, wenn der ganze Bildschirm geteilt wird.',
   remote_screen: 'Remote screen',
   report_a_bug: 'Einen Fehler melden',
   save: 'Speichern',
