@@ -4,7 +4,9 @@ import {
   decompressJson,
   dropTcpIceCandidates,
   dropUnusableIpv6IceCandidates,
+  answerDescriptionForRemote,
   isUnusableIpv6IceCandidate,
+  sdpHasUsableIpv6Candidate,
   getConnectionString,
   getDataFromKiwiUrl,
   mayBeConnectionString,
@@ -180,6 +182,20 @@ describe('dropUnusableIpv6IceCandidates', () => {
     expect(linkLocal.sdp).toContain('a=rtcp:9 IN IP4 0.0.0.0')
   })
 
+  it('treats ULA and global IPv6 as usable and ignores link-local', () => {
+    const sdp = [
+      'a=candidate:1 1 udp 1 192.168.1.20 9 typ host',
+      'a=candidate:2 1 udp 1 fe80::1 9 typ host',
+      'a=candidate:3 1 udp 1 fd6a:d108:e0b4:0:1 9 typ host',
+      'a=candidate:4 1 udp 1 2003:e0::1 9 typ host',
+      'a=candidate:5 1 udp 1 2600-abc.local 9 typ host',
+    ].join('\r\n')
+    expect(sdpHasUsableIpv6Candidate(sdp)).toBe(true)
+    expect(sdpHasUsableIpv6Candidate('a=candidate:1 1 udp 1 fe80::1 9 typ host')).toBe(false)
+    expect(sdpHasUsableIpv6Candidate('a=candidate:1 1 udp 1 192.168.1.20 9 typ host')).toBe(false)
+    expect(sdpHasUsableIpv6Candidate('a=candidate:5 1 udp 1 2600-abc.local 9 typ host')).toBe(false)
+  })
+
   it('recognizes a trickle candidate that this host cannot use', () => {
     expect(
       isUnusableIpv6IceCandidate(
@@ -220,6 +236,47 @@ describe('connection strings', () => {
     expect(parsed.data.username).toBe('Kiwi')
     expect(parsed.rtcSessionDescription.type).toBe('offer')
     expect(parsed.rtcSessionDescription.sdp).toContain('a=ice-ufrag:abcd')
+  })
+
+  it('omits IPv6 host candidates from a participant answer to an IPv4-only offer', async () => {
+    const ipv4Offer = `${MINIMAL_OFFER.sdp}a=candidate:1 1 udp 2122260223 192.168.31.193 56956 typ host\r\n`
+    const answer: RTCSessionDescriptionInit = {
+      type: 'answer',
+      sdp: [
+        MINIMAL_OFFER.sdp?.replace(/a=setup:actpass/, 'a=setup:active') ?? '',
+        'a=candidate:1 1 udp 2122129151 192.168.178.90 45952 typ host',
+        'a=candidate:2 1 udp 2122265343 fd6a:d108:e0b4:0:dbe8:54d0:50ce:81ac 35743 typ host',
+        'a=candidate:3 1 udp 2122197247 2003:e0:a74b:ef00:ba26:41c8:b9fe:20a1 55316 typ host',
+        'a=candidate:4 1 udp 58532095 116.203.208.7 59259 typ relay raddr 79.217.221.166 rport 45952',
+        '',
+      ].join('\r\n'),
+    }
+    const signaled = answerDescriptionForRemote(answer, ipv4Offer)
+    const url = await getConnectionString(ConnectionType.PARTICIPANT, signaled, {
+      username: 'Marco',
+    })
+    const parsed = await getDataFromKiwiUrl(url)
+    expect(parsed.rtcSessionDescription.sdp).toContain('192.168.178.90')
+    expect(parsed.rtcSessionDescription.sdp).toContain('116.203.208.7')
+    expect(parsed.rtcSessionDescription.sdp).not.toContain('fd6a:')
+    expect(parsed.rtcSessionDescription.sdp).not.toContain('2003:')
+  })
+
+  it('keeps IPv6 in a participant answer when the offer gathered it', () => {
+    const offer = 'a=candidate:1 1 udp 1 2001:db8::20 9 typ host\r\n'
+    const answer: RTCSessionDescriptionInit = {
+      type: 'answer',
+      sdp: [
+        'a=candidate:1 1 udp 1 192.168.178.90 9 typ host',
+        'a=candidate:2 1 udp 1 fd6a:d108:e0b4:0:1 9 typ host',
+        'a=candidate:3 1 udp 1 fe80::1 9 typ host',
+        '',
+      ].join('\r\n'),
+    }
+    const signaled = answerDescriptionForRemote(answer, offer)
+    expect(signaled.sdp).toContain('fd6a:')
+    expect(signaled.sdp).toContain('192.168.178.90')
+    expect(signaled.sdp).not.toContain('fe80::1')
   })
 
   it('builds a compact kiwi:// participant URL', async () => {

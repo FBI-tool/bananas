@@ -3,10 +3,12 @@ import type { RemoteCursorData, SettingsData } from '../types'
 import type { RTCSessionDescriptionOptions } from '../Utils'
 import {
   ConnectionType,
+  answerDescriptionForRemote,
   cloneSessionDescription,
   dropTcpIceCandidates,
   getConnectionString,
   getUUIDv4,
+  isUnusableIpv6IceCandidate,
   mediaTrackConstraints,
   cloneForIpc,
 } from '../Utils'
@@ -717,10 +719,14 @@ export class Room {
       pc: summarizePc(link.pc),
       local: summarizeSdp(local),
     })
-    const url = await getConnectionString(ConnectionType.PARTICIPANT, dropTcpIceCandidates(local), {
-      username: this.username,
-      invite: this.invite,
-    })
+    const url = await getConnectionString(
+      ConnectionType.PARTICIPANT,
+      answerDescriptionForRemote(local, c.sdp),
+      {
+        username: this.username,
+        invite: this.invite,
+      },
+    )
     debugLog.info('room', 'CreateParticipantUrl copied answer string', { urlChars: url.length })
     return url
   }
@@ -771,6 +777,11 @@ export class Room {
       if (link.pendingId === callId) return link
     }
     return undefined
+  }
+
+  private suppressAnswerIpv6(link: PeerLink, candidate: RTCIceCandidateInit): boolean {
+    if (link.pc.remoteDescription?.type !== 'offer') return false
+    return isUnusableIpv6IceCandidate(candidate, link.offerHasUsableIpv6)
   }
 
   private emitBonjour(callId: string, payload: BonjourSignalPayload): void {
@@ -860,7 +871,10 @@ export class Room {
     await handshake.setRemoteDescription(cloneSessionDescription(opts.offer))
     await this.addLocalMediaToLink(handshake)
     const answer = await handshake.createLocalAnswer()
-    this.emitBonjour(opts.callId, { type: 'answer', sdp: answer })
+    this.emitBonjour(opts.callId, {
+      type: 'answer',
+      sdp: answerDescriptionForRemote(answer, opts.offer.sdp),
+    })
     await this.flushBonjourIce(opts.callId, handshake)
   }
 
@@ -999,8 +1013,6 @@ export class Room {
         before: summarizePc(pending.pc),
       })
       await pending.setRemoteDescription(answer)
-      this.isLive = true
-      this.setConnectionState('connected')
       debugLog.info('room', 'Connect host applied answer', summarizePc(pending.pc))
     } catch (e) {
       debugLog.error('room', 'Connect failed', e)
@@ -1564,6 +1576,7 @@ export class Room {
           const callId = this.linkCallId.get(link)
           if (!callId) return
           if (!candidate?.candidate) return
+          if (this.suppressAnswerIpv6(link, candidate)) return
           if (!this.bonjourLocalSdpSent.has(callId)) {
             const queued = this.pendingBonjourIceOut.get(callId) ?? []
             queued.push(candidate)
@@ -1959,7 +1972,7 @@ export class Room {
             v: PROTOCOL_VERSION,
             from: this.localPeerId,
             to: msg.from,
-            sdp: dropTcpIceCandidates(answer),
+            sdp: answerDescriptionForRemote(answer, msg.sdp.sdp),
           },
           fromLink,
         )
@@ -1980,7 +1993,7 @@ export class Room {
         v: PROTOCOL_VERSION,
         from: this.localPeerId,
         to: msg.from,
-        sdp: dropTcpIceCandidates(link.localDescription ?? answer),
+        sdp: answerDescriptionForRemote(link.localDescription ?? answer, msg.sdp.sdp),
       },
       fromLink,
     )

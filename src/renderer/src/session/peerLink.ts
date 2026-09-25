@@ -2,6 +2,8 @@ import {
   cloneSessionDescription,
   dropUnusableIpv6IceCandidates,
   isUnusableIpv6IceCandidate,
+  sdpHasIceCandidate,
+  sdpHasUsableIpv6Candidate,
 } from '../Utils'
 import type { ControlMessage } from './controlProtocol'
 import { parseControlMessage, serializeControlMessage } from './controlProtocol'
@@ -83,6 +85,7 @@ export class PeerLink {
   private readonly serverErrors: IceServerError[] = []
   private gatheringTimedOut = false
   private readonly keepRoutableIpv6: boolean
+  private remoteOfferHasUsableIpv6 = false
 
   constructor(opts: PeerLinkOptions) {
     this.pendingId = opts.pendingId
@@ -179,6 +182,10 @@ export class PeerLink {
 
   get localDescription(): RTCSessionDescriptionInit | null {
     return this.pc.localDescription
+  }
+
+  get offerHasUsableIpv6(): boolean {
+    return this.remoteOfferHasUsableIpv6
   }
 
   markEstablished(): void {
@@ -412,12 +419,22 @@ export class PeerLink {
   }
 
   async setRemoteDescription(desc: RTCSessionDescriptionInit): Promise<void> {
-    await this.pc.setRemoteDescription(dropUnusableIpv6IceCandidates(desc, this.keepRoutableIpv6))
+    if (desc.type === 'offer') {
+      this.remoteOfferHasUsableIpv6 = sdpHasUsableIpv6Candidate(desc.sdp)
+    }
+    await this.pc.setRemoteDescription(dropUnusableIpv6IceCandidates(desc, this.keepRemoteIpv6()))
   }
 
   async addIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
-    if (isUnusableIpv6IceCandidate(candidate, this.keepRoutableIpv6)) return
+    if (isUnusableIpv6IceCandidate(candidate, this.keepRemoteIpv6())) return
     await this.pc.addIceCandidate(candidate)
+  }
+
+  private keepRemoteIpv6(): boolean {
+    if (!this.keepRoutableIpv6) return false
+    const sdp = this.pc.localDescription?.sdp
+    if (!sdpHasIceCandidate(sdp)) return true
+    return sdpHasUsableIpv6Candidate(sdp)
   }
 
   async handleRemoteSdp(

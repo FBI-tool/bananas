@@ -11,6 +11,7 @@
   } from './Utils'
   import { sessionRoom as room } from './session/sessionStore.svelte'
   import { connectThrownText, iceFailureText } from './session/connectionFailureText'
+  import { recoverFailedConnection } from './session/recoverFailedConnection'
 
   let sessionStarted = $state(false)
   let connectionStringIsValid = $state<boolean | null>(null)
@@ -45,6 +46,7 @@
       case 'failed':
         debugLog.error('host', 'connectionState failed')
         toast.show('error', iceFailureText(room.connectionFailure))
+        recoverFailedConnection()
         break
       case 'closed':
         if (!room.sessionEndedReason) toast.show('info', L.connection_closed())

@@ -15,6 +15,7 @@
   import type { BonjourServerError } from './../../main/bonjour/types'
   import { BonjourServerErrorEnum } from '../../main/bonjour/enums'
   import { iceFailureText } from './session/connectionFailureText'
+  import { recoverFailedConnection } from './session/recoverFailedConnection'
 
   const CONTACTS_POLL_MS = 30_000
 
@@ -332,6 +333,7 @@
         break
       case 'failed':
         toast.show('error', iceFailureText(room.connectionFailure))
+        recoverFailedConnection()
         break
       default:
         break

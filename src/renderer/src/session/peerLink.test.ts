@@ -401,4 +401,68 @@ describe('PeerLink ICE diagnostics', () => {
       sdp: 'c=IN IP4 0.0.0.0\r\n',
     })
   })
+
+  it('drops remote IPv6 when this host gathered only IPv4', async () => {
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: true,
+      keepRoutableIpv6: true,
+      events,
+    })
+    const pc = link.pc as unknown as MockRTCPeerConnection
+    pc.localDescription = {
+      type: 'offer',
+      sdp: [
+        'a=candidate:1 1 udp 2122260223 192.168.31.193 56956 typ host',
+        'a=candidate:2 1 udp 1686052607 178.223.144.163 56956 typ srflx',
+        'a=candidate:3 1 udp 58663167 116.203.208.7 52975 typ relay',
+      ].join('\r\n'),
+    }
+    await link.setRemoteDescription({
+      type: 'answer',
+      sdp: [
+        'a=candidate:1 1 udp 2122129151 192.168.178.90 45952 typ host',
+        'a=candidate:2 1 udp 2122265343 fd6a:d108:e0b4:0:dbe8:54d0:50ce:81ac 35743 typ host',
+        'a=candidate:3 1 udp 2122197247 2003:e0:a74b:ef00:ba26:41c8:b9fe:20a1 55316 typ host',
+        'a=candidate:4 1 udp 1685921535 79.217.221.166 45952 typ srflx',
+        'a=candidate:5 1 udp 58532095 116.203.208.7 59259 typ relay',
+      ].join('\r\n'),
+    })
+    const applied = pc.setRemoteDescription.mock.calls[0]?.[0] as RTCSessionDescriptionInit
+    expect(applied.sdp).toContain('192.168.178.90')
+    expect(applied.sdp).toContain('79.217.221.166')
+    expect(applied.sdp).toContain('116.203.208.7')
+    expect(applied.sdp).not.toContain('fd6a:')
+    expect(applied.sdp).not.toContain('2003:')
+    await link.addIceCandidate({
+      candidate: 'candidate:6 1 udp 1 2003:e0::9 9 typ host',
+      sdpMid: '0',
+    })
+    await link.addIceCandidate({
+      candidate: 'candidate:7 1 udp 1 192.168.178.91 9 typ host',
+      sdpMid: '0',
+    })
+    expect(pc.addIceCandidate).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps remote IPv6 before local candidates are gathered', async () => {
+    const link = new PeerLink({
+      rtcConfig: { iceServers: [] },
+      localPeerId: 'local',
+      pendingId: 'pending',
+      isOfferer: false,
+      keepRoutableIpv6: true,
+      events,
+    })
+    const pc = link.pc as unknown as MockRTCPeerConnection
+    const remote = [
+      'a=candidate:1 1 udp 1 2001:db8::20 9 typ srflx',
+      'a=candidate:2 1 udp 1 192.168.1.20 9 typ host',
+    ].join('\r\n')
+    await link.setRemoteDescription({ type: 'offer', sdp: remote })
+    expect(pc.setRemoteDescription).toHaveBeenCalledWith({ type: 'offer', sdp: remote })
+    expect(link.offerHasUsableIpv6).toBe(true)
+  })
 })

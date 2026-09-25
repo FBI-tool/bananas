@@ -143,6 +143,24 @@ export const isUnusableIpv6IceCandidate = (
   return address !== null && isUnusableIpv6Address(address, keepRoutableIpv6)
 }
 
+const sdpLines = (sdp?: string | null): string[] => (sdp ? sdp.split(/\r?\n/) : [])
+
+export const sdpHasIceCandidate = (sdp?: string | null): boolean =>
+  sdpLines(sdp).some((line) => iceCandidateAddress(line) !== null)
+
+/** ULA and global IPv6 count. Link-local addresses do not. */
+export const sdpHasUsableIpv6Candidate = (sdp?: string | null): boolean =>
+  sdpLines(sdp).some((line) => {
+    const address = iceCandidateAddress(line)
+    return address !== null && address.includes(':') && !isLinkLocalIpv6(address)
+  })
+
+export const answerDescriptionForRemote = (
+  local: RTCSessionDescriptionInit,
+  remoteSdp?: string | null,
+): RTCSessionDescriptionInit =>
+  dropUnusableIpv6IceCandidates(dropTcpIceCandidates(local), sdpHasUsableIpv6Candidate(remoteSdp))
+
 export const externalLinkClickHandler = (root: HTMLButtonElement, url: string): void => {
   root.classList.add('btn-disabled')
   root.setAttribute('aria-busy', 'true')
