@@ -242,16 +242,27 @@
       if (capturing) return
       onWindowKey(e, 'up')
     }
+    let keyboardLock: 'all' | 'escape' | 'off' = 'off'
+    const requestKeyboardLock = (mode: 'all' | 'escape' | 'off'): void => {
+      if (mode === keyboardLock) return
+      keyboardLock = mode
+      if (mode === 'off') {
+        navigator.keyboard?.unlock()
+        return
+      }
+      const pending =
+        mode === 'all' ? navigator.keyboard?.lock() : navigator.keyboard?.lock(['Escape'])
+      void pending?.catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        console.error(error)
+      })
+    }
     const syncCapture = (): void => {
       const fullscreen = videoIsFullscreen()
       if (fullscreen) captureFocus = true
       const capturing = keyboardGrant && (fullscreen || captureFocus) && !fieldIsFocused()
       void window.KiwiApi.remoteControl.setLocalCapture(capturing)
-      if (fullscreen) {
-        void (keyboardGrant ? navigator.keyboard?.lock() : navigator.keyboard?.lock(['Escape']))
-      } else {
-        navigator.keyboard?.unlock()
-      }
+      requestKeyboardLock(fullscreen ? (keyboardGrant ? 'all' : 'escape') : 'off')
     }
     const unsubLocalKey = window.KiwiApi.remoteControl.onLocalKey((event) => {
       if (!localGrant?.keyboard) return
@@ -271,6 +282,7 @@
       document.removeEventListener('fullscreenchange', syncCapture)
       document.removeEventListener('focusin', syncCapture)
       document.removeEventListener('focusout', syncCapture)
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
       navigator.keyboard?.unlock()
     }
   })
@@ -333,13 +345,28 @@
     room.ToggleRemoteCursors(next)
   }
 
+  const leaveFullscreen = async (): Promise<void> => {
+    if (!document.fullscreenElement) return
+    await document.exitFullscreen().catch(() => undefined)
+  }
+
   const onLeaveClick = async (): Promise<void> => {
-    await room.leave()
+    await leaveFullscreen()
+    try {
+      await room.leave()
+    } catch (error) {
+      console.error(error)
+    }
     onReset()
   }
 
   const onEndSessionClick = async (): Promise<void> => {
-    await room.endSession()
+    await leaveFullscreen()
+    try {
+      await room.endSession()
+    } catch (error) {
+      console.error(error)
+    }
     onReset()
   }
 
@@ -426,8 +453,6 @@
     }
     await videoStage.requestFullscreen()
     captureFocus = true
-    if (localGrant?.keyboard) void navigator.keyboard?.lock()
-    else void navigator.keyboard?.lock(['Escape'])
   }
 
   const onExitFullscreenClick = (e: MouseEvent): void => {

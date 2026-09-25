@@ -2431,6 +2431,7 @@ export class Room {
       }
       await this.dropVoterFromActiveVote(peerId)
     }
+    if (this.quietClose) return
     const remaining = this.establishedRemoteIds().length
     const reason = sessionEndedReasonAfterDeparture({
       sessionEndedBroadcast,
