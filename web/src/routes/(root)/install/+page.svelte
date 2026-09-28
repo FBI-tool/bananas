@@ -110,47 +110,47 @@
 					<li>
 						<a
 							class="link link-info link-external"
-							href={resolve('/(redirects)/download/linux/deb/amd64')}>Linux .deb (amd64)</a
+							href={resolve('/download/linux/deb/amd64')}>Linux .deb (amd64)</a
 						>
 					</li>
 					<li>
 						<a
 							class="link link-info link-external"
-							href={resolve('/(redirects)/download/linux/deb/arm64')}>Linux .deb (arm64)</a
+							href={resolve('/download/linux/deb/arm64')}>Linux .deb (arm64)</a
 						>
 					</li>
 					<li>
 						<a
 							class="link link-info link-external"
-							href={resolve('/(redirects)/download/linux/appimage/x86_64')}
+							href={resolve('/download/linux/appimage/x86_64')}
 							>Linux .AppImage (x86_64)</a
 						>
 					</li>
 					<li>
 						<a
 							class="link link-info link-external"
-							href={resolve('/(redirects)/download/linux/appimage/arm64')}
+							href={resolve('/download/linux/appimage/arm64')}
 							>Linux .AppImage (arm64)</a
 						>
 					</li>
 					<li>
 						<a
 							class="link link-info link-external"
-							href={resolve('/(redirects)/download/linux/flatpak/x86_64')}
+							href={resolve('/download/linux/flatpak/x86_64')}
 							>Linux .flatpak (x86_64)</a
 						>
 					</li>
 					<li>
 						<a
 							class="link link-info link-external"
-							href={resolve('/(redirects)/download/linux/flatpak/aarch64')}
+							href={resolve('/download/linux/flatpak/aarch64')}
 							>Linux .flatpak (aarch64)</a
 						>
 					</li>
 					<li>
 						<a
 							class="link link-info link-external"
-							href={resolve('/(redirects)/download/linux/snap/amd64')}>Linux .snap (amd64)</a
+							href={resolve('/download/linux/snap/amd64')}>Linux .snap (amd64)</a
 						>
 					</li>
 				</ul>
@@ -185,9 +185,14 @@
 			</div>
 			<div class={installSystem === 'windows' ? '' : 'hidden'}>
 				<p class="mb-5">
-					Windows (via <a class="link link-info link-external" href="https://chocolatey.org/install"
-						>chocolatey</a
+					Windows (via <a class="link link-info link-external" href={resolve('/download/windows')}
+						>Microsoft Apps Store</a
 					>):
+				</p>
+				<p class="mb-5">
+					or via <a class="link link-info link-external" href="https://chocolatey.org/install"
+						>chocolatey</a
+					>:
 				</p>
 				<div class="mb-5 text-left">
 					<CodeBlock lang="powershell" code={`choco install p2p-kiwi`} />
@@ -208,7 +213,7 @@
 				<p>
 					.. or download the <a
 						class="link link-info link-external"
-						href={resolve('/(redirects)/download/windows')}>setup.exe</a
+						href={resolve('/download/windows/installer')}>setup.exe</a
 					> manually.
 				</p>
 			</div>
